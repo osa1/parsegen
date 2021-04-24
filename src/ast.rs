@@ -40,6 +40,20 @@ impl fmt::Debug for Type {
     }
 }
 
+pub struct Ident(pub syn::Ident);
+
+impl fmt::Debug for Ident {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        self.0.to_string().fmt(f)
+    }
+}
+
+#[derive(Debug)]
+pub struct TypeSynonym {
+    pub name: Ident,
+    pub ty: Type,
+}
+
 /// A pattern used in token definitions
 #[derive(Debug)]
 pub enum Pattern {
@@ -77,6 +91,12 @@ impl Parse for Lit {
 impl Parse for Type {
     fn parse(input: &ParseBuffer) -> syn::Result<Self> {
         Ok(Type(input.parse::<syn::Type>()?))
+    }
+}
+
+impl Parse for Ident {
+    fn parse(input: &ParseBuffer) -> syn::Result<Self> {
+        Ok(Ident(input.parse::<syn::Ident>()?))
     }
 }
 
@@ -199,6 +219,17 @@ impl Parse for EnumToken {
     }
 }
 
+impl Parse for TypeSynonym {
+    fn parse(input: &ParseBuffer) -> syn::Result<Self> {
+        input.parse::<syn::token::Type>()?;
+        let name = input.parse::<Ident>()?;
+        input.parse::<syn::token::Eq>()?;
+        let ty = input.parse::<Type>()?;
+        input.parse::<syn::token::Semi>()?;
+        Ok(TypeSynonym { name, ty })
+    }
+}
+
 #[test]
 fn parse_pattern() {
     assert!(matches!(
@@ -275,4 +306,9 @@ fn parse_enum_token() {
     )
     .unwrap();
     assert_eq!(conversions.len(), 1);
+}
+
+#[test]
+fn parse_type_synonym() {
+    syn::parse_str::<TypeSynonym>("type X = Y;").unwrap();
 }
