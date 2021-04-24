@@ -3,6 +3,94 @@ use std::fmt;
 use quote::ToTokens;
 use syn::parse::{Parse, ParseBuffer};
 
+////////////////////////////////////////////////////////////////////////////////
+
+pub struct Path(pub syn::Path);
+
+pub struct Lit(pub syn::Lit);
+
+pub struct Type(pub syn::Type);
+
+pub struct Ident(pub syn::Ident);
+
+pub struct Expr(pub syn::Expr);
+
+pub struct LitStr(pub syn::LitStr);
+
+impl fmt::Debug for Path {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        self.0.to_token_stream().fmt(f)
+    }
+}
+
+impl fmt::Debug for Lit {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        self.0.to_token_stream().fmt(f)
+    }
+}
+
+impl fmt::Debug for Type {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        self.0.to_token_stream().fmt(f)
+    }
+}
+
+impl fmt::Debug for Ident {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        self.0.to_string().fmt(f)
+    }
+}
+
+impl fmt::Debug for Expr {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        "<expr>".fmt(f)
+    }
+}
+
+impl fmt::Debug for LitStr {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        self.0.value().fmt(f)
+    }
+}
+
+impl Parse for Path {
+    fn parse(input: &ParseBuffer) -> syn::Result<Self> {
+        Ok(Path(input.parse::<syn::Path>()?))
+    }
+}
+
+impl Parse for Lit {
+    fn parse(input: &ParseBuffer) -> syn::Result<Self> {
+        Ok(Lit(input.parse::<syn::Lit>()?))
+    }
+}
+
+impl Parse for Type {
+    fn parse(input: &ParseBuffer) -> syn::Result<Self> {
+        Ok(Type(input.parse::<syn::Type>()?))
+    }
+}
+
+impl Parse for Ident {
+    fn parse(input: &ParseBuffer) -> syn::Result<Self> {
+        Ok(Ident(input.parse::<syn::Ident>()?))
+    }
+}
+
+impl Parse for Expr {
+    fn parse(input: &ParseBuffer) -> syn::Result<Self> {
+        Ok(Expr(input.parse::<syn::Expr>()?))
+    }
+}
+
+impl Parse for LitStr {
+    fn parse(input: &ParseBuffer) -> syn::Result<Self> {
+        Ok(LitStr(input.parse::<syn::LitStr>()?))
+    }
+}
+
+////////////////////////////////////////////////////////////////////////////////
+
 /// The `enum Token { ... }` declaration
 #[derive(Debug)]
 pub struct EnumToken {
@@ -14,38 +102,6 @@ pub struct EnumToken {
 pub struct Conversion {
     pub from: String,
     pub to: Pattern,
-}
-
-pub struct Path(pub syn::Path);
-
-impl fmt::Debug for Path {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        self.0.to_token_stream().fmt(f)
-    }
-}
-
-pub struct Lit(pub syn::Lit);
-
-impl fmt::Debug for Lit {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        self.0.to_token_stream().fmt(f)
-    }
-}
-
-pub struct Type(pub syn::Type);
-
-impl fmt::Debug for Type {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        self.0.to_token_stream().fmt(f)
-    }
-}
-
-pub struct Ident(pub syn::Ident);
-
-impl fmt::Debug for Ident {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        self.0.to_string().fmt(f)
-    }
 }
 
 #[derive(Debug)]
@@ -76,28 +132,37 @@ pub struct FieldPattern {
     pub pattern: Pattern,
 }
 
-impl Parse for Path {
-    fn parse(input: &ParseBuffer) -> syn::Result<Self> {
-        Ok(Path(input.parse::<syn::Path>()?))
-    }
+#[derive(Debug)]
+pub enum Visibility {
+    Pub,
+    Priv,
 }
 
-impl Parse for Lit {
-    fn parse(input: &ParseBuffer) -> syn::Result<Self> {
-        Ok(Lit(input.parse::<syn::Lit>()?))
-    }
+#[derive(Debug)]
+pub struct NonTerminal {
+    pub visibility: Visibility,
+    pub name: Ident,
+    // pub macro_args: Vec<Ident>,
+    pub type_decl: Option<Type>,
+    pub alternatives: Vec<Alternative>,
 }
 
-impl Parse for Type {
-    fn parse(input: &ParseBuffer) -> syn::Result<Self> {
-        Ok(Type(input.parse::<syn::Type>()?))
-    }
+#[derive(Debug)]
+pub struct Alternative {
+    pub symbols: Vec<Symbol>,
+    pub action: Action,
 }
 
-impl Parse for Ident {
-    fn parse(input: &ParseBuffer) -> syn::Result<Self> {
-        Ok(Ident(input.parse::<syn::Ident>()?))
-    }
+#[derive(Debug)]
+pub enum Symbol {
+    Terminal(LitStr),
+    // TODO: more symbols here
+}
+
+#[derive(Debug)]
+pub enum Action {
+    User(Expr),
+    Fallible(Expr),
 }
 
 impl Parse for FieldPattern {
@@ -230,6 +295,81 @@ impl Parse for TypeSynonym {
     }
 }
 
+impl Parse for Visibility {
+    fn parse(input: &ParseBuffer) -> syn::Result<Self> {
+        if input.peek(syn::token::Pub) {
+            input.parse::<syn::token::Pub>()?;
+            Ok(Visibility::Pub)
+        } else {
+            Ok(Visibility::Priv)
+        }
+    }
+}
+
+impl Parse for NonTerminal {
+    fn parse(input: &ParseBuffer) -> syn::Result<Self> {
+        let visibility = input.parse::<Visibility>()?;
+        let name = input.parse::<Ident>()?;
+        let type_decl: Option<Type> = {
+            if input.peek(syn::token::Colon) {
+                input.parse::<syn::token::Colon>()?;
+                Some(input.parse::<Type>()?)
+            } else {
+                None
+            }
+        };
+        input.parse::<syn::token::Eq>()?;
+        let mut alternatives: Vec<Alternative> = vec![];
+        if input.peek(syn::token::Brace) {
+            let contents;
+            syn::braced!(contents in input);
+            while !contents.is_empty() {
+                alternatives.push(contents.parse::<Alternative>()?);
+                let _ = contents.parse::<syn::token::Comma>();
+            }
+            input.parse::<syn::token::Semi>()?;
+        } else {
+            alternatives.push(input.parse::<Alternative>()?);
+            input.parse::<syn::token::Comma>()?;
+        }
+        Ok(NonTerminal {
+            visibility,
+            name,
+            type_decl,
+            alternatives,
+        })
+    }
+}
+
+impl Parse for Alternative {
+    fn parse(input: &ParseBuffer) -> syn::Result<Self> {
+        let mut symbols: Vec<Symbol> = vec![];
+        while !input.peek(syn::token::FatArrow) {
+            symbols.push(input.parse::<Symbol>()?);
+        }
+        let action = input.parse::<Action>()?;
+        Ok(Alternative { symbols, action })
+    }
+}
+
+impl Parse for Symbol {
+    fn parse(input: &ParseBuffer) -> syn::Result<Self> {
+        Ok(Symbol::Terminal(input.parse::<LitStr>()?))
+    }
+}
+
+impl Parse for Action {
+    fn parse(input: &ParseBuffer) -> syn::Result<Self> {
+        input.parse::<syn::token::FatArrow>()?;
+        if input.peek(syn::token::Question) {
+            input.parse::<syn::token::Question>()?;
+            Ok(Action::Fallible(input.parse::<Expr>()?))
+        } else {
+            Ok(Action::User(input.parse::<Expr>()?))
+        }
+    }
+}
+
 #[test]
 fn parse_pattern() {
     assert!(matches!(
@@ -311,4 +451,24 @@ fn parse_enum_token() {
 #[test]
 fn parse_type_synonym() {
     syn::parse_str::<TypeSynonym>("type X = Y;").unwrap();
+}
+
+#[test]
+fn parse_nonterminal() {
+    syn::parse_str::<NonTerminal>("pub Test: A = { };").unwrap();
+    syn::parse_str::<NonTerminal>(r#"Test = "a" "b" => (),"#).unwrap();
+    let non_terminal = syn::parse_str::<NonTerminal>(
+        r#"
+            Test = {
+                "a" "b" => {
+                    1
+                },
+                "c" => {
+                    2
+                },
+            };
+        "#,
+    )
+    .unwrap();
+    assert_eq!(non_terminal.alternatives.len(), 2);
 }
