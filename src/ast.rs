@@ -3,7 +3,19 @@ use std::fmt;
 use quote::ToTokens;
 use syn::parse::{Parse, ParseBuffer};
 
-#[derive(Clone)]
+/// The `enum Token { ... }` declaration
+#[derive(Debug)]
+pub struct EnumToken {
+    pub type_name: Path,
+    pub conversions: Vec<Conversion>,
+}
+
+#[derive(Debug)]
+pub struct Conversion {
+    pub from: String,
+    pub to: Pattern,
+}
+
 pub struct Path(pub syn::Path);
 
 impl fmt::Debug for Path {
@@ -12,7 +24,6 @@ impl fmt::Debug for Path {
     }
 }
 
-#[derive(Clone)]
 pub struct Lit(pub syn::Lit);
 
 impl fmt::Debug for Lit {
@@ -21,7 +32,6 @@ impl fmt::Debug for Lit {
     }
 }
 
-#[derive(Clone)]
 pub struct Type(pub syn::Type);
 
 impl fmt::Debug for Type {
@@ -31,7 +41,7 @@ impl fmt::Debug for Type {
 }
 
 /// A pattern used in token definitions
-#[derive(Clone, Debug)]
+#[derive(Debug)]
 pub enum Pattern {
     // `X::Y(<pat1>,...,<patN>)`
     Enum(Path, Vec<Pattern>),
@@ -46,7 +56,7 @@ pub enum Pattern {
     Choose(Type),
 }
 
-#[derive(Clone, Debug)]
+#[derive(Debug)]
 pub struct FieldPattern {
     pub field_name: syn::Ident,
     pub pattern: Pattern,
@@ -158,6 +168,37 @@ impl Parse for Pattern {
     }
 }
 
+impl Parse for Conversion {
+    fn parse(input: &ParseBuffer) -> syn::Result<Self> {
+        let from = input.parse::<syn::LitStr>()?;
+        input.parse::<syn::token::FatArrow>()?;
+        let to = input.parse::<Pattern>()?;
+        Ok(Conversion {
+            from: from.value(),
+            to,
+        })
+    }
+}
+
+impl Parse for EnumToken {
+    fn parse(input: &ParseBuffer) -> syn::Result<Self> {
+        input.parse::<syn::token::Enum>()?;
+        let type_name = input.parse::<Path>()?;
+        let contents;
+        syn::braced!(contents in input);
+        let conversions: syn::punctuated::Punctuated<Conversion, syn::token::Comma> =
+            syn::punctuated::Punctuated::parse_terminated(&contents)?;
+
+        Ok(EnumToken {
+            type_name,
+            conversions: conversions
+                .into_pairs()
+                .map(|pair| pair.into_value())
+                .collect(),
+        })
+    }
+}
+
 #[test]
 fn parse_pattern() {
     assert!(matches!(
@@ -212,4 +253,26 @@ fn parse_pattern() {
         syn::parse_str::<Pattern>("<A>").unwrap(),
         Pattern::Choose(_)
     ));
+}
+
+#[test]
+fn parse_enum_token() {
+    let EnumToken { conversions, .. } = syn::parse_str::<EnumToken>(
+        r#"
+            enum Token {
+            }
+        "#,
+    )
+    .unwrap();
+    assert_eq!(conversions.len(), 0);
+
+    let EnumToken { conversions, .. } = syn::parse_str::<EnumToken>(
+        r#"
+            enum Token {
+                "id" => Token::Id(<&'input str>),
+            }
+        "#,
+    )
+    .unwrap();
+    assert_eq!(conversions.len(), 1);
 }
