@@ -91,9 +91,27 @@ impl Parse for LitStr {
 
 ////////////////////////////////////////////////////////////////////////////////
 
+/// The grammar AST (`parser! { ... }`)
+#[derive(Debug)]
+pub struct Parser {
+    pub items: Vec<GrammarItem>,
+}
+
+#[derive(Debug)]
+pub enum GrammarItem {
+    /// `type X = Y;`, used to declare location and lexer error types
+    TypeSynonym(TypeSynonym),
+
+    /// `enum Token { ... }`, used to declare tokens
+    TokenEnum(TokenEnum),
+
+    /// Non-terminals
+    NonTerminal(NonTerminal),
+}
+
 /// The `enum Token { ... }` declaration
 #[derive(Debug)]
-pub struct EnumToken {
+pub struct TokenEnum {
     pub type_name: Path,
     pub conversions: Vec<Conversion>,
 }
@@ -155,8 +173,37 @@ pub struct Alternative {
 
 #[derive(Debug)]
 pub enum Symbol {
+    /// A terminal, defined in the token enum
     Terminal(LitStr),
+
+    /// A nonterminal, should be defined in the same grammar
+    NonTerminal(Ident),
+
+    /// `X+`, `X*`, `X?`
+    Repeat(Box<Repeat>),
+
+    /// `<x:X>` or <mut x:X>`
+    Name(Name, Box<Symbol>),
     // TODO: more symbols here
+}
+
+#[derive(Debug)]
+pub struct Name {
+    pub mutable: bool,
+    pub name: Ident,
+}
+
+#[derive(Debug)]
+pub struct Repeat {
+    pub op: RepeatOp,
+    pub symbol: Symbol,
+}
+
+#[derive(Debug)]
+pub enum RepeatOp {
+    Plus,
+    Star,
+    Question,
 }
 
 #[derive(Debug)]
@@ -265,7 +312,7 @@ impl Parse for Conversion {
     }
 }
 
-impl Parse for EnumToken {
+impl Parse for TokenEnum {
     fn parse(input: &ParseBuffer) -> syn::Result<Self> {
         input.parse::<syn::token::Enum>()?;
         let type_name = input.parse::<Path>()?;
@@ -274,7 +321,7 @@ impl Parse for EnumToken {
         let conversions: syn::punctuated::Punctuated<Conversion, syn::token::Comma> =
             syn::punctuated::Punctuated::parse_terminated(&contents)?;
 
-        Ok(EnumToken {
+        Ok(TokenEnum {
             type_name,
             conversions: conversions
                 .into_pairs()
@@ -354,8 +401,54 @@ impl Parse for Alternative {
 
 impl Parse for Symbol {
     fn parse(input: &ParseBuffer) -> syn::Result<Self> {
-        Ok(Symbol::Terminal(input.parse::<LitStr>()?))
+        let mut symbol = symbol0(input)?;
+
+        loop {
+            if input.parse::<syn::token::Add>().is_ok() {
+                symbol = Symbol::Repeat(Box::new(Repeat {
+                    op: RepeatOp::Plus,
+                    symbol,
+                }));
+            } else if input.parse::<syn::token::Star>().is_ok() {
+                symbol = Symbol::Repeat(Box::new(Repeat {
+                    op: RepeatOp::Star,
+                    symbol,
+                }));
+            } else if input.parse::<syn::token::Question>().is_ok() {
+                symbol = Symbol::Repeat(Box::new(Repeat {
+                    op: RepeatOp::Question,
+                    symbol,
+                }));
+            } else {
+                break;
+            }
+        }
+
+        Ok(symbol)
     }
+}
+
+fn symbol0(input: &ParseBuffer) -> syn::Result<Symbol> {
+    // TODO: No peek for LitStr?
+    match input.parse::<LitStr>() {
+        Ok(str) => return Ok(Symbol::Terminal(str)),
+        Err(_) => {}
+    }
+
+    match input.parse::<Ident>() {
+        Ok(ident) => return Ok(Symbol::NonTerminal(ident)),
+        Err(_) => {}
+    }
+
+    // if input.peek(syn::token::Lt) {
+    input.parse::<syn::token::Lt>()?;
+    let mutable = input.parse::<syn::token::Mut>().is_ok();
+    let name = input.parse::<Ident>()?;
+    input.parse::<syn::token::Colon>()?;
+    let symbol = input.parse::<Symbol>()?;
+    input.parse::<syn::token::Gt>()?;
+    return Ok(Symbol::Name(Name { mutable, name }, Box::new(symbol)));
+    // }
 }
 
 impl Parse for Action {
@@ -367,6 +460,28 @@ impl Parse for Action {
         } else {
             Ok(Action::User(input.parse::<Expr>()?))
         }
+    }
+}
+
+impl Parse for GrammarItem {
+    fn parse(input: &ParseBuffer) -> syn::Result<Self> {
+        if input.peek(syn::token::Type) {
+            Ok(GrammarItem::TypeSynonym(input.parse::<TypeSynonym>()?))
+        } else if input.peek(syn::token::Enum) {
+            Ok(GrammarItem::TokenEnum(input.parse::<TokenEnum>()?))
+        } else {
+            Ok(GrammarItem::NonTerminal(input.parse::<NonTerminal>()?))
+        }
+    }
+}
+
+impl Parse for Parser {
+    fn parse(input: &ParseBuffer) -> syn::Result<Self> {
+        let mut items: Vec<GrammarItem> = vec![];
+        while !input.is_empty() {
+            items.push(input.parse::<GrammarItem>()?);
+        }
+        Ok(Parser { items })
     }
 }
 
@@ -428,7 +543,7 @@ fn parse_pattern() {
 
 #[test]
 fn parse_enum_token() {
-    let EnumToken { conversions, .. } = syn::parse_str::<EnumToken>(
+    let TokenEnum { conversions, .. } = syn::parse_str::<TokenEnum>(
         r#"
             enum Token {
             }
@@ -437,7 +552,7 @@ fn parse_enum_token() {
     .unwrap();
     assert_eq!(conversions.len(), 0);
 
-    let EnumToken { conversions, .. } = syn::parse_str::<EnumToken>(
+    let TokenEnum { conversions, .. } = syn::parse_str::<TokenEnum>(
         r#"
             enum Token {
                 "id" => Token::Id(<&'input str>),
@@ -451,6 +566,34 @@ fn parse_enum_token() {
 #[test]
 fn parse_type_synonym() {
     syn::parse_str::<TypeSynonym>("type X = Y;").unwrap();
+}
+
+#[test]
+fn parse_symbol() {
+    assert!(matches!(
+        syn::parse_str::<Symbol>(r#" "a" "#).unwrap(),
+        Symbol::Terminal(_)
+    ));
+    assert!(matches!(
+        syn::parse_str::<Symbol>(r#" <x:"a"> "#).unwrap(),
+        Symbol::Name(_, _)
+    ));
+    assert!(matches!(
+        syn::parse_str::<Symbol>(r#" <mut x:"a"> "#).unwrap(),
+        Symbol::Name(_, _)
+    ));
+    assert!(matches!(
+        syn::parse_str::<Symbol>(r#" "x"+*? "#).unwrap(),
+        Symbol::Repeat(_)
+    ));
+    assert!(matches!(
+        syn::parse_str::<Symbol>("Expr").unwrap(),
+        Symbol::NonTerminal(_),
+    ));
+    assert!(matches!(
+        syn::parse_str::<Symbol>(r#" <exprs:Expr+> "#).unwrap(),
+        Symbol::Name(_, _),
+    ));
 }
 
 #[test]
