@@ -268,6 +268,11 @@ fn scanner<A>(
         let prod = grammar.get_production(*production);
         let prod_syms = prod.symbols();
 
+        if *position as usize == prod_syms.len() {
+            // `completer` will take care of this
+            continue;
+        }
+
         if let Symbol::Terminal(t) = &prod_syms[*position as usize] {
             if *t == token {
                 updated |= next_set.items.insert(EarleyItem {
@@ -320,4 +325,6 @@ fn simulate1() {
     grammar.set_init(e_nt_idx);
 
     assert!(simulate(&grammar, &mut "n".chars()));
+    assert!(simulate(&grammar, &mut "n+n".chars()));
+    assert!(simulate(&grammar, &mut "n+n+n".chars()));
 }
