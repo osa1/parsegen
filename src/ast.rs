@@ -162,11 +162,11 @@ pub struct NonTerminal {
     pub name: Ident,
     // pub macro_args: Vec<Ident>,
     pub type_decl: Option<Type>,
-    pub alternatives: Vec<Alternative>,
+    pub productions: Vec<Production>,
 }
 
 #[derive(Debug)]
-pub struct Alternative {
+pub struct Production {
     pub symbols: Vec<Symbol>,
     pub action: Action,
 }
@@ -366,36 +366,36 @@ impl Parse for NonTerminal {
             }
         };
         input.parse::<syn::token::Eq>()?;
-        let mut alternatives: Vec<Alternative> = vec![];
+        let mut productions: Vec<Production> = vec![];
         if input.peek(syn::token::Brace) {
             let contents;
             syn::braced!(contents in input);
             while !contents.is_empty() {
-                alternatives.push(contents.parse::<Alternative>()?);
+                productions.push(contents.parse::<Production>()?);
                 let _ = contents.parse::<syn::token::Comma>();
             }
             input.parse::<syn::token::Semi>()?;
         } else {
-            alternatives.push(input.parse::<Alternative>()?);
+            productions.push(input.parse::<Production>()?);
             input.parse::<syn::token::Comma>()?;
         }
         Ok(NonTerminal {
             visibility,
             name,
             type_decl,
-            alternatives,
+            productions,
         })
     }
 }
 
-impl Parse for Alternative {
+impl Parse for Production {
     fn parse(input: &ParseBuffer) -> syn::Result<Self> {
         let mut symbols: Vec<Symbol> = vec![];
         while !input.peek(syn::token::FatArrow) {
             symbols.push(input.parse::<Symbol>()?);
         }
         let action = input.parse::<Action>()?;
-        Ok(Alternative { symbols, action })
+        Ok(Production { symbols, action })
     }
 }
 
@@ -613,5 +613,5 @@ fn parse_nonterminal() {
         "#,
     )
     .unwrap();
-    assert_eq!(non_terminal.alternatives.len(), 2);
+    assert_eq!(non_terminal.productions.len(), 2);
 }

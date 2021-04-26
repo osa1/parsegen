@@ -33,7 +33,7 @@ fn test_figure_1() {
 #[test]
 fn test_figure_2() {
     enum Token {
-        A
+        A,
     }
 
     parser! {
