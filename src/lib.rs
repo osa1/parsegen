@@ -1,4 +1,7 @@
 mod ast;
+mod earley;
+mod grammar;
+mod simulate;
 
 use ast::Parser;
 
