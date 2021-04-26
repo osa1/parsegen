@@ -8,26 +8,26 @@ pub struct NonTerminalIdx(u32);
 #[derive(Debug, PartialEq, Eq, Clone, Copy, PartialOrd, Ord, Hash)]
 pub struct ProductionIdx(u32);
 
-/// Grammar type parameterized over non-terminals, terminals, and user actions.
+/// Grammar type parameterized over terminals and user actions.
 ///
 /// Note that the grammar is "augmented" with an initial non-terminal with no productions. When you
 /// call `set_init` for setting the initial non-terminal we add a production to the original
 /// initial non-terminal to the `set_init` argument.
 #[derive(Debug)]
-pub struct Grammar<N, T, A> {
+pub struct Grammar<T, A> {
     // Initial non-terminal
     init: Option<NonTerminalIdx>,
 
     // Indexed by `NonTerminalIdx`
-    non_terminals: Vec<NonTerminal<N>>,
+    non_terminals: Vec<NonTerminal>,
 
     // Indexed by `ProductionIdx`
     productions: Vec<Production<T, A>>,
 }
 
 #[derive(Debug)]
-pub struct NonTerminal<N> {
-    non_terminal: N,
+pub struct NonTerminal {
+    non_terminal: String,
     productions: FxHashSet<ProductionIdx>,
 }
 
@@ -43,7 +43,7 @@ pub enum Symbol<T> {
     Terminal(T),
 }
 
-impl<N, T, A> Grammar<N, T, A> {
+impl<T, A> Grammar<T, A> {
     pub fn new() -> Self {
         Grammar {
             init: None,
@@ -61,7 +61,7 @@ impl<N, T, A> Grammar<N, T, A> {
         self.init.unwrap()
     }
 
-    pub fn add_non_terminal(&mut self, non_terminal: N) -> NonTerminalIdx {
+    pub fn add_non_terminal(&mut self, non_terminal: String) -> NonTerminalIdx {
         let idx = self.non_terminals.len();
         self.non_terminals.push(NonTerminal {
             non_terminal,
@@ -70,7 +70,7 @@ impl<N, T, A> Grammar<N, T, A> {
         NonTerminalIdx(idx as u32)
     }
 
-    pub fn get_non_terminal(&self, idx: NonTerminalIdx) -> &NonTerminal<N> {
+    pub fn get_non_terminal(&self, idx: NonTerminalIdx) -> &NonTerminal {
         &self.non_terminals[idx.0 as usize]
     }
 
@@ -90,8 +90,8 @@ impl<N, T, A> Grammar<N, T, A> {
     }
 }
 
-impl<N> NonTerminal<N> {
-    pub fn name(&self) -> &N {
+impl NonTerminal {
+    pub fn name(&self) -> &str {
         &self.non_terminal
     }
 

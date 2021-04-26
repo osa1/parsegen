@@ -27,16 +27,17 @@ pub struct EarleySet {
 }
 
 /// Display an Earley item following the syntax in the "Practical Earley Parsing" paper.
-pub fn display_earley_item<N, T, A>(
+pub fn display_earley_item<T, A>(
     f: &mut fmt::Formatter<'_>,
     item: EarleyItem,
-    grammar: &Grammar<N, T, A>,
-    display_name: fn(&mut fmt::Formatter<'_>, &N) -> fmt::Result,
-    display_symbol: fn(&mut fmt::Formatter<'_>, &Grammar<N, T, A>, &Symbol<T>) -> fmt::Result,
+    grammar: &Grammar<T, A>,
+    display_symbol: fn(&mut fmt::Formatter<'_>, &Grammar<T, A>, &Symbol<T>) -> fmt::Result,
 ) -> fmt::Result {
-    write!(f, "[")?;
-    display_name(f, grammar.get_non_terminal(item.non_terminal).name())?;
-    write!(f, " -> ")?;
+    write!(
+        f,
+        "[{} -> ",
+        grammar.get_non_terminal(item.non_terminal).name()
+    )?;
 
     let production = grammar.get_production(item.production);
     let production_symbols = production.symbols();
@@ -56,16 +57,15 @@ pub fn display_earley_item<N, T, A>(
 }
 
 /// Display an Earley set following the syntax in the "Practical Earley Parsing" paper.
-pub fn display_earley_set<N, T, A>(
+pub fn display_earley_set<T, A>(
     f: &mut fmt::Formatter<'_>,
     set: EarleySet,
-    grammar: &Grammar<N, T, A>,
-    display_name: fn(&mut fmt::Formatter<'_>, &N) -> fmt::Result,
-    display_symbol: fn(&mut fmt::Formatter<'_>, &Grammar<N, T, A>, &Symbol<T>) -> fmt::Result,
+    grammar: &Grammar<T, A>,
+    display_symbol: fn(&mut fmt::Formatter<'_>, &Grammar<T, A>, &Symbol<T>) -> fmt::Result,
 ) -> fmt::Result {
     write!(f, "{{")?;
     for (item_idx, item) in set.items.iter().copied().enumerate() {
-        display_earley_item(f, item, grammar, display_name, display_symbol)?;
+        display_earley_item(f, item, grammar, display_symbol)?;
         if item_idx != set.items.len() - 1 {
             write!(f, ", ")?;
         }

@@ -5,7 +5,7 @@ use std::mem::replace;
 
 use fxhash::FxHashSet;
 
-pub fn simulate<N, T, A>(grammar: &Grammar<N, T, A>, input: &mut dyn Iterator<Item = &T>)
+pub fn simulate<T, A>(grammar: &Grammar<T, A>, input: &mut dyn Iterator<Item = &T>)
 where
     T: PartialEq,
 {
@@ -62,10 +62,10 @@ where
 /// In my words: whenever we see an item `[A -> ... |X ..., j]` in the current set, we add items
 /// for the productions of `X` to the current set, with the current set index as the item set
 /// index.
-fn predictor<N, T, A>(
+fn predictor<T, A>(
     current_set: &mut EarleySet,
     current_set_idx: u32,
-    grammar: &Grammar<N, T, A>,
+    grammar: &Grammar<T, A>,
 ) -> bool {
     // New items are added here as we iterate the current items
     let mut new_items: FxHashSet<EarleyItem> = Default::default();
@@ -110,11 +110,7 @@ fn predictor<N, T, A>(
 ///
 /// In my words: when we see an item `[X -> ... |, j]` in the current set, we find items
 /// `[A -> ... |X ..., k]` in set `j`, and add `[A -> ... X |..., k]` to the current set.
-fn completer<N, T, A>(
-    state: &mut [EarleySet],
-    current_set_idx: u32,
-    grammar: &Grammar<N, T, A>,
-) -> bool {
+fn completer<T, A>(state: &mut [EarleySet], current_set_idx: u32, grammar: &Grammar<T, A>) -> bool {
     // New items are added here as we iterate the current set
     let mut new_items: FxHashSet<EarleyItem> = Default::default();
 
@@ -172,10 +168,10 @@ fn completer<N, T, A>(
 ///
 /// In my words: when we see an item `[A -> ... |a ..., i]` in the current set, and the character
 /// is `a`, we add `[A -> ... a| ..., i]` to the next set.
-fn scanner<N, T, A>(
+fn scanner<T, A>(
     current_set: &mut EarleySet,
     next_set: &mut EarleySet,
-    grammar: &Grammar<N, T, A>,
+    grammar: &Grammar<T, A>,
     token: &T,
 ) -> bool
 where
