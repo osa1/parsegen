@@ -195,8 +195,22 @@ fn completer<A>(state: &mut [EarleySet], current_set_idx: u32, grammar: &Grammar
             set_idx: parent_set_idx,
         } in parent_set.items.iter()
         {
+            // No need for this check as the "is complete" check below also handles this case
+            // if parent_item_idx == item_idx {
+            //     continue;
+            // }
+
             let parent_prod = grammar.get_production(*parent_production);
             let parent_prod_syms = parent_prod.symbols();
+
+            if *parent_position as usize == parent_prod_syms.len() {
+                continue;
+            }
+
+            // println!(
+            //     "current_item_idx={}, parent_item_idx={}, parent_position={}, parent_prod_syms={:?}",
+            //     item_idx, parent_item_idx, parent_position, parent_prod_syms
+            // );
 
             if let Symbol::NonTerminal(parent_nt_idx) = parent_prod_syms[*parent_position as usize]
             {
@@ -327,4 +341,39 @@ fn simulate1() {
     assert!(simulate(&grammar, &mut "n".chars()));
     assert!(simulate(&grammar, &mut "n+n".chars()));
     assert!(simulate(&grammar, &mut "n+n+n".chars()));
+    assert!(!simulate(&grammar, &mut "n+n+".chars()));
+}
+
+// S -> AAAA
+// A -> a
+// A -> E
+// E -> {empty}
+#[test]
+fn simulate2() {
+    let mut grammar: Grammar<char, ()> = Grammar::new();
+    let s_nt_idx = grammar.add_non_terminal("S".to_owned());
+    let a_nt_idx = grammar.add_non_terminal("A".to_owned());
+    let e_nt_idx = grammar.add_non_terminal("E".to_owned());
+
+    grammar.set_init(s_nt_idx);
+
+    grammar.add_production(
+        s_nt_idx,
+        vec![
+            Symbol::NonTerminal(a_nt_idx),
+            Symbol::NonTerminal(a_nt_idx),
+            Symbol::NonTerminal(a_nt_idx),
+            Symbol::NonTerminal(a_nt_idx),
+        ],
+        (),
+    );
+    grammar.add_production(a_nt_idx, vec![Symbol::Terminal('a')], ());
+    grammar.add_production(a_nt_idx, vec![Symbol::NonTerminal(e_nt_idx)], ());
+    grammar.add_production(e_nt_idx, vec![], ());
+
+    assert!(simulate(&grammar, &mut "a".chars()));
+    assert!(simulate(&grammar, &mut "aa".chars()));
+    assert!(simulate(&grammar, &mut "aaa".chars()));
+    assert!(simulate(&grammar, &mut "aaaa".chars()));
+    assert!(!simulate(&grammar, &mut "aaaaa".chars()));
 }
