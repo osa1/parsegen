@@ -27,11 +27,10 @@ pub struct EarleySet {
 }
 
 /// Display an Earley item following the syntax in the "Practical Earley Parsing" paper.
-pub fn display_earley_item<T, A>(
+pub fn display_earley_item<A>(
     f: &mut fmt::Formatter<'_>,
     item: EarleyItem,
-    grammar: &Grammar<T, A>,
-    display_symbol: fn(&mut fmt::Formatter<'_>, &Grammar<T, A>, &Symbol<T>) -> fmt::Result,
+    grammar: &Grammar<char, A>,
 ) -> fmt::Result {
     write!(
         f,
@@ -45,7 +44,15 @@ pub fn display_earley_item<T, A>(
         if symbol_idx == item.position as usize {
             write!(f, "|")?;
         }
-        display_symbol(f, grammar, symbol)?;
+        match symbol {
+            Symbol::NonTerminal(nt_idx) => {
+                let nt = grammar.get_non_terminal(*nt_idx);
+                <str as fmt::Display>::fmt(nt.name(), f)?;
+            }
+            Symbol::Terminal(char) => {
+                <char as fmt::Debug>::fmt(char, f)?;
+            }
+        }
         if symbol_idx != production_symbols.len() - 1 {
             write!(f, " ")?;
         }
@@ -57,18 +64,28 @@ pub fn display_earley_item<T, A>(
 }
 
 /// Display an Earley set following the syntax in the "Practical Earley Parsing" paper.
-pub fn display_earley_set<T, A>(
+pub fn display_earley_set<A>(
     f: &mut fmt::Formatter<'_>,
-    set: EarleySet,
-    grammar: &Grammar<T, A>,
-    display_symbol: fn(&mut fmt::Formatter<'_>, &Grammar<T, A>, &Symbol<T>) -> fmt::Result,
+    set: &EarleySet,
+    grammar: &Grammar<char, A>,
 ) -> fmt::Result {
     write!(f, "{{")?;
     for (item_idx, item) in set.items.iter().copied().enumerate() {
-        display_earley_item(f, item, grammar, display_symbol)?;
+        display_earley_item(f, item, grammar)?;
         if item_idx != set.items.len() - 1 {
             write!(f, ", ")?;
         }
     }
     write!(f, "}}")
+}
+
+pub struct EarleySetDisplay<'set, 'grammar, A> {
+    pub set: &'set EarleySet,
+    pub grammar: &'grammar Grammar<char, A>,
+}
+
+impl<'set, 'grammar, A> fmt::Display for EarleySetDisplay<'set, 'grammar, A> {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        display_earley_set(f, self.set, self.grammar)
+    }
 }

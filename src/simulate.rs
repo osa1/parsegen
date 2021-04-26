@@ -1,14 +1,9 @@
-use crate::earley::{display_earley_item, display_earley_set, EarleyItem, EarleySet};
+use crate::earley::{EarleyItem, EarleySet, EarleySetDisplay};
 use crate::grammar::{Grammar, Symbol};
-
-use std::mem::replace;
 
 use fxhash::FxHashSet;
 
-pub fn simulate<T, A>(grammar: &Grammar<T, A>, input: &mut dyn Iterator<Item = &T>)
-where
-    T: PartialEq,
-{
+pub fn simulate<A>(grammar: &Grammar<char, A>, input: &mut dyn Iterator<Item = char>) -> bool {
     let mut state: Vec<EarleySet> = vec![];
 
     // Create an initial set with productions of the initial non-terminal
@@ -49,11 +44,47 @@ where
                 state.pop().unwrap()
             };
 
-            updated |= scanner(&mut state[token_idx], &mut next_set, grammar, token);
+            updated |= scanner(
+                &mut state[token_idx],
+                token_idx as u32,
+                &mut next_set,
+                grammar,
+                token,
+            );
 
             state.push(next_set);
         }
     }
+
+    // Processed the input, run predictor and completer on the final state
+    let state_idx = state.len() - 1;
+    {
+        let mut updated = true;
+        while updated {
+            updated = false;
+            updated |= predictor(&mut state[state_idx], state_idx as u32, grammar);
+            updated |= completer(&mut state, state_idx as u32, grammar);
+        }
+    }
+
+    // There should be an item `[S -> ... |, i]` in the last set where `S` is the initial
+    // non-terminal
+    for EarleyItem {
+        non_terminal,
+        production,
+        position,
+        set_idx: _,
+    } in &state[state_idx].items
+    {
+        if *non_terminal == grammar.get_init() {
+            let prod = grammar.get_production(*production);
+            if *position as usize == prod.symbols().len() {
+                return true;
+            }
+        }
+    }
+
+    false
 }
 
 /// The `predictor` rule in the paper "Practical Earley Parsing". Returns whether we updated the
@@ -62,11 +93,21 @@ where
 /// In my words: whenever we see an item `[A -> ... |X ..., j]` in the current set, we add items
 /// for the productions of `X` to the current set, with the current set index as the item set
 /// index.
-fn predictor<T, A>(
+fn predictor<A>(
     current_set: &mut EarleySet,
     current_set_idx: u32,
-    grammar: &Grammar<T, A>,
+    grammar: &Grammar<char, A>,
 ) -> bool {
+    println!("predictor({})", current_set_idx);
+    println!(
+        "{:>4}: {}",
+        current_set_idx,
+        EarleySetDisplay {
+            set: current_set,
+            grammar
+        }
+    );
+
     // New items are added here as we iterate the current items
     let mut new_items: FxHashSet<EarleyItem> = Default::default();
 
@@ -102,6 +143,17 @@ fn predictor<T, A>(
         updated |= current_set.items.insert(new_item);
     }
 
+    println!("=>");
+    println!(
+        "{:>4}: {}",
+        current_set_idx,
+        EarleySetDisplay {
+            set: current_set,
+            grammar
+        }
+    );
+    println!();
+
     updated
 }
 
@@ -110,7 +162,12 @@ fn predictor<T, A>(
 ///
 /// In my words: when we see an item `[X -> ... |, j]` in the current set, we find items
 /// `[A -> ... |X ..., k]` in set `j`, and add `[A -> ... X |..., k]` to the current set.
-fn completer<T, A>(state: &mut [EarleySet], current_set_idx: u32, grammar: &Grammar<T, A>) -> bool {
+fn completer<A>(state: &mut [EarleySet], current_set_idx: u32, grammar: &Grammar<char, A>) -> bool {
+    println!("completer({})", current_set_idx);
+    for (set_idx, set) in state.iter().enumerate() {
+        println!("{:>4}: {}", set_idx, EarleySetDisplay { set, grammar });
+    }
+
     // New items are added here as we iterate the current set
     let mut new_items: FxHashSet<EarleyItem> = Default::default();
 
@@ -160,6 +217,12 @@ fn completer<T, A>(state: &mut [EarleySet], current_set_idx: u32, grammar: &Gram
         updated |= state[current_set_idx as usize].items.insert(new_item);
     }
 
+    println!("=>");
+    for (set_idx, set) in state.iter().enumerate() {
+        println!("{:>4}: {}", set_idx, EarleySetDisplay { set, grammar });
+    }
+    println!();
+
     updated
 }
 
@@ -168,15 +231,31 @@ fn completer<T, A>(state: &mut [EarleySet], current_set_idx: u32, grammar: &Gram
 ///
 /// In my words: when we see an item `[A -> ... |a ..., i]` in the current set, and the character
 /// is `a`, we add `[A -> ... a| ..., i]` to the next set.
-fn scanner<T, A>(
+fn scanner<A>(
     current_set: &mut EarleySet,
+    current_set_idx: u32,
     next_set: &mut EarleySet,
-    grammar: &Grammar<T, A>,
-    token: &T,
-) -> bool
-where
-    T: PartialEq,
-{
+    grammar: &Grammar<char, A>,
+    token: char,
+) -> bool {
+    println!("scanner({}, {:?})", current_set_idx, token);
+    println!(
+        "{:>4}: {}",
+        current_set_idx,
+        EarleySetDisplay {
+            set: current_set,
+            grammar
+        }
+    );
+    println!(
+        "{:>4}: {}",
+        current_set_idx + 1,
+        EarleySetDisplay {
+            set: next_set,
+            grammar
+        }
+    );
+
     let mut updated = false;
 
     for EarleyItem {
@@ -190,7 +269,7 @@ where
         let prod_syms = prod.symbols();
 
         if let Symbol::Terminal(t) = &prod_syms[*position as usize] {
-            if t == token {
+            if *t == token {
                 updated |= next_set.items.insert(EarleyItem {
                     non_terminal: *non_terminal,
                     production: *production,
@@ -201,5 +280,44 @@ where
         }
     }
 
+    println!("=>");
+    println!(
+        "{:>4}: {}",
+        current_set_idx,
+        EarleySetDisplay {
+            set: current_set,
+            grammar
+        }
+    );
+    println!(
+        "{:>4}: {}",
+        current_set_idx + 1,
+        EarleySetDisplay {
+            set: next_set,
+            grammar
+        }
+    );
+    println!();
+
     updated
+}
+
+// E -> E + E | n
+#[test]
+fn simulate1() {
+    let mut grammar: Grammar<char, ()> = Grammar::new();
+    let e_nt_idx = grammar.add_non_terminal("E".to_owned());
+    grammar.add_production(
+        e_nt_idx,
+        vec![
+            Symbol::NonTerminal(e_nt_idx),
+            Symbol::Terminal('+'),
+            Symbol::NonTerminal(e_nt_idx),
+        ],
+        (),
+    );
+    grammar.add_production(e_nt_idx, vec![Symbol::Terminal('n')], ());
+    grammar.set_init(e_nt_idx);
+
+    assert!(simulate(&grammar, &mut "n".chars()));
 }

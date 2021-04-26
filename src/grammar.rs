@@ -80,9 +80,12 @@ impl<T, A> Grammar<T, A> {
         symbols: Vec<Symbol<T>>,
         action: A,
     ) -> ProductionIdx {
-        let idx = self.productions.len();
+        let idx = ProductionIdx(self.productions.len() as u32);
         self.productions.push(Production { symbols, action });
-        ProductionIdx(idx as u32)
+        self.non_terminals[non_terminal.0 as usize]
+            .productions
+            .insert(idx);
+        idx
     }
 
     pub fn get_production(&self, idx: ProductionIdx) -> &Production<T, A> {
