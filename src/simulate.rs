@@ -67,16 +67,21 @@ pub fn simulate<A>(grammar: &Grammar<char, A>, input: &mut dyn Iterator<Item = c
         }
     }
 
+    println!("Final states:");
+    for (set_idx, set) in state.iter().enumerate() {
+        println!("{:>4}: {}", set_idx, EarleySetDisplay { set, grammar });
+    }
+
     // There should be an item `[S -> ... |, i]` in the last set where `S` is the initial
     // non-terminal
     for EarleyItem {
         non_terminal,
         production,
         position,
-        set_idx: _,
+        set_idx,
     } in &state[state_idx].items
     {
-        if *non_terminal == grammar.get_init() {
+        if *set_idx == 0 && *non_terminal == grammar.get_init() {
             let prod = grammar.get_production(*production);
             if *position as usize == prod.symbols().len() {
                 return true;
