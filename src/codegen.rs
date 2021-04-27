@@ -52,7 +52,7 @@ pub fn build_inefficient_recognizer<A>(grammar: Grammar<char, A>) -> TokenStream
         #[derive(std::cmp::PartialEq, std::cmp::Eq, std::cmp::PartialOrd, std::cmp::Ord, std::hash::Hash, std::clone::Clone, std::marker::Copy)]
         struct ProductionIdx(u32);
 
-        #[derive(std::cmp::PartialEq, std::cmp::Eq, std::cmp::PartialOrd, std::cmp::Ord, std::hash::Hash)]
+        #[derive(std::cmp::PartialEq, std::cmp::Eq, std::cmp::PartialOrd, std::cmp::Ord, std::hash::Hash, std::clone::Clone, std::marker::Copy)]
         struct EarleyItem {
             /// The non-terminal for the production of this item
             non_terminal: NonTerminalIdx,
@@ -72,6 +72,63 @@ pub fn build_inefficient_recognizer<A>(grammar: Grammar<char, A>) -> TokenStream
             items: fxhash::FxHashSet<EarleyItem>,
         }
 
+        struct EarleySetDisplay<'set, 'non_terminals> {
+            set: &'set EarleySet,
+            non_terminals: &'non_terminals [NonTerminal],
+        }
+
+        struct EarleyItemDisplay<'non_terminals> {
+            item: EarleyItem,
+            non_terminals: &'non_terminals [NonTerminal],
+        }
+
+        impl<'set, 'non_terminals> std::fmt::Display for EarleySetDisplay<'set, 'non_terminals> {
+            fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+                write!(f, "{{")?;
+                for (item_idx, item) in self.set.items.iter().copied().enumerate() {
+                    (EarleyItemDisplay { item, non_terminals: self.non_terminals }).fmt(f)?;
+                    if item_idx != self.set.items.len() - 1 {
+                        write!(f, ", ")?;
+                    }
+                }
+                write!(f, "}}")
+            }
+        }
+
+        impl<'non_terminals> std::fmt::Display for EarleyItemDisplay<'non_terminals> {
+            fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+                write!(
+                    f,
+                    "[{} -> ",
+                    self.non_terminals[self.item.non_terminal.0 as usize].name,
+                )?;
+
+                let production = &self.non_terminals[self.item.non_terminal.0 as usize].productions[self.item.production.0 as usize];
+                let production_symbols = &production.symbols;
+                for (symbol_idx, symbol) in production_symbols.iter().enumerate() {
+                    if symbol_idx == self.item.position as usize {
+                        write!(f, "|")?;
+                    }
+                    match symbol {
+                        Symbol::NonTerminal(nt_idx) => {
+                            let nt = &self.non_terminals[nt_idx.0 as usize];
+                            <str as std::fmt::Display>::fmt(&nt.name, f)?;
+                        }
+                        Symbol::Terminal(char) => {
+                            <char as std::fmt::Debug>::fmt(char, f)?;
+                        }
+                    }
+                    if symbol_idx != production_symbols.len() - 1 {
+                        write!(f, " ")?;
+                    }
+                }
+                if self.item.position as usize == production_symbols.len() {
+                    write!(f, "|")?;
+                }
+                write!(f, ",{}]", self.item.set_idx)
+            }
+        }
+
         struct NonTerminal {
             name: String,
             productions: Vec<Production>,
@@ -85,11 +142,6 @@ pub fn build_inefficient_recognizer<A>(grammar: Grammar<char, A>) -> TokenStream
             NonTerminal(NonTerminalIdx),
             Terminal(char),
         }
-
-        struct Parser {
-
-        }
-
 
         fn recognize(input: &mut dyn Iterator<Item = char>) -> bool {
             let non_terminals: Vec<NonTerminal> = vec![#(#non_terminal_vec_elems),*];
@@ -156,10 +208,10 @@ pub fn build_inefficient_recognizer<A>(grammar: Grammar<char, A>) -> TokenStream
                 }
             }
 
-            // println!("Final states:");
-            // for (set_idx, set) in state.iter().enumerate() {
-            //     println!("{:>4}: {}", set_idx, EarleySetDisplay { set, grammar });
-            // }
+            println!("Final states:");
+            for (set_idx, set) in state.iter().enumerate() {
+                println!("{:>4}: {}", set_idx, EarleySetDisplay { set, non_terminals: &non_terminals });
+            }
 
             // There should be an item `[S -> ... |, i]` in the last set where `S` is the initial
             // non-terminal
@@ -187,15 +239,15 @@ pub fn build_inefficient_recognizer<A>(grammar: Grammar<char, A>) -> TokenStream
             current_set_idx: u32,
             non_terminals: &[NonTerminal],
         ) -> bool {
-            // println!("predictor({})", current_set_idx);
-            // println!(
-            //     "{:>4}: {}",
-            //     current_set_idx,
-            //     EarleySetDisplay {
-            //         set: current_set,
-            //         grammar
-            //     }
-            // );
+            println!("predictor({})", current_set_idx);
+            println!(
+                "{:>4}: {}",
+                current_set_idx,
+                EarleySetDisplay {
+                    set: current_set,
+                    non_terminals,
+                }
+            );
 
             // New items are added here as we iterate the current items
             let mut new_items: fxhash::FxHashSet<EarleyItem> = Default::default();
@@ -232,26 +284,26 @@ pub fn build_inefficient_recognizer<A>(grammar: Grammar<char, A>) -> TokenStream
                 updated |= current_set.items.insert(new_item);
             }
 
-            // println!("=>");
-            // println!(
-            //     "{:>4}: {}",
-            //     current_set_idx,
-            //     EarleySetDisplay {
-            //         set: current_set,
-            //         grammar
-            //     }
-            // );
-            // println!();
+            println!("=>");
+            println!(
+                "{:>4}: {}",
+                current_set_idx,
+                EarleySetDisplay {
+                    set: current_set,
+                    non_terminals,
+                }
+            );
+            println!();
 
             updated
         }
 
 
         fn completer(state: &mut [EarleySet], current_set_idx: u32, non_terminals: &[NonTerminal]) -> bool {
-            // println!("completer({})", current_set_idx);
-            // for (set_idx, set) in state.iter().enumerate() {
-            //     println!("{:>4}: {}", set_idx, EarleySetDisplay { set, grammar });
-            // }
+            println!("completer({})", current_set_idx);
+            for (set_idx, set) in state.iter().enumerate() {
+                println!("{:>4}: {}", set_idx, EarleySetDisplay { set, non_terminals });
+            }
 
             // New items are added here as we iterate the current set
             let mut new_items: fxhash::FxHashSet<EarleyItem> = Default::default();
@@ -316,11 +368,11 @@ pub fn build_inefficient_recognizer<A>(grammar: Grammar<char, A>) -> TokenStream
                 updated |= state[current_set_idx as usize].items.insert(new_item);
             }
 
-            // println!("=>");
-            // for (set_idx, set) in state.iter().enumerate() {
-            //     println!("{:>4}: {}", set_idx, EarleySetDisplay { set, grammar });
-            // }
-            // println!();
+            println!("=>");
+            for (set_idx, set) in state.iter().enumerate() {
+                println!("{:>4}: {}", set_idx, EarleySetDisplay { set, non_terminals });
+            }
+            println!();
 
             updated
         }
@@ -332,23 +384,23 @@ pub fn build_inefficient_recognizer<A>(grammar: Grammar<char, A>) -> TokenStream
             non_terminals: &[NonTerminal],
             token: char,
         ) -> bool {
-            // println!("scanner({}, {:?})", current_set_idx, token);
-            // println!(
-            //     "{:>4}: {}",
-            //     current_set_idx,
-            //     EarleySetDisplay {
-            //         set: current_set,
-            //         grammar
-            //     }
-            // );
-            // println!(
-            //     "{:>4}: {}",
-            //     current_set_idx + 1,
-            //     EarleySetDisplay {
-            //         set: next_set,
-            //         grammar
-            //     }
-            // );
+            println!("scanner({}, {:?})", current_set_idx, token);
+            println!(
+                "{:>4}: {}",
+                current_set_idx,
+                EarleySetDisplay {
+                    set: current_set,
+                    non_terminals,
+                }
+            );
+            println!(
+                "{:>4}: {}",
+                current_set_idx + 1,
+                EarleySetDisplay {
+                    set: next_set,
+                    non_terminals,
+                }
+            );
 
             let mut updated = false;
 
@@ -379,24 +431,24 @@ pub fn build_inefficient_recognizer<A>(grammar: Grammar<char, A>) -> TokenStream
                 }
             }
 
-            // println!("=>");
-            // println!(
-            //     "{:>4}: {}",
-            //     current_set_idx,
-            //     EarleySetDisplay {
-            //         set: current_set,
-            //         grammar
-            //     }
-            // );
-            // println!(
-            //     "{:>4}: {}",
-            //     current_set_idx + 1,
-            //     EarleySetDisplay {
-            //         set: next_set,
-            //         grammar
-            //     }
-            // );
-            // println!();
+            println!("=>");
+            println!(
+                "{:>4}: {}",
+                current_set_idx,
+                EarleySetDisplay {
+                    set: current_set,
+                    non_terminals,
+                }
+            );
+            println!(
+                "{:>4}: {}",
+                current_set_idx + 1,
+                EarleySetDisplay {
+                    set: next_set,
+                    non_terminals,
+                }
+            );
+            println!();
 
             updated
         }

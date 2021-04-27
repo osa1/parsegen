@@ -3,20 +3,7 @@ use parsegen::parser;
 // Figure 1 in "Practical Earley Parsing"
 #[test]
 fn test_figure_1() {
-    enum Token {
-        N,
-        Plus,
-    }
-
     parser! {
-        type Location = usize;
-        type Error = LexerError;
-
-        enum Token {
-            "n" => Token::N,
-            "+" => Token::Plus,
-        }
-
         pub S: () = {
             <e:E> => e,
         };
@@ -27,23 +14,17 @@ fn test_figure_1() {
         };
     }
 
-    let input = vec![Token::N, Token::Plus, Token::N];
+    assert!(recognize(&mut "n".chars()));
+    assert!(recognize(&mut "n+n".chars()));
+    assert!(recognize(&mut "n+n+n".chars()));
+    assert!(recognize(&mut "n+n+n+n".chars()));
+    assert!(!recognize(&mut "n+n+n+n+".chars()));
 }
 
+// Figure 2 in "Practical Earley Parsing"
 #[test]
 fn test_figure_2() {
-    enum Token {
-        A,
-    }
-
     parser! {
-        type Location = usize;
-        type Error = LexerError;
-
-        enum Token {
-            "a" => Token::A,
-        }
-
         pub S: () = {
             A A A A => (),
         };
@@ -58,5 +39,9 @@ fn test_figure_2() {
         };
     }
 
-    let input = vec![Token::A];
+    assert!(recognize(&mut "a".chars()));
+    assert!(recognize(&mut "aa".chars()));
+    assert!(recognize(&mut "aaa".chars()));
+    assert!(recognize(&mut "aaaa".chars()));
+    assert!(!recognize(&mut "aaaaa".chars()));
 }

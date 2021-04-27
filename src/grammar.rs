@@ -1,7 +1,5 @@
 //! A lowered representation of grammars
 
-use fxhash::FxHashSet;
-
 #[derive(Debug, PartialEq, Eq, Clone, Copy, PartialOrd, Ord, Hash)]
 pub struct NonTerminalIdx(pub u32);
 
