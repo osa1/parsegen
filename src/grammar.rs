@@ -3,10 +3,10 @@
 use fxhash::FxHashSet;
 
 #[derive(Debug, PartialEq, Eq, Clone, Copy, PartialOrd, Ord, Hash)]
-pub struct NonTerminalIdx(u32);
+pub struct NonTerminalIdx(pub u32);
 
 #[derive(Debug, PartialEq, Eq, Clone, Copy, PartialOrd, Ord, Hash)]
-pub struct ProductionIdx(u32);
+pub struct ProductionIdx(pub u32);
 
 /// Grammar type parameterized over terminals and user actions.
 ///
@@ -16,25 +16,23 @@ pub struct ProductionIdx(u32);
 #[derive(Debug)]
 pub struct Grammar<T, A> {
     // Initial non-terminal
-    init: Option<NonTerminalIdx>,
+    pub init: Option<NonTerminalIdx>,
 
     // Indexed by `NonTerminalIdx`
-    non_terminals: Vec<NonTerminal>,
-
-    // Indexed by `ProductionIdx`
-    productions: Vec<Production<T, A>>,
+    pub non_terminals: Vec<NonTerminal<T, A>>,
 }
 
 #[derive(Debug)]
-pub struct NonTerminal {
-    non_terminal: String,
-    productions: FxHashSet<ProductionIdx>,
+pub struct NonTerminal<T, A> {
+    pub non_terminal: String,
+    // Indexed by `ProductionIdx`
+    pub productions: Vec<Production<T, A>>,
 }
 
 #[derive(Debug)]
 pub struct Production<T, A> {
-    symbols: Vec<Symbol<T>>,
-    action: A,
+    pub symbols: Vec<Symbol<T>>,
+    pub action: A,
 }
 
 #[derive(Debug)]
@@ -48,7 +46,6 @@ impl<T, A> Grammar<T, A> {
         Grammar {
             init: None,
             non_terminals: vec![],
-            productions: vec![],
         }
     }
 
@@ -70,7 +67,7 @@ impl<T, A> Grammar<T, A> {
         NonTerminalIdx(idx as u32)
     }
 
-    pub fn get_non_terminal(&self, idx: NonTerminalIdx) -> &NonTerminal {
+    pub fn get_non_terminal(&self, idx: NonTerminalIdx) -> &NonTerminal<T, A> {
         &self.non_terminals[idx.0 as usize]
     }
 
@@ -80,26 +77,34 @@ impl<T, A> Grammar<T, A> {
         symbols: Vec<Symbol<T>>,
         action: A,
     ) -> ProductionIdx {
-        let idx = ProductionIdx(self.productions.len() as u32);
-        self.productions.push(Production { symbols, action });
-        self.non_terminals[non_terminal.0 as usize]
+        let non_terminal = &mut self.non_terminals[non_terminal.0 as usize];
+        let prod_idx = non_terminal.productions.len();
+        non_terminal
             .productions
-            .insert(idx);
-        idx
+            .push(Production { symbols, action });
+        ProductionIdx(prod_idx as u32)
     }
 
-    pub fn get_production(&self, idx: ProductionIdx) -> &Production<T, A> {
-        &self.productions[idx.0 as usize]
+    pub fn get_production(
+        &self,
+        nt_idx: NonTerminalIdx,
+        prod_idx: ProductionIdx,
+    ) -> &Production<T, A> {
+        &self.non_terminals[nt_idx.0 as usize].productions[prod_idx.0 as usize]
     }
 }
 
-impl NonTerminal {
+impl<T, A> NonTerminal<T, A> {
     pub fn name(&self) -> &str {
         &self.non_terminal
     }
 
-    pub fn productions(&self) -> &FxHashSet<ProductionIdx> {
+    pub fn productions(&self) -> &[Production<T, A>] {
         &self.productions
+    }
+
+    pub fn production_indices(&self) -> impl Iterator<Item = ProductionIdx> {
+        (0..self.productions.len()).map(|i| ProductionIdx(i as u32))
     }
 }
 

@@ -1,6 +1,7 @@
 #![allow(dead_code)]
 
 mod ast;
+mod codegen;
 mod earley;
 mod grammar;
 mod lower;
@@ -18,5 +19,5 @@ pub fn parser(input: TokenStream) -> TokenStream {
     println!("Grammar:");
     println!("{:#?}", grammar);
 
-    TokenStream::new()
+    codegen::build_inefficient_recognizer(grammar).into()
 }

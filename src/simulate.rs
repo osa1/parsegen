@@ -12,7 +12,7 @@ pub fn simulate<A>(grammar: &Grammar<char, A>, input: &mut dyn Iterator<Item = c
 
         let initial_nt_idx = grammar.get_init();
         let initial_nt = grammar.get_non_terminal(initial_nt_idx);
-        for production_idx in initial_nt.productions().iter().copied() {
+        for production_idx in initial_nt.production_indices() {
             let not_exists = initial_items.insert(EarleyItem {
                 non_terminal: initial_nt_idx,
                 production: production_idx,
@@ -82,7 +82,7 @@ pub fn simulate<A>(grammar: &Grammar<char, A>, input: &mut dyn Iterator<Item = c
     } in &state[state_idx].items
     {
         if *set_idx == 0 && *non_terminal == grammar.get_init() {
-            let prod = grammar.get_production(*production);
+            let prod = grammar.get_production(*non_terminal, *production);
             if *position as usize == prod.symbols().len() {
                 return true;
             }
@@ -117,13 +117,13 @@ fn predictor<A>(
     let mut new_items: FxHashSet<EarleyItem> = Default::default();
 
     for EarleyItem {
-        non_terminal: _,
+        non_terminal,
         production,
         position,
         set_idx: _,
     } in current_set.items.iter()
     {
-        let prod = grammar.get_production(*production);
+        let prod = grammar.get_production(*non_terminal, *production);
         let prod_syms = prod.symbols();
         if *position as usize == prod_syms.len() {
             // `completer` will take care of this
@@ -132,10 +132,10 @@ fn predictor<A>(
 
         if let Symbol::NonTerminal(non_terminal_idx) = prod_syms[*position as usize] {
             let nt = grammar.get_non_terminal(non_terminal_idx);
-            for prod in nt.productions() {
+            for prod in nt.production_indices() {
                 new_items.insert(EarleyItem {
                     non_terminal: non_terminal_idx,
-                    production: *prod,
+                    production: prod,
                     position: 0,
                     set_idx: current_set_idx,
                 });
@@ -184,7 +184,7 @@ fn completer<A>(state: &mut [EarleySet], current_set_idx: u32, grammar: &Grammar
         set_idx,
     } in current_set.items.iter()
     {
-        let prod = grammar.get_production(*production);
+        let prod = grammar.get_production(*non_terminal, *production);
         let prod_syms = prod.symbols();
 
         if *position as usize != prod_syms.len() {
@@ -205,7 +205,7 @@ fn completer<A>(state: &mut [EarleySet], current_set_idx: u32, grammar: &Grammar
             //     continue;
             // }
 
-            let parent_prod = grammar.get_production(*parent_production);
+            let parent_prod = grammar.get_production(*parent_non_terminal, *parent_production);
             let parent_prod_syms = parent_prod.symbols();
 
             if *parent_position as usize == parent_prod_syms.len() {
@@ -284,7 +284,7 @@ fn scanner<A>(
         set_idx,
     } in current_set.items.iter()
     {
-        let prod = grammar.get_production(*production);
+        let prod = grammar.get_production(*non_terminal, *production);
         let prod_syms = prod.symbols();
 
         if *position as usize == prod_syms.len() {

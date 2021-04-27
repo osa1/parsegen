@@ -38,7 +38,7 @@ pub fn display_earley_item<A>(
         grammar.get_non_terminal(item.non_terminal).name()
     )?;
 
-    let production = grammar.get_production(item.production);
+    let production = grammar.get_production(item.non_terminal, item.production);
     let production_symbols = production.symbols();
     for (symbol_idx, symbol) in production_symbols.iter().enumerate() {
         if symbol_idx == item.position as usize {
