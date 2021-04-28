@@ -48,7 +48,6 @@ impl EarleyItemGraph {
     }
 
     fn add_child(&mut self, parent: EarleyItemIdx, child: EarleyItemIdx) -> bool {
-        println!("add_child {} -> {}", parent.0, child.0);
         let not_exists = self.item_child.entry(parent).or_default().insert(child);
         // Invalid assertion as we visit the same state until fixpoint
         // assert!(not_exists);
@@ -140,6 +139,11 @@ pub fn simulate<A>(grammar: &Grammar<char, A>, input: &mut dyn Iterator<Item = c
     for (set_idx, set) in state.iter().enumerate() {
         println!("{:>4}: {}", set_idx, EarleySetDisplay { set, grammar });
     }
+
+    println!(
+        "{}",
+        crate::graphviz::generate_graphviz(grammar, &state, &item_graph.item_child)
+    );
 
     // There should be an item `[S -> ... |, i]` in the last set where `S` is the initial
     // non-terminal
@@ -480,9 +484,9 @@ fn simulate1() {
     grammar.add_production(e_nt_idx, vec![Symbol::Terminal('n')], ());
     grammar.set_init(e_nt_idx);
 
-    assert!(simulate(&grammar, &mut "n".chars()));
+    // assert!(simulate(&grammar, &mut "n".chars()));
     // assert!(simulate(&grammar, &mut "n+n".chars()));
-    // assert!(simulate(&grammar, &mut "n+n+n".chars()));
+    assert!(simulate(&grammar, &mut "n+n+n".chars()));
     // assert!(!simulate(&grammar, &mut "n+n+".chars()));
 }
 

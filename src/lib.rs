@@ -4,6 +4,7 @@ mod ast;
 mod codegen;
 mod earley;
 mod grammar;
+mod graphviz;
 mod lower;
 mod simulate;
 
