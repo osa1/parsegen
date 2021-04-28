@@ -8,7 +8,7 @@ use fxhash::{FxHashMap, FxHashSet};
 pub fn generate_graphviz<A>(
     grammar: &Grammar<char, A>,
     states: &[EarleySet],
-    item_child: &FxHashMap<EarleyItemIdx, FxHashSet<EarleyItemIdx>>,
+    item_child: &FxHashMap<EarleyItemIdx, FxHashSet<(EarleyItemIdx, Option<char>)>>,
 ) -> String {
     // Maps `EarleyItemIdx`s to graphviz labels
     let item_labels: FxHashMap<EarleyItemIdx, String> = {
@@ -103,13 +103,26 @@ pub fn generate_graphviz<A>(
         for EarleyItem { idx: item_idx, .. } in items {
             let item_label = item_labels.get(item_idx).unwrap();
             if let Some(child_items) = item_child.get(item_idx) {
-                for child in child_items {
-                    let _ = write!(
-                        &mut dot,
-                        "    {} -> {};\n",
-                        item_label,
-                        item_labels.get(child).unwrap()
-                    );
+                for (child, annotation) in child_items {
+                    match annotation {
+                        None => {
+                            let _ = write!(
+                                &mut dot,
+                                "    {} -> {};\n",
+                                item_label,
+                                item_labels.get(child).unwrap()
+                            );
+                        }
+                        Some(annotation) => {
+                            let _ = write!(
+                                &mut dot,
+                                "    {} -> {} [label=\"{:?}\"];\n",
+                                item_label,
+                                item_labels.get(child).unwrap(),
+                                annotation,
+                            );
+                        }
+                    }
                 }
             }
         }

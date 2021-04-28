@@ -7,7 +7,7 @@ struct EarleyItemGraph {
     next_id: EarleyItemIdx,
 
     /// Maps items to their child items
-    item_child: FxHashMap<EarleyItemIdx, FxHashSet<EarleyItemIdx>>,
+    item_child: FxHashMap<EarleyItemIdx, FxHashSet<(EarleyItemIdx, Option<char>)>>,
 
     /// Maps item indices to items
     items: Vec<EarleyItem>,
@@ -47,9 +47,18 @@ impl EarleyItemGraph {
         idx
     }
 
-    fn add_child(&mut self, parent: EarleyItemIdx, child: EarleyItemIdx) -> bool {
+    fn add_child(
+        &mut self,
+        parent: EarleyItemIdx,
+        child: EarleyItemIdx,
+        char: Option<char>,
+    ) -> bool {
         println!("add child {} -> {}", parent.0, child.0);
-        let not_exists = self.item_child.entry(parent).or_default().insert(child);
+        let not_exists = self
+            .item_child
+            .entry(parent)
+            .or_default()
+            .insert((child, char));
         // Invalid assertion as we visit the same state until fixpoint
         // assert!(not_exists);
         not_exists
@@ -224,7 +233,7 @@ fn predictor<A>(
                                 position: 0,
                                 set_idx: current_set_idx,
                             });
-                            graph.add_child(*parent_idx, idx);
+                            graph.add_child(*parent_idx, idx, None);
                         }
                     },
                 }
@@ -273,7 +282,7 @@ fn completer<A>(
 
     let current_set = &state[current_set_idx as usize];
     for EarleyItem {
-        idx: _,
+        idx: idx_,
         non_terminal,
         production,
         position,
@@ -346,7 +355,8 @@ fn completer<A>(
                                     position: parent_position + 1, // skip completed non-terminal
                                     set_idx: *parent_set_idx,
                                 });
-                                graph.add_child(*parent_idx, idx);
+                                // graph.add_child(*parent_idx, idx);
+                                graph.add_child(*idx_, idx, None);
                             }
                         },
                     }
@@ -423,23 +433,22 @@ fn scanner<A>(
         // [A -> ... | 'x' ..., i]
         if let Symbol::Terminal(t) = &prod_syms[*position as usize] {
             if *t == token {
-                let idx =
-                    match next_set.get_idx(*non_terminal, *production, *position + 1, *set_idx) {
-                        Some(idx) => idx,
-                        None => {
-                            let idx =
-                                graph.add_item(*non_terminal, *production, *position + 1, *set_idx);
-                            next_set.insert(EarleyItem {
-                                idx,
-                                non_terminal: *non_terminal,
-                                production: *production,
-                                position: *position + 1, // skip matched token
-                                set_idx: *set_idx,
-                            });
-                            idx
-                        }
-                    };
-                updated |= graph.add_child(*parent_idx, idx);
+                match next_set.get_idx(*non_terminal, *production, *position + 1, *set_idx) {
+                    Some(_) => {}
+                    None => {
+                        let idx =
+                            graph.add_item(*non_terminal, *production, *position + 1, *set_idx);
+                        next_set.insert(EarleyItem {
+                            idx,
+                            non_terminal: *non_terminal,
+                            production: *production,
+                            position: *position + 1, // skip matched token
+                            set_idx: *set_idx,
+                        });
+                        graph.add_child(*parent_idx, idx, Some(token));
+                        updated = true;
+                    }
+                }
             }
         }
     }
