@@ -45,3 +45,29 @@ fn test_figure_2() {
     assert!(recognize(&mut "aaaa".chars()));
     assert!(!recognize(&mut "aaaaa".chars()));
 }
+
+// First example in "An Efficient Context-Free Parsing Algorithm" by Earley
+#[test]
+fn earley_test() {
+    parser! {
+        pub E: () = {
+            T => (),
+            E "+" T => (),
+        };
+
+        pub T: () = {
+            P => (),
+            T "*" P => (),
+        };
+
+        pub P: () = {
+            "a" => (),
+        };
+    }
+
+    assert!(recognize(&mut "a".chars()));
+    assert!(recognize(&mut "a+a".chars()));
+    assert!(recognize(&mut "a+a*a".chars()));
+    assert!(recognize(&mut "a*a+a".chars()));
+    assert!(recognize(&mut "a*a+a+a*a".chars()));
+}

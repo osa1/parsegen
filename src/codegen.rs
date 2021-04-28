@@ -225,6 +225,13 @@ pub fn build_inefficient_recognizer<A>(grammar: Grammar<char, A>) -> TokenStream
                 if *set_idx == 0 && *non_terminal == NonTerminalIdx(0) {
                     let prod = &non_terminals[non_terminal.0 as usize].productions[production.0 as usize];
                     if *position as usize == prod.symbols.len() {
+                        println!("Solution={}", EarleyItemDisplay {
+                            item: EarleyItem {
+                                non_terminal: *non_terminal,
+                                production: *production,
+                                position: *position,
+                                set_idx: *set_idx
+                            }, non_terminals: &non_terminals });
                         return true;
                     }
                 }
