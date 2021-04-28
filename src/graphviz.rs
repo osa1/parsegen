@@ -14,8 +14,11 @@ pub fn generate_graphviz<A>(
     let item_labels: FxHashMap<EarleyItemIdx, String> = {
         let mut item_labels: FxHashMap<EarleyItemIdx, String> = Default::default();
         for (set_idx, EarleySet { items }) in states.iter().enumerate() {
+            let mut items: Vec<EarleyItem> = items.iter().copied().collect();
+            items.sort_by_key(|item| item.idx);
+
             for (item_idx, EarleyItem { idx, .. }) in items.iter().enumerate() {
-                item_labels.insert(*idx, format!("state{}:f{}", set_idx, item_idx));
+                item_labels.insert(*idx, format!("set{}_item{}", set_idx, item_idx));
             }
         }
         item_labels
@@ -27,7 +30,10 @@ pub fn generate_graphviz<A>(
 
     // Generate nodes
     for (set_idx, EarleySet { items }) in states.iter().enumerate() {
-        let _ = write!(&mut dot, "    state{} [label=\"S{}", set_idx, set_idx);
+        // let _ = write!(&mut dot, "    state{} [label=\"S{}", set_idx, set_idx);
+
+        let _ = write!(&mut dot, "    subgraph clusterS{} {{\n", set_idx);
+        let _ = write!(&mut dot, "        label=\"S{}\";\n", set_idx);
 
         let mut items: Vec<EarleyItem> = items.iter().copied().collect();
         items.sort_by_key(|item| item.idx);
@@ -35,19 +41,28 @@ pub fn generate_graphviz<A>(
         for (
             item_idx,
             EarleyItem {
-                idx: _,
+                idx,
                 non_terminal,
                 production,
                 position,
                 set_idx: item_set_idx,
             },
-        ) in items.into_iter().enumerate()
+        ) in items.iter().copied().enumerate()
         {
-            let _ = write!(&mut dot, " | ");
+            // let _ = write!(&mut dot, " | ");
+            // let _ = write!(
+            //     &mut dot,
+            //     "<f{}> [{} -&gt; ",
+            //     item_idx,
+            //     grammar.get_non_terminal(non_terminal).name()
+            // );
+
             let _ = write!(
                 &mut dot,
-                "<f{}> [{} -&gt; ",
+                "        set{}_item{} [label=\"({}) [{} -&gt; ",
+                set_idx,
                 item_idx,
+                idx.0,
                 grammar.get_non_terminal(non_terminal).name()
             );
 
@@ -70,13 +85,17 @@ pub fn generate_graphviz<A>(
                     let _ = write!(&mut dot, " ");
                 }
             }
+
             if position as usize == production_symbols.len() {
                 let _ = write!(&mut dot, "\\|");
             }
-            let _ = write!(&mut dot, ",{}]", item_set_idx);
+            // let _ = write!(&mut dot, ",{}]", item_set_idx);
+            let _ = write!(&mut dot, ",{}]\"];\n", item_set_idx);
         }
 
-        let _ = write!(&mut dot, "\"];\n");
+        // let _ = write!(&mut dot, "\"];\n");
+
+        let _ = write!(&mut dot, "    }}\n");
     }
 
     // Generate edges

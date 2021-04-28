@@ -48,6 +48,7 @@ impl EarleyItemGraph {
     }
 
     fn add_child(&mut self, parent: EarleyItemIdx, child: EarleyItemIdx) -> bool {
+        println!("add child {} -> {}", parent.0, child.0);
         let not_exists = self.item_child.entry(parent).or_default().insert(child);
         // Invalid assertion as we visit the same state until fixpoint
         // assert!(not_exists);
@@ -210,10 +211,10 @@ fn predictor<A>(
         if let Symbol::NonTerminal(non_terminal_idx) = prod_syms[*position as usize] {
             let nt = grammar.get_non_terminal(non_terminal_idx);
             for prod in nt.production_indices() {
-                let idx = match current_set.get_idx(non_terminal_idx, prod, 0, current_set_idx) {
-                    Some(idx) => idx,
+                match current_set.get_idx(non_terminal_idx, prod, 0, current_set_idx) {
+                    Some(_) => {}
                     None => match new_items.get_idx(non_terminal_idx, prod, 0, current_set_idx) {
-                        Some(idx) => idx,
+                        Some(_) => {}
                         None => {
                             let idx = graph.add_item(non_terminal_idx, prod, 0, current_set_idx);
                             new_items.insert(EarleyItem {
@@ -223,11 +224,10 @@ fn predictor<A>(
                                 position: 0,
                                 set_idx: current_set_idx,
                             });
-                            idx
+                            graph.add_child(*parent_idx, idx);
                         }
                     },
-                };
-                graph.add_child(*parent_idx, idx);
+                }
             }
         }
     }
@@ -318,20 +318,20 @@ fn completer<A>(
             if let Symbol::NonTerminal(parent_nt_idx) = parent_prod_syms[*parent_position as usize]
             {
                 if parent_nt_idx == *non_terminal {
-                    let new_item_idx = match current_set.get_idx(
+                    match current_set.get_idx(
                         *parent_non_terminal,
                         *parent_production,
                         parent_position + 1,
                         *parent_set_idx,
                     ) {
-                        Some(idx) => idx,
+                        Some(_) => {}
                         None => match new_items.get_idx(
                             *parent_non_terminal,
                             *parent_production,
                             parent_position + 1,
                             *parent_set_idx,
                         ) {
-                            Some(idx) => idx,
+                            Some(_) => {}
                             None => {
                                 let idx = graph.add_item(
                                     *parent_non_terminal,
@@ -346,11 +346,10 @@ fn completer<A>(
                                     position: parent_position + 1, // skip completed non-terminal
                                     set_idx: *parent_set_idx,
                                 });
-                                idx
+                                graph.add_child(*parent_idx, idx);
                             }
                         },
-                    };
-                    graph.add_child(*parent_idx, new_item_idx);
+                    }
                 }
             }
         }
