@@ -1,16 +1,24 @@
 use crate::earley::{EarleyItem, EarleyItemIdx, EarleySet, EarleySetDisplay};
 use crate::grammar::{Grammar, NonTerminalIdx, ProductionIdx, Symbol};
 
-use fxhash::{FxHashMap, FxHashSet};
+use fxhash::FxHashMap;
 
 struct EarleyItemGraph {
     next_id: EarleyItemIdx,
 
     /// Maps items to their child items
-    item_child: FxHashMap<EarleyItemIdx, FxHashSet<(EarleyItemIdx, Option<char>)>>,
+    item_child: FxHashMap<EarleyItemIdx, Vec<(EarleyItemIdx, EdgeKind)>>,
 
     /// Maps item indices to items
     items: Vec<EarleyItem>,
+}
+
+#[derive(Debug, Clone, Copy)]
+pub enum EdgeKind {
+    Predict,
+    Complete1,
+    Complete2,
+    Scan(char),
 }
 
 impl EarleyItemGraph {
@@ -47,20 +55,11 @@ impl EarleyItemGraph {
         idx
     }
 
-    fn add_child(
-        &mut self,
-        parent: EarleyItemIdx,
-        child: EarleyItemIdx,
-        char: Option<char>,
-    ) -> bool {
-        let not_exists = self
-            .item_child
+    fn add_child(&mut self, parent: EarleyItemIdx, child: EarleyItemIdx, kind: EdgeKind) {
+        self.item_child
             .entry(parent)
             .or_default()
-            .insert((child, char));
-        // Invalid assertion as we visit the same state until fixpoint
-        // assert!(not_exists);
-        not_exists
+            .push((child, kind));
     }
 }
 
@@ -222,7 +221,9 @@ fn predictor<A>(
                 match current_set.get_idx(non_terminal_idx, prod, 0, current_set_idx) {
                     Some(_) => {}
                     None => match new_items.get_idx(non_terminal_idx, prod, 0, current_set_idx) {
-                        Some(_) => {}
+                        Some(idx) => {
+                            graph.add_child(*parent_idx, idx, EdgeKind::Predict);
+                        }
                         None => {
                             let idx = graph.add_item(non_terminal_idx, prod, 0, current_set_idx);
                             new_items.insert(EarleyItem {
@@ -232,7 +233,7 @@ fn predictor<A>(
                                 position: 0,
                                 set_idx: current_set_idx,
                             });
-                            graph.add_child(*parent_idx, idx, None);
+                            graph.add_child(*parent_idx, idx, EdgeKind::Predict);
                         }
                     },
                 }
@@ -354,8 +355,8 @@ fn completer<A>(
                                     position: parent_position + 1, // skip completed non-terminal
                                     set_idx: *parent_set_idx,
                                 });
-                                // graph.add_child(*parent_idx, idx);
-                                graph.add_child(*idx_, idx, None);
+                                graph.add_child(*idx_, idx, EdgeKind::Complete1);
+                                graph.add_child(*parent_idx, idx, EdgeKind::Complete2);
                             }
                         },
                     }
@@ -444,7 +445,7 @@ fn scanner<A>(
                             position: *position + 1, // skip matched token
                             set_idx: *set_idx,
                         });
-                        graph.add_child(*parent_idx, idx, Some(token));
+                        graph.add_child(*parent_idx, idx, EdgeKind::Scan(token));
                         updated = true;
                     }
                 }

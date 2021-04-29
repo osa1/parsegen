@@ -1,14 +1,15 @@
 use crate::earley::{EarleyItem, EarleyItemIdx, EarleySet};
 use crate::grammar::{Grammar, Symbol};
+use crate::simulate::EdgeKind;
 
 use std::fmt::Write;
 
-use fxhash::{FxHashMap, FxHashSet};
+use fxhash::FxHashMap;
 
 pub fn generate_graphviz<A>(
     grammar: &Grammar<char, A>,
     states: &[EarleySet],
-    item_child: &FxHashMap<EarleyItemIdx, FxHashSet<(EarleyItemIdx, Option<char>)>>,
+    item_child: &FxHashMap<EarleyItemIdx, Vec<(EarleyItemIdx, EdgeKind)>>,
 ) -> String {
     // Maps `EarleyItemIdx`s to graphviz labels
     let item_labels: FxHashMap<EarleyItemIdx, String> = {
@@ -103,23 +104,39 @@ pub fn generate_graphviz<A>(
         for EarleyItem { idx: item_idx, .. } in items {
             let item_label = item_labels.get(item_idx).unwrap();
             if let Some(child_items) = item_child.get(item_idx) {
-                for (child, annotation) in child_items {
-                    match annotation {
-                        None => {
+                for (child, kind) in child_items {
+                    match kind {
+                        EdgeKind::Predict => {
                             let _ = write!(
                                 &mut dot,
-                                "    {} -> {};\n",
+                                "    {} -> {} [color=grey];\n",
                                 item_label,
-                                item_labels.get(child).unwrap()
+                                item_labels.get(child).unwrap(),
                             );
                         }
-                        Some(annotation) => {
+                        EdgeKind::Complete1 => {
+                            let _ = write!(
+                                &mut dot,
+                                "    {} -> {} [color=red];\n",
+                                item_label,
+                                item_labels.get(child).unwrap(),
+                            );
+                        }
+                        EdgeKind::Complete2 => {
+                            let _ = write!(
+                                &mut dot,
+                                "    {} -> {} [color=blue];\n",
+                                item_label,
+                                item_labels.get(child).unwrap(),
+                            );
+                        }
+                        EdgeKind::Scan(char) => {
                             let _ = write!(
                                 &mut dot,
                                 "    {} -> {} [label=\"{:?}\"];\n",
                                 item_label,
                                 item_labels.get(child).unwrap(),
-                                annotation,
+                                char,
                             );
                         }
                     }
