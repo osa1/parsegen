@@ -5,8 +5,12 @@ mod codegen;
 mod earley;
 mod grammar;
 mod graphviz;
+mod ll1;
 mod lower;
 mod simulate;
+
+#[cfg(test)]
+mod test_grammars;
 
 use ast::Parser;
 
