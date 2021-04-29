@@ -53,7 +53,6 @@ impl EarleyItemGraph {
         child: EarleyItemIdx,
         char: Option<char>,
     ) -> bool {
-        println!("add child {} -> {}", parent.0, child.0);
         let not_exists = self
             .item_child
             .entry(parent)
@@ -530,4 +529,59 @@ fn simulate2() {
     assert!(simulate(&grammar, &mut "aaa".chars()));
     assert!(simulate(&grammar, &mut "aaaa".chars()));
     assert!(!simulate(&grammar, &mut "aaaaa".chars()));
+}
+
+// S -> A
+// A -> Ba | Bb | Cab | Ad
+// B -> a
+// C -> a
+#[test]
+fn simulate3() {
+    let mut grammar: Grammar<char, ()> = Grammar::new();
+    let s_nt_idx = grammar.add_non_terminal("S".to_owned());
+    let a_nt_idx = grammar.add_non_terminal("A".to_owned());
+    let b_nt_idx = grammar.add_non_terminal("B".to_owned());
+    let c_nt_idx = grammar.add_non_terminal("C".to_owned());
+
+    grammar.set_init(s_nt_idx);
+
+    // S -> A
+    grammar.add_production(s_nt_idx, vec![Symbol::NonTerminal(a_nt_idx)], ());
+    // A -> Ba
+    grammar.add_production(
+        a_nt_idx,
+        vec![Symbol::NonTerminal(b_nt_idx), Symbol::Terminal('a')],
+        (),
+    );
+    // A -> Bb
+    grammar.add_production(
+        a_nt_idx,
+        vec![Symbol::NonTerminal(b_nt_idx), Symbol::Terminal('b')],
+        (),
+    );
+    // A -> Cab
+    grammar.add_production(
+        a_nt_idx,
+        vec![
+            Symbol::NonTerminal(c_nt_idx),
+            Symbol::Terminal('a'),
+            Symbol::Terminal('b'),
+        ],
+        (),
+    );
+    // A -> Ad
+    grammar.add_production(
+        a_nt_idx,
+        vec![Symbol::NonTerminal(a_nt_idx), Symbol::Terminal('d')],
+        (),
+    );
+    // B -> a
+    grammar.add_production(b_nt_idx, vec![Symbol::Terminal('a')], ());
+    // C -> a
+    grammar.add_production(c_nt_idx, vec![Symbol::Terminal('a')], ());
+
+    assert!(simulate(&grammar, &mut "aa".chars()));
+    assert!(simulate(&grammar, &mut "ab".chars()));
+    assert!(simulate(&grammar, &mut "aab".chars()));
+    assert!(simulate(&grammar, &mut "aad".chars()));
 }
