@@ -586,3 +586,37 @@ fn simulate3() {
     assert!(simulate(&grammar, &mut "aab".chars()));
     assert!(simulate(&grammar, &mut "aad".chars()));
 }
+
+// S -> ST | a
+// B -> (empty)
+// T -> aB | a
+#[test]
+fn simulate4() {
+    let mut grammar: Grammar<char, ()> = Grammar::new();
+    let s_nt_idx = grammar.add_non_terminal("S".to_owned());
+    let b_nt_idx = grammar.add_non_terminal("B".to_owned());
+    let t_nt_idx = grammar.add_non_terminal("T".to_owned());
+
+    grammar.set_init(s_nt_idx);
+
+    // S -> ST
+    grammar.add_production(
+        s_nt_idx,
+        vec![Symbol::NonTerminal(s_nt_idx), Symbol::NonTerminal(t_nt_idx)],
+        (),
+    );
+    // S -> a
+    grammar.add_production(s_nt_idx, vec![Symbol::Terminal('a')], ());
+    // B -> (empty)
+    grammar.add_production(b_nt_idx, vec![], ());
+    // T -> aB
+    grammar.add_production(
+        t_nt_idx,
+        vec![Symbol::Terminal('a'), Symbol::NonTerminal(b_nt_idx)],
+        (),
+    );
+    // T -> a
+    grammar.add_production(t_nt_idx, vec![Symbol::Terminal('a')], ());
+
+    assert!(simulate(&grammar, &mut "aa".chars()));
+}
