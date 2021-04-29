@@ -51,7 +51,7 @@ pub struct Production<T, A> {
     pub action: A,
 }
 
-#[derive(Debug)]
+#[derive(Debug, PartialEq, Eq, Clone)]
 pub enum Symbol<T> {
     NonTerminal(NonTerminalIdx),
     Terminal(T),
@@ -85,6 +85,19 @@ impl<T, A> Grammar<T, A> {
 
     pub fn get_non_terminal(&self, idx: NonTerminalIdx) -> &NonTerminal<T, A> {
         &self.non_terminals[idx.0 as usize]
+    }
+
+    pub fn get_non_terminal_idx(&self, name: &str) -> Option<NonTerminalIdx> {
+        self.non_terminals
+            .iter()
+            .enumerate()
+            .find_map(|(idx, non_terminal)| {
+                if non_terminal.non_terminal == name {
+                    Some(NonTerminalIdx::from_usize(idx))
+                } else {
+                    None
+                }
+            })
     }
 
     pub fn add_production(
