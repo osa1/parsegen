@@ -22,6 +22,10 @@ impl ProductionIdx {
     pub fn as_usize(self) -> usize {
         self.0 as usize
     }
+
+    pub fn from_usize(i: usize) -> Self {
+        Self(u32::try_from(i).unwrap())
+    }
 }
 
 /// Grammar type parameterized over terminals and user actions.
@@ -140,5 +144,49 @@ impl<T, A> NonTerminal<T, A> {
 impl<T, A> Production<T, A> {
     pub fn symbols(&self) -> &[Symbol<T>] {
         &self.symbols
+    }
+}
+
+struct ProductionIter<'grammar, T, A> {
+    grammar: &'grammar Grammar<T, A>,
+    non_terminal_idx: NonTerminalIdx,
+    production_idx: ProductionIdx,
+}
+
+impl<'grammar, T, A> Iterator for ProductionIter<'grammar, T, A> {
+    type Item = &'grammar Production<T, A>;
+
+    fn next(&mut self) -> Option<Self::Item> {
+        loop {
+            match self
+                .grammar
+                .non_terminals
+                .get(self.non_terminal_idx.as_usize())
+            {
+                None => return None,
+                Some(non_terminal) => {
+                    match non_terminal.productions.get(self.production_idx.as_usize()) {
+                        None => {
+                            self.non_terminal_idx = NonTerminalIdx(self.non_terminal_idx.0 + 1);
+                            self.production_idx = ProductionIdx(0);
+                        }
+                        Some(production) => {
+                            self.production_idx = ProductionIdx(self.production_idx.0 + 1);
+                            return Some(production);
+                        }
+                    }
+                }
+            }
+        }
+    }
+}
+
+impl<T, A> Grammar<T, A> {
+    pub fn productions(&self) -> impl Iterator<Item = &Production<T, A>> {
+        ProductionIter {
+            grammar: self,
+            non_terminal_idx: NonTerminalIdx::from_usize(0),
+            production_idx: ProductionIdx::from_usize(0),
+        }
     }
 }
