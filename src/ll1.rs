@@ -456,13 +456,9 @@ fn parse<T: Token + fmt::Debug>(
         match action {
             Action::MatchNonTerminal(non_terminal_idx) => match table.get_end(non_terminal_idx) {
                 Some(production_idx) => {
-                    assert_eq!(
-                        grammar
-                            .get_production(non_terminal_idx, production_idx)
-                            .symbols()
-                            .len(),
-                        0
-                    );
+                    let production = grammar.get_production(non_terminal_idx, production_idx);
+                    assert_eq!(production.symbols().len(), 0);
+                    (production.action)(&mut value_stack);
                 }
                 None => {
                     return Err(ParseError::UnexpectedEOF);
@@ -812,7 +808,6 @@ mod test {
                     Symbol::NonTerminal(e1_nt_idx),
                 ],
                 |vals| {
-                    println!("vals={:?}", vals);
                     let e1 = match vals.pop().unwrap() {
                         ActionResult::E1(e1) => e1,
                         other => panic!("Unexpected value: {:?}", other),
@@ -822,7 +817,6 @@ mod test {
                         other => panic!("Unexpected value: {:?}", other),
                     };
                     vals.push(ActionResult::E(E(t, e1)));
-                    println!("vals after={:?}", vals);
                 },
             );
 
@@ -835,7 +829,6 @@ mod test {
                     Symbol::NonTerminal(e1_nt_idx),
                 ],
                 |vals| {
-                    println!("vals={:?}", vals);
                     let e1 = match vals.pop().unwrap() {
                         ActionResult::E1(e1) => e1,
                         other => panic!("Unexpected value: {:?}", other),
@@ -845,15 +838,12 @@ mod test {
                         other => panic!("Unexpected value: {:?}", other),
                     };
                     vals.push(ActionResult::E1(E1::Plus(t, Box::new(e1))));
-                    println!("vals after={:?}", vals);
                 },
             );
 
             // E' -> (empty)
             grammar.add_production(e1_nt_idx, vec![], |vals| {
-                println!("vals={:?}", vals);
                 vals.push(ActionResult::E1(E1::Empty));
-                println!("vals after={:?}", vals);
             });
 
             // T -> F T'
@@ -864,7 +854,6 @@ mod test {
                     Symbol::NonTerminal(t1_nt_idx),
                 ],
                 |vals| {
-                    println!("vals={:?}", vals);
                     let t1 = match vals.pop().unwrap() {
                         ActionResult::T1(t1) => t1,
                         other => panic!("Unexpected value: {:?}", other),
@@ -874,7 +863,6 @@ mod test {
                         other => panic!("Unexpected value: {:?}", other),
                     };
                     vals.push(ActionResult::T(T(f, t1)));
-                    println!("vals after={:?}", vals);
                 },
             );
 
@@ -887,7 +875,6 @@ mod test {
                     Symbol::NonTerminal(t1_nt_idx),
                 ],
                 |vals| {
-                    println!("vals={:?}", vals);
                     let t1 = match vals.pop().unwrap() {
                         ActionResult::T1(t1) => t1,
                         other => panic!("Unexpected value: {:?}", other),
@@ -897,15 +884,12 @@ mod test {
                         other => panic!("Unexpected value: {:?}", other),
                     };
                     vals.push(ActionResult::T1(T1::Star(f, Box::new(t1))));
-                    println!("vals after={:?}", vals);
                 },
             );
 
             // T' -> (empty)
             grammar.add_production(t1_nt_idx, vec![], |vals| {
-                println!("vals={:?}", vals);
                 vals.push(ActionResult::T1(T1::Empty));
-                println!("vals after={:?}", vals);
             });
 
             // F -> ( E )
@@ -917,25 +901,21 @@ mod test {
                     Symbol::Terminal(TokenKind::RParen),
                 ],
                 |vals| {
-                    println!("vals={:?}", vals);
                     let e = match vals.pop().unwrap() {
                         ActionResult::E(e) => e,
                         other => panic!("Unexpected value: {:?}", other),
                     };
                     vals.push(ActionResult::F(F::Paren(Box::new(e))));
-                    println!("vals after={:?}", vals);
                 },
             );
 
             // F -> n
             grammar.add_production(f_nt_idx, vec![Symbol::Terminal(TokenKind::Int)], |vals| {
-                println!("vals={:?}", vals);
                 let n = match vals.pop().unwrap() {
                     ActionResult::Token(n) => n,
                     other => panic!("Unexpected value: {:?}", other),
                 };
                 vals.push(ActionResult::F(F::Int(n)));
-                println!("vals after={:?}", vals);
             });
 
             grammar
@@ -949,6 +929,33 @@ mod test {
             let follow = generate_follow_table::<Token, _>(&grammar, &first);
             let parse_table = generate_parse_table(&grammar, &first, &follow);
 
+            // Semantic actions do not quite work on this example, because of the empty
+            // productions. The parse table
+
+            let tokens = vec![Token::Int(1)];
+            assert_eq!(
+                parse(&grammar, &parse_table, &mut tokens.into_iter()),
+                Ok(ActionResult::E(E(T(F::Int(1), T1::Empty), E1::Empty)))
+            );
+
+            let tokens = vec![Token::Int(1), Token::Plus, Token::Int(2)];
+            assert_eq!(
+                parse(&grammar, &parse_table, &mut tokens.into_iter()),
+                Ok(ActionResult::E(E(
+                    T(F::Int(1), T1::Empty),
+                    E1::Plus(T(F::Int(2), T1::Empty), Box::new(E1::Empty))
+                )))
+            );
+
+            let tokens = vec![Token::Int(1), Token::Star, Token::Int(2)];
+            assert_eq!(
+                parse(&grammar, &parse_table, &mut tokens.into_iter()),
+                Ok(ActionResult::E(E(
+                    T(F::Int(1), T1::Star(F::Int(2), Box::new(T1::Empty))),
+                    E1::Empty
+                )))
+            );
+
             let tokens = vec![
                 Token::Int(1),
                 Token::Plus,
@@ -956,7 +963,16 @@ mod test {
                 Token::Star,
                 Token::Int(3),
             ];
-            assert!(parse(&grammar, &parse_table, &mut tokens.into_iter()).is_ok());
+            assert_eq!(
+                parse(&grammar, &parse_table, &mut tokens.into_iter()),
+                Ok(ActionResult::E(E(
+                    T(F::Int(1), T1::Empty),
+                    E1::Plus(
+                        T(F::Int(2), T1::Star(F::Int(3), Box::new(T1::Empty))),
+                        Box::new(E1::Empty)
+                    )
+                )))
+            );
         }
     }
 }
