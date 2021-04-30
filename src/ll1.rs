@@ -1,4 +1,4 @@
-use crate::grammar::{Grammar, NonTerminalIdx, Symbol};
+use crate::grammar::{Grammar, NonTerminalIdx, ProductionIdx, Symbol};
 
 use std::collections::hash_map::Entry;
 
@@ -205,6 +205,88 @@ fn generate_follow_table<A>(grammar: &Grammar<char, A>, first_table: &FirstTable
     table
 }
 
+/// Predictive parse table
+#[derive(Debug, Default)]
+struct ParseTable {
+    // Informally: if I'm parsing the non-terminal `NT` and next token is `c`, then `(NT, c)` in
+    // the table tells me which production to expect. If there isn't an entry for `(NT, c)` then we
+    // have an error in the input. During building, if we try to add multiple productions to a
+    // non-terminal, token pair, that means (I think, TODO: make sure) we have an ambiguous, or
+    // left-recursive grammar.
+    table: FxHashMap<(NonTerminalIdx, char), ProductionIdx>,
+
+    // Same as `table`, but for `$`
+    end: FxHashMap<NonTerminalIdx, ProductionIdx>,
+}
+
+impl ParseTable {
+    fn add(
+        &mut self,
+        non_terminal_idx: NonTerminalIdx,
+        token: char,
+        production_idx: ProductionIdx,
+    ) {
+        let old = self.table.insert((non_terminal_idx, token), production_idx);
+        assert_eq!(old, None);
+    }
+
+    /// Same as `add`, except the token is EOF (`$`)
+    fn add_end(&mut self, non_terminal_idx: NonTerminalIdx, production_idx: ProductionIdx) {
+        let old = self.end.insert(non_terminal_idx, production_idx);
+        assert_eq!(old, None);
+    }
+
+    fn get(&self, non_terminal_idx: NonTerminalIdx, token: char) -> Option<ProductionIdx> {
+        self.table.get(&(non_terminal_idx, token)).copied()
+    }
+
+    fn get_end(&self, non_terminal_idx: NonTerminalIdx) -> Option<ProductionIdx> {
+        self.end.get(&non_terminal_idx).copied()
+    }
+}
+
+fn generate_parse_table<A>(
+    grammar: &Grammar<char, A>,
+    first_table: &FirstTable,
+    follow_table: &FollowTable,
+) -> ParseTable {
+    let mut table: ParseTable = Default::default();
+
+    for (non_terminal_idx, production_idx, production) in grammar.production_indices() {
+        let mut all_empty = true;
+        for symbol in production.symbols() {
+            match symbol {
+                Symbol::NonTerminal(nt_idx) => {
+                    let nt_firsts = first_table.get_first(*nt_idx).unwrap();
+                    for terminal in &nt_firsts.terminals {
+                        table.add(non_terminal_idx, *terminal, production_idx);
+                    }
+                    if !nt_firsts.empty {
+                        all_empty = false;
+                        break;
+                    }
+                }
+                Symbol::Terminal(terminal) => {
+                    table.add(non_terminal_idx, *terminal, production_idx);
+                    all_empty = false;
+                    break;
+                }
+            }
+        }
+        if all_empty {
+            let nt_follows = follow_table.get_follow(non_terminal_idx).unwrap();
+            for terminal in &nt_follows.terminals {
+                table.add(non_terminal_idx, *terminal, production_idx);
+            }
+            if nt_follows.end {
+                table.add_end(non_terminal_idx, production_idx);
+            }
+        }
+    }
+
+    table
+}
+
 #[cfg(test)]
 fn get_nonterminal_firsts_sorted(table: &FirstTable, non_terminal: NonTerminalIdx) -> Vec<char> {
     let mut vec = table
@@ -385,4 +467,43 @@ fn follow_set_5() {
         get_nonterminal_follows_sorted(&follow, f_nt_idx),
         vec![')', '*', '+']
     );
+}
+
+// Example 4.32 in dragon book
+#[test]
+fn parse_table_5() {
+    let grammar = crate::test_grammars::grammar5();
+    let first = generate_first_table(&grammar);
+    let follow = generate_follow_table(&grammar, &first);
+    let parse_table = generate_parse_table(&grammar, &first, &follow);
+
+    let e_nt_idx = grammar.get_non_terminal_idx("E").unwrap();
+    let e1_nt_idx = grammar.get_non_terminal_idx("E'").unwrap();
+    let t_nt_idx = grammar.get_non_terminal_idx("T").unwrap();
+    let t1_nt_idx = grammar.get_non_terminal_idx("T'").unwrap();
+    let f_nt_idx = grammar.get_non_terminal_idx("F").unwrap();
+
+    assert_eq!(parse_table.table.len(), 11);
+    assert_eq!(parse_table.end.len(), 2);
+
+    assert_eq!(parse_table.get(e_nt_idx, 'n').unwrap(), ProductionIdx(0));
+    assert_eq!(parse_table.get(e_nt_idx, '(').unwrap(), ProductionIdx(0));
+    assert_eq!(parse_table.get_end(e_nt_idx), None);
+
+    assert_eq!(parse_table.get(e1_nt_idx, '+').unwrap(), ProductionIdx(0));
+    assert_eq!(parse_table.get(e1_nt_idx, ')').unwrap(), ProductionIdx(1));
+    assert_eq!(parse_table.get_end(e1_nt_idx).unwrap(), ProductionIdx(1));
+
+    assert_eq!(parse_table.get(t_nt_idx, 'n').unwrap(), ProductionIdx(0));
+    assert_eq!(parse_table.get(t_nt_idx, '(').unwrap(), ProductionIdx(0));
+    assert_eq!(parse_table.get_end(t_nt_idx), None);
+
+    assert_eq!(parse_table.get(t1_nt_idx, '+').unwrap(), ProductionIdx(1));
+    assert_eq!(parse_table.get(t1_nt_idx, '*').unwrap(), ProductionIdx(0));
+    assert_eq!(parse_table.get(t1_nt_idx, ')').unwrap(), ProductionIdx(1));
+    assert_eq!(parse_table.get_end(t1_nt_idx).unwrap(), ProductionIdx(1));
+
+    assert_eq!(parse_table.get(f_nt_idx, 'n').unwrap(), ProductionIdx(1));
+    assert_eq!(parse_table.get(f_nt_idx, '(').unwrap(), ProductionIdx(0));
+    assert_eq!(parse_table.get_end(f_nt_idx), None);
 }
