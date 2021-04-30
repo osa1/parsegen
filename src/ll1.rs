@@ -1,22 +1,38 @@
 use crate::grammar::{Grammar, NonTerminalIdx, ProductionIdx, Symbol};
 
 use std::collections::hash_map::Entry;
+use std::hash::Hash;
 
 use fxhash::{FxHashMap, FxHashSet};
 
 /// Maps non-terminals to their first sets.
-#[derive(Debug, Default)]
-struct FirstTable(FxHashMap<NonTerminalIdx, FirstSet>);
+#[derive(Debug)]
+struct FirstTable<T: Hash + Eq>(FxHashMap<NonTerminalIdx, FirstSet<T>>);
 
-#[derive(Debug, Default)]
-struct FirstSet {
-    empty: bool,
-    terminals: FxHashSet<char>,
+impl<T: Hash + Eq> Default for FirstTable<T> {
+    fn default() -> Self {
+        FirstTable(Default::default())
+    }
 }
 
-impl FirstTable {
+#[derive(Debug)]
+struct FirstSet<T> {
+    empty: bool,
+    terminals: FxHashSet<T>,
+}
+
+impl<T> Default for FirstSet<T> {
+    fn default() -> Self {
+        FirstSet {
+            empty: false,
+            terminals: Default::default(),
+        }
+    }
+}
+
+impl<T: Hash + Eq> FirstTable<T> {
     /// Returns whether the value is added
-    fn add_first(&mut self, non_terminal_idx: NonTerminalIdx, terminal: char) -> bool {
+    fn add_first(&mut self, non_terminal_idx: NonTerminalIdx, terminal: T) -> bool {
         self.0
             .entry(non_terminal_idx)
             .or_default()
@@ -42,13 +58,13 @@ impl FirstTable {
         }
     }
 
-    fn get_first(&self, non_terminal_idx: NonTerminalIdx) -> Option<&FirstSet> {
+    fn get_first(&self, non_terminal_idx: NonTerminalIdx) -> Option<&FirstSet<T>> {
         self.0.get(&non_terminal_idx)
     }
 }
 
-fn generate_first_table<A>(grammar: &Grammar<char, A>) -> FirstTable {
-    let mut table: FirstTable = Default::default();
+fn generate_first_table<T: Hash + Eq + Clone, A>(grammar: &Grammar<T, A>) -> FirstTable<T> {
+    let mut table: FirstTable<T> = Default::default();
 
     let mut updated = true;
     while updated {
@@ -68,7 +84,7 @@ fn generate_first_table<A>(grammar: &Grammar<char, A>) -> FirstTable {
                                 }
                                 // TODO: clone below to avoid borrowck issues
                                 for terminal in terminals.clone() {
-                                    updated |= table.add_first(non_terminal_idx, terminal);
+                                    updated |= table.add_first(non_terminal_idx, terminal.clone());
                                 }
                                 continue 'production_loop;
                             }
@@ -77,8 +93,8 @@ fn generate_first_table<A>(grammar: &Grammar<char, A>) -> FirstTable {
                                 continue 'production_loop;
                             }
                         },
-                        Symbol::Terminal(char) => {
-                            updated |= table.add_first(non_terminal_idx, *char);
+                        Symbol::Terminal(terminal) => {
+                            updated |= table.add_first(non_terminal_idx, terminal.clone());
                             continue 'production_loop;
                         }
                     }
@@ -94,18 +110,33 @@ fn generate_first_table<A>(grammar: &Grammar<char, A>) -> FirstTable {
 }
 
 /// Maps non-terminals fo their follow sets.
-#[derive(Debug, Default)]
-struct FollowTable(FxHashMap<NonTerminalIdx, FollowSet>);
+#[derive(Debug)]
+struct FollowTable<T: Hash + Eq>(FxHashMap<NonTerminalIdx, FollowSet<T>>);
 
-#[derive(Debug, Default, Clone)]
-struct FollowSet {
-    end: bool,
-    terminals: FxHashSet<char>,
+impl<T: Hash + Eq> Default for FollowTable<T> {
+    fn default() -> Self {
+        FollowTable(Default::default())
+    }
 }
 
-impl FollowTable {
+#[derive(Debug, Clone)]
+struct FollowSet<T: Hash + Eq> {
+    end: bool,
+    terminals: FxHashSet<T>,
+}
+
+impl<T: Hash + Eq> Default for FollowSet<T> {
+    fn default() -> Self {
+        FollowSet {
+            end: false,
+            terminals: Default::default(),
+        }
+    }
+}
+
+impl<T: Hash + Eq> FollowTable<T> {
     /// Returns whether the value is added
-    fn add_follow(&mut self, non_terminal_idx: NonTerminalIdx, terminal: char) -> bool {
+    fn add_follow(&mut self, non_terminal_idx: NonTerminalIdx, terminal: T) -> bool {
         self.0
             .entry(non_terminal_idx)
             .or_default()
@@ -131,13 +162,16 @@ impl FollowTable {
         }
     }
 
-    fn get_follow(&self, non_terminal_idx: NonTerminalIdx) -> Option<&FollowSet> {
+    fn get_follow(&self, non_terminal_idx: NonTerminalIdx) -> Option<&FollowSet<T>> {
         self.0.get(&non_terminal_idx)
     }
 }
 
-fn generate_follow_table<A>(grammar: &Grammar<char, A>, first_table: &FirstTable) -> FollowTable {
-    let mut table: FollowTable = Default::default();
+fn generate_follow_table<T: Hash + Eq + Clone, A>(
+    grammar: &Grammar<T, A>,
+    first_table: &FirstTable<T>,
+) -> FollowTable<T> {
+    let mut table: FollowTable<T> = Default::default();
 
     table.set_end(NonTerminalIdx(0));
 
@@ -151,7 +185,7 @@ fn generate_follow_table<A>(grammar: &Grammar<char, A>, first_table: &FirstTable
             for (non_terminal_idx_, _, production) in grammar.production_indices() {
                 // See if the non-terminal is in the RHS, and if it is, what's on the right
                 let mut symbol_iter = production.symbols().iter().cloned();
-                let mut current_symbol: Option<Symbol<char>> = symbol_iter.next();
+                let mut current_symbol: Option<Symbol<T>> = symbol_iter.next();
                 'symbol_loop_0: while let Some(symbol) = current_symbol.take() {
                     if symbol != Symbol::NonTerminal(non_terminal_idx) {
                         current_symbol = symbol_iter.next();
@@ -161,8 +195,9 @@ fn generate_follow_table<A>(grammar: &Grammar<char, A>, first_table: &FirstTable
                     // Skip empty symbols
                     'symbol_loop_1: while let Some(next_symbol_) = next_symbol {
                         match next_symbol_ {
-                            Symbol::Terminal(next_char) => {
-                                updated |= table.add_follow(non_terminal_idx, next_char);
+                            Symbol::Terminal(next_terminal) => {
+                                updated |=
+                                    table.add_follow(non_terminal_idx, next_terminal.clone());
                                 // There may be more of the non-terminal we're looking for in
                                 // the RHS, so continue
                                 current_symbol = symbol_iter.next();
@@ -172,7 +207,8 @@ fn generate_follow_table<A>(grammar: &Grammar<char, A>, first_table: &FirstTable
                                 let next_first_set =
                                     first_table.get_first(next_non_terminal).unwrap();
                                 for next_first in &next_first_set.terminals {
-                                    updated |= table.add_follow(non_terminal_idx, *next_first);
+                                    updated |=
+                                        table.add_follow(non_terminal_idx, next_first.clone());
                                 }
                                 if next_first_set.empty {
                                     next_symbol = symbol_iter.next();
@@ -206,26 +242,30 @@ fn generate_follow_table<A>(grammar: &Grammar<char, A>, first_table: &FirstTable
 }
 
 /// Predictive parse table
-#[derive(Debug, Default)]
-struct ParseTable {
+#[derive(Debug)]
+struct ParseTable<T: Hash + Eq> {
     // Informally: if I'm parsing the non-terminal `NT` and next token is `c`, then `(NT, c)` in
     // the table tells me which production to expect. If there isn't an entry for `(NT, c)` then we
     // have an error in the input. During building, if we try to add multiple productions to a
     // non-terminal, token pair, that means (I think, TODO: make sure) we have an ambiguous, or
     // left-recursive grammar.
-    table: FxHashMap<(NonTerminalIdx, char), ProductionIdx>,
+    table: FxHashMap<(NonTerminalIdx, T), ProductionIdx>,
 
     // Same as `table`, but for `$`
     end: FxHashMap<NonTerminalIdx, ProductionIdx>,
 }
 
-impl ParseTable {
-    fn add(
-        &mut self,
-        non_terminal_idx: NonTerminalIdx,
-        token: char,
-        production_idx: ProductionIdx,
-    ) {
+impl<T: Hash + Eq> Default for ParseTable<T> {
+    fn default() -> Self {
+        ParseTable {
+            table: Default::default(),
+            end: Default::default(),
+        }
+    }
+}
+
+impl<T: Hash + Eq> ParseTable<T> {
+    fn add(&mut self, non_terminal_idx: NonTerminalIdx, token: T, production_idx: ProductionIdx) {
         let old = self.table.insert((non_terminal_idx, token), production_idx);
         assert_eq!(old, None);
     }
@@ -236,7 +276,7 @@ impl ParseTable {
         assert_eq!(old, None);
     }
 
-    fn get(&self, non_terminal_idx: NonTerminalIdx, token: char) -> Option<ProductionIdx> {
+    fn get(&self, non_terminal_idx: NonTerminalIdx, token: T) -> Option<ProductionIdx> {
         self.table.get(&(non_terminal_idx, token)).copied()
     }
 
@@ -245,12 +285,12 @@ impl ParseTable {
     }
 }
 
-fn generate_parse_table<A>(
-    grammar: &Grammar<char, A>,
-    first_table: &FirstTable,
-    follow_table: &FollowTable,
-) -> ParseTable {
-    let mut table: ParseTable = Default::default();
+fn generate_parse_table<T: Hash + Eq + Clone, A>(
+    grammar: &Grammar<T, A>,
+    first_table: &FirstTable<T>,
+    follow_table: &FollowTable<T>,
+) -> ParseTable<T> {
+    let mut table: ParseTable<T> = Default::default();
 
     for (non_terminal_idx, production_idx, production) in grammar.production_indices() {
         let mut all_empty = true;
@@ -259,7 +299,7 @@ fn generate_parse_table<A>(
                 Symbol::NonTerminal(nt_idx) => {
                     let nt_firsts = first_table.get_first(*nt_idx).unwrap();
                     for terminal in &nt_firsts.terminals {
-                        table.add(non_terminal_idx, *terminal, production_idx);
+                        table.add(non_terminal_idx, terminal.clone(), production_idx);
                     }
                     if !nt_firsts.empty {
                         all_empty = false;
@@ -267,7 +307,7 @@ fn generate_parse_table<A>(
                     }
                 }
                 Symbol::Terminal(terminal) => {
-                    table.add(non_terminal_idx, *terminal, production_idx);
+                    table.add(non_terminal_idx, terminal.clone(), production_idx);
                     all_empty = false;
                     break;
                 }
@@ -276,7 +316,7 @@ fn generate_parse_table<A>(
         if all_empty {
             let nt_follows = follow_table.get_follow(non_terminal_idx).unwrap();
             for terminal in &nt_follows.terminals {
-                table.add(non_terminal_idx, *terminal, production_idx);
+                table.add(non_terminal_idx, terminal.clone(), production_idx);
             }
             if nt_follows.end {
                 table.add_end(non_terminal_idx, production_idx);
@@ -293,292 +333,406 @@ enum ParseError {
     UnexpectedEOF,
 }
 
-fn recognize(
-    grammar: &Grammar<char, ()>,
-    table: &ParseTable,
-    input: &mut dyn Iterator<Item = char>,
-) -> Result<(), ParseError> {
-    let mut stack: Vec<Symbol<char>> = vec![Symbol::NonTerminal(NonTerminalIdx(0))];
+enum Action<T, A> {
+    MatchNonTerminal(NonTerminalIdx),
+    MatchTerminal(T),
+    RunSemanticAction(fn(&mut Vec<A>) -> A),
+}
 
-    'next_char: for (token_index, char) in input.enumerate() {
+fn parse<T: Hash + Eq + Clone, A>(
+    grammar: &Grammar<T, fn(&mut Vec<A>) -> A>,
+    table: &ParseTable<T>,
+    input: &mut dyn Iterator<Item = T>,
+) -> Result<A, ParseError> {
+    let mut action_stack: Vec<Action<T, A>> = vec![Action::MatchNonTerminal(NonTerminalIdx(0))];
+    let mut value_stack: Vec<A> = vec![];
+
+    'next_token: for (token_index, token) in input.enumerate() {
         loop {
-            println!("char={:?}, stack={:?}", char, stack);
-
-            let next = stack.pop().unwrap();
-            match next {
-                Symbol::Terminal(expected_char) => {
-                    if expected_char != char {
-                        return Err(ParseError::UnexpectedToken { token_index });
-                    }
-                    continue 'next_char;
-                }
-                Symbol::NonTerminal(nt) => match table.get(nt, char) {
-                    None => return Err(ParseError::UnexpectedToken { token_index }),
-                    Some(production_idx) => {
-                        let production = grammar.get_production(nt, production_idx);
-                        for symbol in production.symbols().iter().rev() {
-                            stack.push(symbol.clone());
+            match action_stack.pop().unwrap() {
+                Action::MatchNonTerminal(non_terminal_idx) => {
+                    // TODO: Redundant clone below
+                    match table.get(non_terminal_idx, token.clone()) {
+                        None => return Err(ParseError::UnexpectedToken { token_index }),
+                        Some(production_idx) => {
+                            let production =
+                                grammar.get_production(non_terminal_idx, production_idx);
+                            action_stack.push(Action::RunSemanticAction(production.action));
+                            for symbol in production.symbols().iter().rev() {
+                                let action: Action<T, A> = match symbol.clone() {
+                                    Symbol::NonTerminal(non_terminal_idx) => {
+                                        Action::MatchNonTerminal(non_terminal_idx)
+                                    }
+                                    Symbol::Terminal(terminal) => Action::MatchTerminal(terminal),
+                                };
+                                action_stack.push(action);
+                            }
                         }
                     }
-                },
+                }
+                Action::MatchTerminal(terminal) => {
+                    if terminal == token {
+                        continue 'next_token;
+                    } else {
+                        return Err(ParseError::UnexpectedToken { token_index });
+                    }
+                }
+                Action::RunSemanticAction(action) => {
+                    let result = action(&mut value_stack);
+                    value_stack.push(result);
+                    break;
+                }
             }
         }
     }
 
-    while let Some(symbol) = stack.pop() {
-        match symbol {
-            Symbol::Terminal(_) => {
-                return Err(ParseError::UnexpectedEOF);
-            }
-            Symbol::NonTerminal(nt) => match table.get_end(nt) {
+    while let Some(action) = action_stack.pop() {
+        match action {
+            Action::MatchNonTerminal(non_terminal_idx) => match table.get_end(non_terminal_idx) {
+                Some(production_idx) => {
+                    assert_eq!(
+                        grammar
+                            .get_production(non_terminal_idx, production_idx)
+                            .symbols()
+                            .len(),
+                        0
+                    );
+                }
                 None => {
                     return Err(ParseError::UnexpectedEOF);
                 }
-                Some(prod_idx) => {
-                    assert_eq!(grammar.get_production(nt, prod_idx).symbols().len(), 0);
-                }
             },
+            Action::MatchTerminal(_) => {
+                return Err(ParseError::UnexpectedEOF);
+            }
+            Action::RunSemanticAction(action) => {
+                let result = action(&mut value_stack);
+                value_stack.push(result);
+            }
         }
     }
 
-    if stack.is_empty() {
-        Ok(())
-    } else {
-        Err(ParseError::UnexpectedEOF)
+    assert_eq!(value_stack.len(), 1);
+    Ok(value_stack.pop().unwrap())
+}
+
+#[cfg(test)]
+mod test {
+    use super::*;
+
+    fn get_nonterminal_firsts_sorted(
+        table: &FirstTable<char>,
+        non_terminal: NonTerminalIdx,
+    ) -> Vec<char> {
+        let mut vec = table
+            .get_first(non_terminal)
+            .unwrap()
+            .terminals
+            .iter()
+            .copied()
+            .collect::<Vec<char>>();
+        vec.sort();
+        vec
     }
-}
 
-#[cfg(test)]
-fn get_nonterminal_firsts_sorted(table: &FirstTable, non_terminal: NonTerminalIdx) -> Vec<char> {
-    let mut vec = table
-        .get_first(non_terminal)
-        .unwrap()
-        .terminals
-        .iter()
-        .copied()
-        .collect::<Vec<char>>();
-    vec.sort();
-    vec
-}
+    #[test]
+    fn first_set_1() {
+        let grammar = crate::test_grammars::grammar1();
+        let table = generate_first_table(&grammar);
 
-#[test]
-fn first_set_1() {
-    let grammar = crate::test_grammars::grammar1();
-    let table = generate_first_table(&grammar);
+        assert_eq!(table.0.len(), 1);
+        assert_eq!(table.get_first(NonTerminalIdx(0)).unwrap().empty, false);
+        assert_eq!(
+            get_nonterminal_firsts_sorted(&table, NonTerminalIdx(0)),
+            vec!['n']
+        );
+    }
 
-    assert_eq!(table.0.len(), 1);
-    assert_eq!(table.get_first(NonTerminalIdx(0)).unwrap().empty, false);
-    assert_eq!(
-        get_nonterminal_firsts_sorted(&table, NonTerminalIdx(0)),
-        vec!['n']
-    );
-}
+    #[test]
+    fn first_set_2() {
+        let grammar = crate::test_grammars::grammar2();
+        let table = generate_first_table(&grammar);
 
-#[test]
-fn first_set_2() {
-    let grammar = crate::test_grammars::grammar2();
-    let table = generate_first_table(&grammar);
+        assert_eq!(table.0.len(), 3);
+        assert_eq!(table.get_first(NonTerminalIdx(2)).unwrap().empty, true);
+        assert_eq!(table.get_first(NonTerminalIdx(1)).unwrap().empty, true);
+        assert_eq!(table.get_first(NonTerminalIdx(0)).unwrap().empty, true);
+        assert_eq!(
+            get_nonterminal_firsts_sorted(&table, NonTerminalIdx(2)),
+            vec![]
+        );
+        assert_eq!(
+            get_nonterminal_firsts_sorted(&table, NonTerminalIdx(1)),
+            vec!['a']
+        );
+        assert_eq!(
+            get_nonterminal_firsts_sorted(&table, NonTerminalIdx(0)),
+            vec!['a']
+        );
+    }
 
-    assert_eq!(table.0.len(), 3);
-    assert_eq!(table.get_first(NonTerminalIdx(2)).unwrap().empty, true);
-    assert_eq!(table.get_first(NonTerminalIdx(1)).unwrap().empty, true);
-    assert_eq!(table.get_first(NonTerminalIdx(0)).unwrap().empty, true);
-    assert_eq!(
-        get_nonterminal_firsts_sorted(&table, NonTerminalIdx(2)),
-        vec![]
-    );
-    assert_eq!(
-        get_nonterminal_firsts_sorted(&table, NonTerminalIdx(1)),
-        vec!['a']
-    );
-    assert_eq!(
-        get_nonterminal_firsts_sorted(&table, NonTerminalIdx(0)),
-        vec!['a']
-    );
-}
+    #[test]
+    fn first_set_3() {
+        let grammar = crate::test_grammars::grammar3();
+        let table = generate_first_table(&grammar);
 
-#[test]
-fn first_set_3() {
-    let grammar = crate::test_grammars::grammar3();
-    let table = generate_first_table(&grammar);
+        assert_eq!(table.0.len(), 4);
+        assert_eq!(table.get_first(NonTerminalIdx(3)).unwrap().empty, false);
+        assert_eq!(table.get_first(NonTerminalIdx(2)).unwrap().empty, false);
+        assert_eq!(table.get_first(NonTerminalIdx(1)).unwrap().empty, false);
+        assert_eq!(table.get_first(NonTerminalIdx(0)).unwrap().empty, false);
+        assert_eq!(
+            get_nonterminal_firsts_sorted(&table, NonTerminalIdx(3)),
+            vec!['a']
+        );
+        assert_eq!(
+            get_nonterminal_firsts_sorted(&table, NonTerminalIdx(2)),
+            vec!['a']
+        );
+        assert_eq!(
+            get_nonterminal_firsts_sorted(&table, NonTerminalIdx(1)),
+            vec!['a']
+        );
+        assert_eq!(
+            get_nonterminal_firsts_sorted(&table, NonTerminalIdx(0)),
+            vec!['a']
+        );
+    }
 
-    assert_eq!(table.0.len(), 4);
-    assert_eq!(table.get_first(NonTerminalIdx(3)).unwrap().empty, false);
-    assert_eq!(table.get_first(NonTerminalIdx(2)).unwrap().empty, false);
-    assert_eq!(table.get_first(NonTerminalIdx(1)).unwrap().empty, false);
-    assert_eq!(table.get_first(NonTerminalIdx(0)).unwrap().empty, false);
-    assert_eq!(
-        get_nonterminal_firsts_sorted(&table, NonTerminalIdx(3)),
-        vec!['a']
-    );
-    assert_eq!(
-        get_nonterminal_firsts_sorted(&table, NonTerminalIdx(2)),
-        vec!['a']
-    );
-    assert_eq!(
-        get_nonterminal_firsts_sorted(&table, NonTerminalIdx(1)),
-        vec!['a']
-    );
-    assert_eq!(
-        get_nonterminal_firsts_sorted(&table, NonTerminalIdx(0)),
-        vec!['a']
-    );
-}
+    #[test]
+    fn first_set_4() {
+        let grammar = crate::test_grammars::grammar4();
+        let table = generate_first_table(&grammar);
 
-#[test]
-fn first_set_4() {
-    let grammar = crate::test_grammars::grammar4();
-    let table = generate_first_table(&grammar);
+        assert_eq!(table.0.len(), 3);
+        assert_eq!(table.get_first(NonTerminalIdx(2)).unwrap().empty, false);
+        assert_eq!(table.get_first(NonTerminalIdx(1)).unwrap().empty, true);
+        assert_eq!(table.get_first(NonTerminalIdx(0)).unwrap().empty, false);
+        assert_eq!(
+            get_nonterminal_firsts_sorted(&table, NonTerminalIdx(2)),
+            vec!['a']
+        );
+        assert_eq!(
+            get_nonterminal_firsts_sorted(&table, NonTerminalIdx(1)),
+            vec![]
+        );
+        assert_eq!(
+            get_nonterminal_firsts_sorted(&table, NonTerminalIdx(0)),
+            vec!['a']
+        );
+    }
 
-    assert_eq!(table.0.len(), 3);
-    assert_eq!(table.get_first(NonTerminalIdx(2)).unwrap().empty, false);
-    assert_eq!(table.get_first(NonTerminalIdx(1)).unwrap().empty, true);
-    assert_eq!(table.get_first(NonTerminalIdx(0)).unwrap().empty, false);
-    assert_eq!(
-        get_nonterminal_firsts_sorted(&table, NonTerminalIdx(2)),
-        vec!['a']
-    );
-    assert_eq!(
-        get_nonterminal_firsts_sorted(&table, NonTerminalIdx(1)),
-        vec![]
-    );
-    assert_eq!(
-        get_nonterminal_firsts_sorted(&table, NonTerminalIdx(0)),
-        vec!['a']
-    );
-}
+    #[test]
+    fn first_set_5() {
+        let grammar = crate::test_grammars::grammar5();
+        let table = generate_first_table(&grammar);
 
-#[test]
-fn first_set_5() {
-    let grammar = crate::test_grammars::grammar5();
-    let table = generate_first_table(&grammar);
+        let e_nt_idx = grammar.get_non_terminal_idx("E").unwrap();
+        let e1_nt_idx = grammar.get_non_terminal_idx("E'").unwrap();
+        let t_nt_idx = grammar.get_non_terminal_idx("T").unwrap();
+        let t1_nt_idx = grammar.get_non_terminal_idx("T'").unwrap();
+        let f_nt_idx = grammar.get_non_terminal_idx("F").unwrap();
 
-    let e_nt_idx = grammar.get_non_terminal_idx("E").unwrap();
-    let e1_nt_idx = grammar.get_non_terminal_idx("E'").unwrap();
-    let t_nt_idx = grammar.get_non_terminal_idx("T").unwrap();
-    let t1_nt_idx = grammar.get_non_terminal_idx("T'").unwrap();
-    let f_nt_idx = grammar.get_non_terminal_idx("F").unwrap();
+        assert_eq!(table.0.len(), 5);
+        assert_eq!(table.get_first(f_nt_idx).unwrap().empty, false);
+        assert_eq!(
+            get_nonterminal_firsts_sorted(&table, f_nt_idx),
+            vec!['(', 'n']
+        );
+        assert_eq!(table.get_first(t_nt_idx).unwrap().empty, false);
+        assert_eq!(
+            get_nonterminal_firsts_sorted(&table, t_nt_idx),
+            vec!['(', 'n']
+        );
+        assert_eq!(table.get_first(e_nt_idx).unwrap().empty, false);
+        assert_eq!(
+            get_nonterminal_firsts_sorted(&table, e_nt_idx),
+            vec!['(', 'n']
+        );
+        assert_eq!(table.get_first(e1_nt_idx).unwrap().empty, true);
+        assert_eq!(get_nonterminal_firsts_sorted(&table, e1_nt_idx), vec!['+']);
+        assert_eq!(table.get_first(t1_nt_idx).unwrap().empty, true);
+        assert_eq!(get_nonterminal_firsts_sorted(&table, t1_nt_idx), vec!['*']);
+    }
 
-    assert_eq!(table.0.len(), 5);
-    assert_eq!(table.get_first(f_nt_idx).unwrap().empty, false);
-    assert_eq!(
-        get_nonterminal_firsts_sorted(&table, f_nt_idx),
-        vec!['(', 'n']
-    );
-    assert_eq!(table.get_first(t_nt_idx).unwrap().empty, false);
-    assert_eq!(
-        get_nonterminal_firsts_sorted(&table, t_nt_idx),
-        vec!['(', 'n']
-    );
-    assert_eq!(table.get_first(e_nt_idx).unwrap().empty, false);
-    assert_eq!(
-        get_nonterminal_firsts_sorted(&table, e_nt_idx),
-        vec!['(', 'n']
-    );
-    assert_eq!(table.get_first(e1_nt_idx).unwrap().empty, true);
-    assert_eq!(get_nonterminal_firsts_sorted(&table, e1_nt_idx), vec!['+']);
-    assert_eq!(table.get_first(t1_nt_idx).unwrap().empty, true);
-    assert_eq!(get_nonterminal_firsts_sorted(&table, t1_nt_idx), vec!['*']);
-}
+    fn get_nonterminal_follows_sorted(
+        table: &FollowTable<char>,
+        non_terminal: NonTerminalIdx,
+    ) -> Vec<char> {
+        let mut vec = table
+            .get_follow(non_terminal)
+            .unwrap()
+            .terminals
+            .iter()
+            .copied()
+            .collect::<Vec<char>>();
+        vec.sort();
+        vec
+    }
 
-#[cfg(test)]
-fn get_nonterminal_follows_sorted(table: &FollowTable, non_terminal: NonTerminalIdx) -> Vec<char> {
-    let mut vec = table
-        .get_follow(non_terminal)
-        .unwrap()
-        .terminals
-        .iter()
-        .copied()
-        .collect::<Vec<char>>();
-    vec.sort();
-    vec
-}
+    #[test]
+    fn follow_set_5() {
+        let grammar = crate::test_grammars::grammar5();
+        let first = generate_first_table(&grammar);
+        let follow = generate_follow_table(&grammar, &first);
 
-#[test]
-fn follow_set_5() {
-    let grammar = crate::test_grammars::grammar5();
-    let first = generate_first_table(&grammar);
-    let follow = generate_follow_table(&grammar, &first);
+        let e_nt_idx = grammar.get_non_terminal_idx("E").unwrap();
+        let e1_nt_idx = grammar.get_non_terminal_idx("E'").unwrap();
+        let t_nt_idx = grammar.get_non_terminal_idx("T").unwrap();
+        let t1_nt_idx = grammar.get_non_terminal_idx("T'").unwrap();
+        let f_nt_idx = grammar.get_non_terminal_idx("F").unwrap();
 
-    let e_nt_idx = grammar.get_non_terminal_idx("E").unwrap();
-    let e1_nt_idx = grammar.get_non_terminal_idx("E'").unwrap();
-    let t_nt_idx = grammar.get_non_terminal_idx("T").unwrap();
-    let t1_nt_idx = grammar.get_non_terminal_idx("T'").unwrap();
-    let f_nt_idx = grammar.get_non_terminal_idx("F").unwrap();
+        assert_eq!(follow.get_follow(e_nt_idx).unwrap().end, true);
+        assert_eq!(get_nonterminal_follows_sorted(&follow, e_nt_idx), vec![')']);
+        assert_eq!(follow.get_follow(e1_nt_idx).unwrap().end, true);
+        assert_eq!(
+            get_nonterminal_follows_sorted(&follow, e1_nt_idx),
+            vec![')']
+        );
+        assert_eq!(follow.get_follow(t_nt_idx).unwrap().end, true);
+        assert_eq!(
+            get_nonterminal_follows_sorted(&follow, t_nt_idx),
+            vec![')', '+']
+        );
+        assert_eq!(follow.get_follow(t1_nt_idx).unwrap().end, true);
+        assert_eq!(
+            get_nonterminal_follows_sorted(&follow, t1_nt_idx),
+            vec![')', '+']
+        );
+        assert_eq!(follow.get_follow(f_nt_idx).unwrap().end, true);
+        assert_eq!(
+            get_nonterminal_follows_sorted(&follow, f_nt_idx),
+            vec![')', '*', '+']
+        );
+    }
 
-    assert_eq!(follow.get_follow(e_nt_idx).unwrap().end, true);
-    assert_eq!(get_nonterminal_follows_sorted(&follow, e_nt_idx), vec![')']);
-    assert_eq!(follow.get_follow(e1_nt_idx).unwrap().end, true);
-    assert_eq!(
-        get_nonterminal_follows_sorted(&follow, e1_nt_idx),
-        vec![')']
-    );
-    assert_eq!(follow.get_follow(t_nt_idx).unwrap().end, true);
-    assert_eq!(
-        get_nonterminal_follows_sorted(&follow, t_nt_idx),
-        vec![')', '+']
-    );
-    assert_eq!(follow.get_follow(t1_nt_idx).unwrap().end, true);
-    assert_eq!(
-        get_nonterminal_follows_sorted(&follow, t1_nt_idx),
-        vec![')', '+']
-    );
-    assert_eq!(follow.get_follow(f_nt_idx).unwrap().end, true);
-    assert_eq!(
-        get_nonterminal_follows_sorted(&follow, f_nt_idx),
-        vec![')', '*', '+']
-    );
-}
+    // Example 4.32 in dragon book
+    #[test]
+    fn parse_table_5() {
+        let grammar = crate::test_grammars::grammar5();
+        let first = generate_first_table(&grammar);
+        let follow = generate_follow_table(&grammar, &first);
+        let parse_table = generate_parse_table(&grammar, &first, &follow);
 
-// Example 4.32 in dragon book
-#[test]
-fn parse_table_5() {
-    let grammar = crate::test_grammars::grammar5();
-    let first = generate_first_table(&grammar);
-    let follow = generate_follow_table(&grammar, &first);
-    let parse_table = generate_parse_table(&grammar, &first, &follow);
+        let e_nt_idx = grammar.get_non_terminal_idx("E").unwrap();
+        let e1_nt_idx = grammar.get_non_terminal_idx("E'").unwrap();
+        let t_nt_idx = grammar.get_non_terminal_idx("T").unwrap();
+        let t1_nt_idx = grammar.get_non_terminal_idx("T'").unwrap();
+        let f_nt_idx = grammar.get_non_terminal_idx("F").unwrap();
 
-    let e_nt_idx = grammar.get_non_terminal_idx("E").unwrap();
-    let e1_nt_idx = grammar.get_non_terminal_idx("E'").unwrap();
-    let t_nt_idx = grammar.get_non_terminal_idx("T").unwrap();
-    let t1_nt_idx = grammar.get_non_terminal_idx("T'").unwrap();
-    let f_nt_idx = grammar.get_non_terminal_idx("F").unwrap();
+        assert_eq!(parse_table.table.len(), 11);
+        assert_eq!(parse_table.end.len(), 2);
 
-    assert_eq!(parse_table.table.len(), 11);
-    assert_eq!(parse_table.end.len(), 2);
+        assert_eq!(parse_table.get(e_nt_idx, 'n').unwrap(), ProductionIdx(0));
+        assert_eq!(parse_table.get(e_nt_idx, '(').unwrap(), ProductionIdx(0));
+        assert_eq!(parse_table.get_end(e_nt_idx), None);
 
-    assert_eq!(parse_table.get(e_nt_idx, 'n').unwrap(), ProductionIdx(0));
-    assert_eq!(parse_table.get(e_nt_idx, '(').unwrap(), ProductionIdx(0));
-    assert_eq!(parse_table.get_end(e_nt_idx), None);
+        assert_eq!(parse_table.get(e1_nt_idx, '+').unwrap(), ProductionIdx(0));
+        assert_eq!(parse_table.get(e1_nt_idx, ')').unwrap(), ProductionIdx(1));
+        assert_eq!(parse_table.get_end(e1_nt_idx).unwrap(), ProductionIdx(1));
 
-    assert_eq!(parse_table.get(e1_nt_idx, '+').unwrap(), ProductionIdx(0));
-    assert_eq!(parse_table.get(e1_nt_idx, ')').unwrap(), ProductionIdx(1));
-    assert_eq!(parse_table.get_end(e1_nt_idx).unwrap(), ProductionIdx(1));
+        assert_eq!(parse_table.get(t_nt_idx, 'n').unwrap(), ProductionIdx(0));
+        assert_eq!(parse_table.get(t_nt_idx, '(').unwrap(), ProductionIdx(0));
+        assert_eq!(parse_table.get_end(t_nt_idx), None);
 
-    assert_eq!(parse_table.get(t_nt_idx, 'n').unwrap(), ProductionIdx(0));
-    assert_eq!(parse_table.get(t_nt_idx, '(').unwrap(), ProductionIdx(0));
-    assert_eq!(parse_table.get_end(t_nt_idx), None);
+        assert_eq!(parse_table.get(t1_nt_idx, '+').unwrap(), ProductionIdx(1));
+        assert_eq!(parse_table.get(t1_nt_idx, '*').unwrap(), ProductionIdx(0));
+        assert_eq!(parse_table.get(t1_nt_idx, ')').unwrap(), ProductionIdx(1));
+        assert_eq!(parse_table.get_end(t1_nt_idx).unwrap(), ProductionIdx(1));
 
-    assert_eq!(parse_table.get(t1_nt_idx, '+').unwrap(), ProductionIdx(1));
-    assert_eq!(parse_table.get(t1_nt_idx, '*').unwrap(), ProductionIdx(0));
-    assert_eq!(parse_table.get(t1_nt_idx, ')').unwrap(), ProductionIdx(1));
-    assert_eq!(parse_table.get_end(t1_nt_idx).unwrap(), ProductionIdx(1));
+        assert_eq!(parse_table.get(f_nt_idx, 'n').unwrap(), ProductionIdx(1));
+        assert_eq!(parse_table.get(f_nt_idx, '(').unwrap(), ProductionIdx(0));
+        assert_eq!(parse_table.get_end(f_nt_idx), None);
+    }
 
-    assert_eq!(parse_table.get(f_nt_idx, 'n').unwrap(), ProductionIdx(1));
-    assert_eq!(parse_table.get(f_nt_idx, '(').unwrap(), ProductionIdx(0));
-    assert_eq!(parse_table.get_end(f_nt_idx), None);
-}
+    // E  -> T E'
+    // E' -> + T E' | (empty)
+    // T  -> F T'
+    // T' -> * F T' | (empty)
+    // F -> ( E ) | n
+    fn grammar5() -> Grammar<char, fn(&mut Vec<i64>) -> i64> {
+        let mut grammar: Grammar<char, fn(&mut Vec<i64>) -> i64> = Grammar::new();
+        let e_nt_idx = grammar.add_non_terminal("E".to_owned());
+        let e1_nt_idx = grammar.add_non_terminal("E'".to_owned());
+        let t_nt_idx = grammar.add_non_terminal("T".to_owned());
+        let t1_nt_idx = grammar.add_non_terminal("T'".to_owned());
+        let f_nt_idx = grammar.add_non_terminal("F".to_owned());
 
-// Example 4.35 in dragon book
-#[test]
-fn parse_ll1_5() {
-    let grammar = crate::test_grammars::grammar5();
-    let first = generate_first_table(&grammar);
-    let follow = generate_follow_table(&grammar, &first);
-    let parse_table = generate_parse_table(&grammar, &first, &follow);
+        grammar.set_init(e_nt_idx);
 
-    assert_eq!(
-        recognize(&grammar, &parse_table, &mut "n+n*n".chars()),
-        Ok(())
-    );
+        // E -> T E'
+        grammar.add_production(
+            e_nt_idx,
+            vec![
+                Symbol::NonTerminal(t_nt_idx),
+                Symbol::NonTerminal(e1_nt_idx),
+            ],
+            |vals| todo!(),
+        );
+
+        // E' -> + T E'
+        grammar.add_production(
+            e1_nt_idx,
+            vec![
+                Symbol::Terminal('+'),
+                Symbol::NonTerminal(t_nt_idx),
+                Symbol::NonTerminal(e1_nt_idx),
+            ],
+            |vals| todo!(),
+        );
+
+        // E' -> (empty)
+        grammar.add_production(e1_nt_idx, vec![], |vals| todo!());
+
+        // T -> F T'
+        grammar.add_production(
+            t_nt_idx,
+            vec![
+                Symbol::NonTerminal(f_nt_idx),
+                Symbol::NonTerminal(t1_nt_idx),
+            ],
+            |vals| todo!(),
+        );
+
+        // T' -> * F T'
+        grammar.add_production(
+            t1_nt_idx,
+            vec![
+                Symbol::Terminal('*'),
+                Symbol::NonTerminal(f_nt_idx),
+                Symbol::NonTerminal(t1_nt_idx),
+            ],
+            |vals| todo!(),
+        );
+
+        // T' -> (empty)
+        grammar.add_production(t1_nt_idx, vec![], |vals| todo!());
+
+        // F -> ( E )
+        grammar.add_production(
+            f_nt_idx,
+            vec![
+                Symbol::Terminal('('),
+                Symbol::NonTerminal(e_nt_idx),
+                Symbol::Terminal(')'),
+            ],
+            |vals| todo!(),
+        );
+
+        // F -> n
+        grammar.add_production(f_nt_idx, vec![Symbol::Terminal('n')], |vals| todo!());
+
+        grammar
+    }
+
+    // Example 4.35 in dragon book
+    #[test]
+    fn parse_ll1_5() {
+        let grammar = grammar5();
+        let first = generate_first_table(&grammar);
+        let follow = generate_follow_table(&grammar, &first);
+        let parse_table = generate_parse_table(&grammar, &first, &follow);
+
+        assert_eq!(parse(&grammar, &parse_table, &mut "1+2*3".chars()), Ok(7));
+    }
 }
