@@ -287,6 +287,67 @@ fn generate_parse_table<A>(
     table
 }
 
+#[derive(Debug, PartialEq, Eq, Clone, Copy)]
+enum ParseError {
+    UnexpectedToken { token_index: usize },
+    UnexpectedEOF,
+}
+
+fn recognize(
+    grammar: &Grammar<char, ()>,
+    table: &ParseTable,
+    input: &mut dyn Iterator<Item = char>,
+) -> Result<(), ParseError> {
+    let mut stack: Vec<Symbol<char>> = vec![Symbol::NonTerminal(NonTerminalIdx(0))];
+
+    'next_char: for (token_index, char) in input.enumerate() {
+        loop {
+            println!("char={:?}, stack={:?}", char, stack);
+
+            let next = stack.pop().unwrap();
+            match next {
+                Symbol::Terminal(expected_char) => {
+                    if expected_char != char {
+                        return Err(ParseError::UnexpectedToken { token_index });
+                    }
+                    continue 'next_char;
+                }
+                Symbol::NonTerminal(nt) => match table.get(nt, char) {
+                    None => return Err(ParseError::UnexpectedToken { token_index }),
+                    Some(production_idx) => {
+                        let production = grammar.get_production(nt, production_idx);
+                        for symbol in production.symbols().iter().rev() {
+                            stack.push(symbol.clone());
+                        }
+                    }
+                },
+            }
+        }
+    }
+
+    while let Some(symbol) = stack.pop() {
+        match symbol {
+            Symbol::Terminal(_) => {
+                return Err(ParseError::UnexpectedEOF);
+            }
+            Symbol::NonTerminal(nt) => match table.get_end(nt) {
+                None => {
+                    return Err(ParseError::UnexpectedEOF);
+                }
+                Some(prod_idx) => {
+                    assert_eq!(grammar.get_production(nt, prod_idx).symbols().len(), 0);
+                }
+            },
+        }
+    }
+
+    if stack.is_empty() {
+        Ok(())
+    } else {
+        Err(ParseError::UnexpectedEOF)
+    }
+}
+
 #[cfg(test)]
 fn get_nonterminal_firsts_sorted(table: &FirstTable, non_terminal: NonTerminalIdx) -> Vec<char> {
     let mut vec = table
@@ -506,4 +567,18 @@ fn parse_table_5() {
     assert_eq!(parse_table.get(f_nt_idx, 'n').unwrap(), ProductionIdx(1));
     assert_eq!(parse_table.get(f_nt_idx, '(').unwrap(), ProductionIdx(0));
     assert_eq!(parse_table.get_end(f_nt_idx), None);
+}
+
+// Example 4.35 in dragon book
+#[test]
+fn parse_ll1_5() {
+    let grammar = crate::test_grammars::grammar5();
+    let first = generate_first_table(&grammar);
+    let follow = generate_follow_table(&grammar, &first);
+    let parse_table = generate_parse_table(&grammar, &first, &follow);
+
+    assert_eq!(
+        recognize(&grammar, &parse_table, &mut "n+n*n".chars()),
+        Ok(())
+    );
 }
