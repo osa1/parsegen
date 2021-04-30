@@ -53,8 +53,7 @@ fn generate_first_table<A>(grammar: &Grammar<char, A>) -> FirstTable {
     let mut updated = true;
     while updated {
         updated = false;
-        for (non_terminal_idx, non_terminal) in grammar.non_terminals.iter().enumerate() {
-            let non_terminal_idx = NonTerminalIdx::from_usize(non_terminal_idx);
+        for (non_terminal_idx, non_terminal) in grammar.non_terminal_indices() {
             'production_loop: for production in &non_terminal.productions {
                 if production.symbols.is_empty() {
                     updated |= table.set_empty(non_terminal_idx);
@@ -147,64 +146,55 @@ fn generate_follow_table<A>(grammar: &Grammar<char, A>, first_table: &FirstTable
         updated = false;
 
         // For each non-terminal
-        for (non_terminal_idx, _) in grammar.non_terminals.iter().enumerate() {
-            println!("Non terminal = {}", non_terminal_idx);
-
-            let non_terminal_idx = NonTerminalIdx::from_usize(non_terminal_idx);
+        for (non_terminal_idx, _) in grammar.non_terminal_indices() {
             // For each production
-            for (non_terminal_idx_, non_terminal_) in grammar.non_terminals.iter().enumerate() {
-                for production in non_terminal_.productions() {
-                    // See if the non-terminal is in the RHS, and if it is, what's on the right
-                    let mut symbol_iter = production.symbols().iter().cloned();
-                    let mut current_symbol: Option<Symbol<char>> = symbol_iter.next();
-                    'symbol_loop_0: while let Some(symbol) = current_symbol.take() {
-                        if symbol != Symbol::NonTerminal(non_terminal_idx) {
-                            current_symbol = symbol_iter.next();
-                            continue;
-                        }
-                        let mut next_symbol = symbol_iter.next();
-                        // Skip empty symbols
-                        'symbol_loop_1: while let Some(next_symbol_) = next_symbol {
-                            match next_symbol_ {
-                                Symbol::Terminal(next_char) => {
-                                    updated |= table.add_follow(non_terminal_idx, next_char);
-                                    // There may be more of the non-terminal we're looking for in
-                                    // the RHS, so continue
-                                    current_symbol = symbol_iter.next();
+            for (non_terminal_idx_, _, production) in grammar.production_indices() {
+                // See if the non-terminal is in the RHS, and if it is, what's on the right
+                let mut symbol_iter = production.symbols().iter().cloned();
+                let mut current_symbol: Option<Symbol<char>> = symbol_iter.next();
+                'symbol_loop_0: while let Some(symbol) = current_symbol.take() {
+                    if symbol != Symbol::NonTerminal(non_terminal_idx) {
+                        current_symbol = symbol_iter.next();
+                        continue;
+                    }
+                    let mut next_symbol = symbol_iter.next();
+                    // Skip empty symbols
+                    'symbol_loop_1: while let Some(next_symbol_) = next_symbol {
+                        match next_symbol_ {
+                            Symbol::Terminal(next_char) => {
+                                updated |= table.add_follow(non_terminal_idx, next_char);
+                                // There may be more of the non-terminal we're looking for in
+                                // the RHS, so continue
+                                current_symbol = symbol_iter.next();
+                                continue 'symbol_loop_0;
+                            }
+                            Symbol::NonTerminal(next_non_terminal) => {
+                                let next_first_set =
+                                    first_table.get_first(next_non_terminal).unwrap();
+                                for next_first in &next_first_set.terminals {
+                                    updated |= table.add_follow(non_terminal_idx, *next_first);
+                                }
+                                if next_first_set.empty {
+                                    next_symbol = symbol_iter.next();
+                                    continue 'symbol_loop_1;
+                                } else {
+                                    // Same as the terminal case, we may have more of the
+                                    // non-terminal we're looking for in the RHS, so continue
+                                    current_symbol = Some(Symbol::NonTerminal(next_non_terminal));
                                     continue 'symbol_loop_0;
                                 }
-                                Symbol::NonTerminal(next_non_terminal) => {
-                                    let next_first_set =
-                                        first_table.get_first(next_non_terminal).unwrap();
-                                    for next_first in &next_first_set.terminals {
-                                        updated |= table.add_follow(non_terminal_idx, *next_first);
-                                    }
-                                    if next_first_set.empty {
-                                        next_symbol = symbol_iter.next();
-                                        continue 'symbol_loop_1;
-                                    } else {
-                                        // Same as the terminal case, we may have more of the
-                                        // non-terminal we're looking for in the RHS, so continue
-                                        current_symbol =
-                                            Some(Symbol::NonTerminal(next_non_terminal));
-                                        continue 'symbol_loop_0;
-                                    }
-                                }
                             }
                         }
-                        // If we've reached here then the our non-terminal appears the end of the
-                        // RHS, so follow set should be the follow set of the current production's
-                        // non-terminal
-                        if let Some(nt_follows) = table
-                            .get_follow(NonTerminalIdx::from_usize(non_terminal_idx_))
-                            .cloned()
-                        {
-                            if nt_follows.end {
-                                updated |= table.set_end(non_terminal_idx);
-                            }
-                            for follow in nt_follows.terminals {
-                                updated |= table.add_follow(non_terminal_idx, follow);
-                            }
+                    }
+                    // If we've reached here then the our non-terminal appears the end of the
+                    // RHS, so follow set should be the follow set of the current production's
+                    // non-terminal
+                    if let Some(nt_follows) = table.get_follow(non_terminal_idx_).cloned() {
+                        if nt_follows.end {
+                            updated |= table.set_end(non_terminal_idx);
+                        }
+                        for follow in nt_follows.terminals {
+                            updated |= table.add_follow(non_terminal_idx, follow);
                         }
                     }
                 }

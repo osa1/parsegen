@@ -147,14 +147,19 @@ impl<T, A> Production<T, A> {
     }
 }
 
-struct ProductionIter<'grammar, T, A> {
+struct ProductionIndicesIter<'grammar, T, A> {
     grammar: &'grammar Grammar<T, A>,
     non_terminal_idx: NonTerminalIdx,
     production_idx: ProductionIdx,
 }
 
-impl<'grammar, T, A> Iterator for ProductionIter<'grammar, T, A> {
-    type Item = &'grammar Production<T, A>;
+struct NonTerminalIndicesIter<'grammar, T, A> {
+    grammar: &'grammar Grammar<T, A>,
+    non_terminal_idx: NonTerminalIdx,
+}
+
+impl<'grammar, T, A> Iterator for ProductionIndicesIter<'grammar, T, A> {
+    type Item = (NonTerminalIdx, ProductionIdx, &'grammar Production<T, A>);
 
     fn next(&mut self) -> Option<Self::Item> {
         loop {
@@ -171,8 +176,9 @@ impl<'grammar, T, A> Iterator for ProductionIter<'grammar, T, A> {
                             self.production_idx = ProductionIdx(0);
                         }
                         Some(production) => {
+                            let production_idx = self.production_idx;
                             self.production_idx = ProductionIdx(self.production_idx.0 + 1);
-                            return Some(production);
+                            return Some((self.non_terminal_idx, production_idx, production));
                         }
                     }
                 }
@@ -181,12 +187,42 @@ impl<'grammar, T, A> Iterator for ProductionIter<'grammar, T, A> {
     }
 }
 
+impl<'grammar, T, A> Iterator for NonTerminalIndicesIter<'grammar, T, A> {
+    type Item = (NonTerminalIdx, &'grammar NonTerminal<T, A>);
+
+    fn next(&mut self) -> Option<Self::Item> {
+        match self
+            .grammar
+            .non_terminals
+            .get(self.non_terminal_idx.as_usize())
+        {
+            None => None,
+            Some(non_terminal) => {
+                let idx = self.non_terminal_idx;
+                self.non_terminal_idx = NonTerminalIdx(self.non_terminal_idx.0 + 1);
+                Some((idx, non_terminal))
+            }
+        }
+    }
+}
+
 impl<T, A> Grammar<T, A> {
-    pub fn productions(&self) -> impl Iterator<Item = &Production<T, A>> {
-        ProductionIter {
+    pub fn production_indices(
+        &self,
+    ) -> impl Iterator<Item = (NonTerminalIdx, ProductionIdx, &Production<T, A>)> {
+        ProductionIndicesIter {
             grammar: self,
-            non_terminal_idx: NonTerminalIdx::from_usize(0),
-            production_idx: ProductionIdx::from_usize(0),
+            non_terminal_idx: NonTerminalIdx(0),
+            production_idx: ProductionIdx(0),
+        }
+    }
+
+    pub fn non_terminal_indices(
+        &self,
+    ) -> impl Iterator<Item = (NonTerminalIdx, &NonTerminal<T, A>)> {
+        NonTerminalIndicesIter {
+            grammar: self,
+            non_terminal_idx: NonTerminalIdx(0),
         }
     }
 }
