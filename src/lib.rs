@@ -12,6 +12,7 @@ mod simulate;
 #[cfg(test)]
 mod test_grammars;
 
+use fxhash::FxHashMap;
 use proc_macro::TokenStream;
 
 #[proc_macro]
@@ -36,13 +37,23 @@ pub fn parser(input: TokenStream) -> TokenStream {
         }
     }
 
-    let grammar = lower::lower(non_terminals);
+    let token_enum = token_enum.expect("Token type (`enum Token`) is not defined");
+
+    // Generate the token kind enum type before lowering the grammar, to avoid mapping terminal
+    // strings in the parser definition to token kind enum variants multiple times.
+    let (token_kind_type_name, token_kind_type_decl, token_kind_map) =
+        codegen::token_kind_type(&token_enum);
+
+    let grammar = lower::lower(non_terminals, &token_kind_map);
     println!("Grammar:");
     println!("{:#?}", grammar);
 
-    let token_enum = token_enum.expect("Token type (`enum Token`) is not defined");
-
-    // codegen::generate_ll1_parser(&grammar, token_enum);
-
-    TokenStream::new()
+    codegen::generate_ll1_parser(
+        &grammar,
+        &token_enum,
+        token_kind_type_name,
+        token_kind_type_decl,
+        token_kind_map,
+    )
+    .into()
 }

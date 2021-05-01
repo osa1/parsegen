@@ -3,7 +3,10 @@ use crate::grammar::{Grammar, NonTerminalIdx, Symbol};
 
 use fxhash::FxHashMap;
 
-pub fn lower(non_terminals: Vec<ast::NonTerminal>) -> Grammar<char, ()> {
+pub fn lower(
+    non_terminals: Vec<ast::NonTerminal>,
+    conversions: &FxHashMap<String, syn::Ident>,
+) -> Grammar<syn::Ident, ()> {
     let mut grammar = Grammar::new();
 
     let mut nt_indices: FxHashMap<String, NonTerminalIdx> = Default::default();
@@ -25,9 +28,9 @@ pub fn lower(non_terminals: Vec<ast::NonTerminal>) -> Grammar<char, ()> {
         }
 
         for prod in productions {
-            let mut symbols: Vec<Symbol<char>> = vec![];
+            let mut symbols: Vec<Symbol<syn::Ident>> = vec![];
             for sym in prod.symbols {
-                add_symbol(&nt_indices, &mut symbols, sym);
+                add_symbol(conversions, &nt_indices, &mut symbols, sym);
             }
             let nt_idx = nt_indices.get(&name.0.to_string()).unwrap();
             grammar.add_production(*nt_idx, symbols, ());
@@ -38,8 +41,9 @@ pub fn lower(non_terminals: Vec<ast::NonTerminal>) -> Grammar<char, ()> {
 }
 
 fn add_symbol(
+    conversions: &FxHashMap<String, syn::Ident>,
     nt_indices: &FxHashMap<String, NonTerminalIdx>,
-    symbols: &mut Vec<Symbol<char>>,
+    symbols: &mut Vec<Symbol<syn::Ident>>,
     symbol: ast::Symbol,
 ) {
     match symbol {
@@ -48,16 +52,14 @@ fn add_symbol(
             let nt_idx = nt_indices.get(&nt_name).unwrap();
             symbols.push(Symbol::NonTerminal(*nt_idx));
         }
-        ast::Symbol::Terminal(str) => {
-            // For now we support chars as terminals, but I'm too lazy to refactor the
-            // AST
-            let str = str.0.value();
-            let char = str.chars().next().unwrap();
-            symbols.push(Symbol::Terminal(char));
+        ast::Symbol::Terminal(ast::LitStr(str)) => {
+            symbols.push(Symbol::Terminal(
+                conversions.get(&str.value()).unwrap().clone(),
+            ));
         }
         ast::Symbol::Repeat(_) => {
             todo!("Repeat symbol not supported yet");
         }
-        ast::Symbol::Name(_, sym) => add_symbol(nt_indices, symbols, *sym),
+        ast::Symbol::Name(_, sym) => add_symbol(conversions, nt_indices, symbols, *sym),
     }
 }
