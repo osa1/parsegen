@@ -1,6 +1,6 @@
 //! Implementation of "first" sets
 
-use crate::grammar::{Grammar, NonTerminalIdx, Symbol};
+use crate::grammar::{Grammar, NonTerminalIdx, SymbolKind};
 use crate::terminal::TerminalReprIdx;
 
 use std::collections::hash_map::Entry;
@@ -87,8 +87,8 @@ pub fn generate_first_table<A>(grammar: &Grammar<TerminalReprIdx, A>) -> FirstTa
                     updated |= table.set_empty(non_terminal_idx);
                 }
                 for symbol in &production.symbols {
-                    match symbol {
-                        Symbol::NonTerminal(nt) => match table.get_first(*nt) {
+                    match &symbol.kind {
+                        SymbolKind::NonTerminal(nt) => match table.get_first(*nt) {
                             Some(FirstSet { empty, terminals }) => {
                                 if *empty {
                                     // Continue to the next symbol in the production
@@ -105,7 +105,7 @@ pub fn generate_first_table<A>(grammar: &Grammar<TerminalReprIdx, A>) -> FirstTa
                                 continue 'production_loop;
                             }
                         },
-                        Symbol::Terminal(terminal) => {
+                        SymbolKind::Terminal(terminal) => {
                             updated |= table.add_first(non_terminal_idx, terminal.clone());
                             continue 'production_loop;
                         }

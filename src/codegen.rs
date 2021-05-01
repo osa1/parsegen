@@ -1,7 +1,8 @@
-use crate::ast::{Conversion, FieldPattern, Ident, Lit, Path, Pattern, TokenEnum, Type};
+use crate::ast::{Conversion, FieldPattern, Ident, Lit, Name, Path, Pattern, TokenEnum, Type};
 use crate::first::generate_first_table;
 use crate::follow::generate_follow_table;
-use crate::grammar::{Grammar, NonTerminal};
+use crate::grammar::{Grammar, NonTerminal, NonTerminalIdx, Production, Symbol, SymbolKind};
+use crate::parse_table::{generate_parse_table, ParseTable};
 use crate::terminal::{TerminalReprArena, TerminalReprIdx};
 
 use fxhash::FxHashMap;
@@ -24,7 +25,7 @@ pub fn generate_ll1_parser(
     let (token_kind_fn_name, token_kind_fn_decl) =
         token_kind_fn(&tokens.type_name.0, &token_kind_type_name, tokens);
 
-    let (action_result_type_name, action_result_type_decl, _) =
+    let (action_result_type_name, action_result_type_decl, non_terminal_action_variant_name) =
         action_result_type(&grammar, &tokens.conversions);
 
     let (token_value_fn_name, token_value_fn_decl) = token_value_fn(
@@ -35,10 +36,16 @@ pub fn generate_ll1_parser(
 
     let first_table = generate_first_table(&grammar);
     let follow_table = generate_follow_table(&grammar, &first_table);
+    let parse_table = generate_parse_table(&grammar, &first_table, &follow_table);
 
     // Generate semantic action table, replace semantic actions in the grammar with their indices
     // in the table
-    let (semantic_action_table, grammar) = generate_semantic_action_table(grammar);
+    let (semantic_action_table, grammar) =
+        generate_semantic_action_table(grammar, &non_terminal_action_variant_name);
+
+    let production_array = generate_production_array(&grammar, terminal_arena);
+
+    let _ = generate_parse_table_code(&grammar, &parse_table, terminal_arena);
 
     let parse_fn = generate_parse_fn(&tokens.type_name.0);
 
@@ -47,12 +54,14 @@ pub fn generate_ll1_parser(
         #token_kind_fn_decl
         #action_result_type_decl
         #token_value_fn_decl
+        #(#semantic_action_table)*
+        #production_array
 
         type ParseError = (); // TODO
 
         enum Action {
             MatchNonTerminal(usize),
-            MatchTerminal(usize),
+            MatchTerminal(#token_kind_type_name),
             RunSemanticAction(usize),
         }
 
@@ -102,17 +111,195 @@ fn generate_parse_fn(token_type: &syn::Ident) -> TokenStream {
             input: &mut dyn Iterator<Item=(usize, #token_type, usize)>
         ) -> Result<ActionResult, ParseError>
         {
+            let mut action_stack: Vec<Action> = vec![Action::MatchNonTerminal(0)];
+            let mut value_stack: Vec<ActionResult> = vec![];
+
+            'next_token: for (token_index, token) in input.enumerate() {
+                loop {
+                    match action_stack.pop().unwrap() {
+                        Action::MatchNonTerminal(nt_idx) => {
+                            // let prod_idx = PARSE_TABLE[nt_idx][token_kind(token) as usize];
+                            todo!()
+                        }
+                        Action::MatchTerminal(_) => {
+                            todo!()
+                        }
+                        Action::RunSemanticAction(idx) => {
+                            (ACTIONS[idx])(&mut value_stack);
+                        }
+                    }
+                }
+            }
+
             todo!()
         }
     )
 }
 
-/// Generates semantic action table (an array of `fn(&mut Vec<ActionResult>)`s) and replaces
-/// semantic actions in the grammar with their indices in the array.
+/// Generates semantic action functions, semantic action table (array of semantic action functions)
+/// and replaces semantic actions in the grammar with their indices in the array.
 fn generate_semantic_action_table(
     grammar: Grammar<TerminalReprIdx, syn::Expr>,
-) -> (TokenStream, Grammar<TerminalReprIdx, usize>) {
-    todo!()
+    non_terminal_action_variant_name: &FxHashMap<String, syn::Ident>,
+) -> (Vec<TokenStream>, Grammar<TerminalReprIdx, usize>) {
+    let Grammar {
+        init,
+        non_terminals,
+    } = grammar;
+
+    // Action function declarations and the array
+    let mut decls: Vec<TokenStream> = vec![];
+    let mut fn_names: Vec<syn::Ident> = vec![];
+
+    let non_terminals: Vec<NonTerminal<TerminalReprIdx, usize>> = non_terminals
+        .into_iter()
+        .enumerate()
+        .map(
+            |(
+                nt_i,
+                NonTerminal {
+                    non_terminal,
+                    productions,
+                    return_ty,
+                },
+            )| {
+                let productions: Vec<Production<TerminalReprIdx, usize>> = productions
+                    .into_iter()
+                    .enumerate()
+                    .map(|(p_i, Production { symbols, action })| {
+                        // Statements to pop the values off the value stack and bind them, for the
+                        // pruduction's RHS
+                        let mut pop_code: Vec<TokenStream> = vec![];
+
+                        for Symbol { binder, kind: _ } in symbols.iter().rev() {
+                            match binder {
+                                None => {
+                                    pop_code.push(quote!(value_stack.pop()));
+                                }
+                                Some(Name {
+                                    mutable,
+                                    name: Ident(name),
+                                }) => {
+                                    let mut_ = if *mutable { quote!(mut) } else { quote!() };
+                                    pop_code.push(quote!(
+                                        let #mut_ #name = value_stack.pop().unwrap()
+                                    ));
+                                }
+                            }
+                        }
+
+                        let fn_name = syn::Ident::new(
+                            &format!("nt{}p{}_action", nt_i, p_i),
+                            Span::call_site(),
+                        );
+                        let fn_idx = decls.len();
+
+                        let non_terminal_variant =
+                            non_terminal_action_variant_name.get(&non_terminal).unwrap();
+
+                        decls.push(quote!(
+                            fn #fn_name(value_stack: &mut Vec<ActionResult>) {
+                                #(#pop_code;)*
+                                value_stack.push(ActionResult::#non_terminal_variant(#action));
+                            }
+                        ));
+
+                        fn_names.push(fn_name);
+
+                        Production {
+                            symbols,
+                            action: fn_idx,
+                        }
+                    })
+                    .collect();
+
+                NonTerminal {
+                    non_terminal,
+                    productions,
+                    return_ty,
+                }
+            },
+        )
+        .collect();
+
+    let n_fns = fn_names.len();
+    decls.push(quote!(
+        static ACTIONS: [fn(&mut Vec<ActionResult>); #n_fns] = [ #(#fn_names),* ];
+    ));
+
+    (
+        decls,
+        Grammar {
+            init,
+            non_terminals,
+        },
+    )
+}
+
+/// Generates `PARSE_TABLE: [[usize]]` that maps (non_terminal_idx, terminal_idx) to
+/// production_idx.
+fn generate_parse_table_code(
+    grammar: &Grammar<TerminalReprIdx, usize>,
+    parse_table: &ParseTable,
+    terminals: &TerminalReprArena,
+) -> TokenStream {
+    let mut non_terminal_array_elems: Vec<TokenStream> = vec![];
+
+    for ((non_terminal_idx, terminal_idx), production_idx) in &parse_table.table {
+        // TODO
+    }
+
+    let n_non_terminals = non_terminal_array_elems.len();
+    let n_terminals = terminals.len_terminals();
+    quote!(
+        static PARSE_TABLE: [[usize; #n_terminals]; #n_non_terminals] = [
+            #(#non_terminal_array_elems),*
+        ];
+    )
+}
+
+/// Generates a `PRODUCTIONS: [[Action]]` array, indexed by production index.
+///
+/// TODO: Production indices are normally local to non-terminals. Perhaps refactor it?
+fn generate_production_array(
+    grammar: &Grammar<TerminalReprIdx, usize>,
+    terminals: &TerminalReprArena,
+) -> TokenStream {
+    let mut action_array_names: Vec<syn::Ident> = vec![];
+    let mut action_arrays: Vec<TokenStream> = vec![];
+
+    for (p_idx, (_, _, production)) in grammar.production_indices().enumerate() {
+        let array_name = syn::Ident::new(&format!("PROD_{}", p_idx), Span::call_site());
+        let action_idx = production.action;
+        let mut array_elems: Vec<TokenStream> =
+            vec![quote!(Action::RunSemanticAction(#action_idx))];
+
+        for symbol in &production.symbols {
+            match symbol.kind {
+                SymbolKind::NonTerminal(non_terminal_idx) => {
+                    let idx = non_terminal_idx.as_usize();
+                    array_elems.push(quote!(Action::MatchNonTerminal(#idx)));
+                }
+                SymbolKind::Terminal(terminal_idx) => {
+                    let terminal_path = terminals.get_enum_path(terminal_idx);
+                    array_elems.push(quote!(Action::MatchNonTerminal(#terminal_path)));
+                }
+            }
+        }
+
+        let n_actions = array_elems.len();
+        action_arrays.push(quote!(
+            static #array_name: [Action; #n_actions] = [#(#array_elems),*];
+        ));
+
+        action_array_names.push(array_name);
+    }
+
+    let n_elems = action_arrays.len();
+    quote!(
+        #(#action_arrays)*
+        static PRODUCTIONS: [&'static [Action]; #n_elems] = [#(#action_array_names),*];
+    )
 }
 
 /// Generates a `fn token_kind(& #token_type) -> #token_kind_type` that returns kind of a token.
@@ -169,7 +356,7 @@ fn token_value_fn(
         variants.push(quote!(
             #pattern_code => {
                 // TODO: This clone needs to go
-                #action_result_type_name::#variant_id((#(#pattern_idents.clone()),*))
+                #action_result_type_name::#variant_id(#(#pattern_idents.clone()),*)
             }
         ));
     }

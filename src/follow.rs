@@ -1,7 +1,7 @@
 //! Implementation of "follow" sets
 
 use crate::first::FirstTable;
-use crate::grammar::{Grammar, NonTerminalIdx, Symbol};
+use crate::grammar::{Grammar, NonTerminalIdx, Symbol, SymbolKind};
 use crate::terminal::TerminalReprIdx;
 
 use std::collections::hash_map::Entry;
@@ -19,7 +19,7 @@ impl Default for FollowTable {
 }
 
 #[derive(Debug, Clone)]
-struct FollowSet {
+pub struct FollowSet {
     end: bool,
     terminals: FxHashSet<TerminalReprIdx>,
 }
@@ -30,6 +30,16 @@ impl Default for FollowSet {
             end: false,
             terminals: Default::default(),
         }
+    }
+}
+
+impl FollowSet {
+    pub fn terminals(&self) -> &FxHashSet<TerminalReprIdx> {
+        &self.terminals
+    }
+
+    pub fn has_end(&self) -> bool {
+        self.end
     }
 }
 
@@ -61,7 +71,7 @@ impl FollowTable {
         }
     }
 
-    fn get_follow(&self, non_terminal_idx: NonTerminalIdx) -> Option<&FollowSet> {
+    pub fn get_follow(&self, non_terminal_idx: NonTerminalIdx) -> Option<&FollowSet> {
         self.0.get(&non_terminal_idx)
     }
 }
@@ -83,10 +93,10 @@ pub fn generate_follow_table<A>(
             // For each production
             for (non_terminal_idx_, _, production) in grammar.production_indices() {
                 // See if the non-terminal is in the RHS, and if it is, what's on the right
-                let mut symbol_iter = production.symbols().iter().cloned();
-                let mut current_symbol: Option<Symbol<TerminalReprIdx>> = symbol_iter.next();
+                let mut symbol_iter = production.symbols().iter().map(|s| s.kind.clone());
+                let mut current_symbol: Option<SymbolKind<TerminalReprIdx>> = symbol_iter.next();
                 'symbol_loop_0: while let Some(symbol) = current_symbol.take() {
-                    if symbol != Symbol::NonTerminal(non_terminal_idx) {
+                    if symbol != SymbolKind::NonTerminal(non_terminal_idx) {
                         current_symbol = symbol_iter.next();
                         continue;
                     }
@@ -94,7 +104,7 @@ pub fn generate_follow_table<A>(
                     // Skip empty symbols
                     'symbol_loop_1: while let Some(next_symbol_) = next_symbol {
                         match next_symbol_ {
-                            Symbol::Terminal(next_terminal) => {
+                            SymbolKind::Terminal(next_terminal) => {
                                 updated |=
                                     table.add_follow(non_terminal_idx, next_terminal.clone());
                                 // There may be more of the non-terminal we're looking for in
@@ -102,7 +112,7 @@ pub fn generate_follow_table<A>(
                                 current_symbol = symbol_iter.next();
                                 continue 'symbol_loop_0;
                             }
-                            Symbol::NonTerminal(next_non_terminal) => {
+                            SymbolKind::NonTerminal(next_non_terminal) => {
                                 let next_first_set =
                                     first_table.get_first(next_non_terminal).unwrap();
                                 for next_first in next_first_set.terminals().iter() {
@@ -115,7 +125,8 @@ pub fn generate_follow_table<A>(
                                 } else {
                                     // Same as the terminal case, we may have more of the
                                     // non-terminal we're looking for in the RHS, so continue
-                                    current_symbol = Some(Symbol::NonTerminal(next_non_terminal));
+                                    current_symbol =
+                                        Some(SymbolKind::NonTerminal(next_non_terminal));
                                     continue 'symbol_loop_0;
                                 }
                             }

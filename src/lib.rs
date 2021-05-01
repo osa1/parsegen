@@ -2,18 +2,19 @@
 
 mod ast;
 mod codegen;
-mod earley;
 mod first;
 mod follow;
 mod grammar;
-mod graphviz;
-mod ll1;
 mod lower;
-mod simulate;
+mod parse_table;
 mod terminal;
 
-#[cfg(test)]
-mod test_grammars;
+// mod earley;
+// mod simulate;
+// mod graphviz;
+
+// #[cfg(test)]
+// mod test_grammars;
 
 use proc_macro::TokenStream;
 
@@ -47,8 +48,8 @@ pub fn parser(input: TokenStream) -> TokenStream {
         codegen::token_kind_type(&token_enum);
 
     let grammar = lower::lower(non_terminals, &terminal_repr_arena);
-    println!("Grammar:");
-    println!("{:#?}", grammar);
+    // println!("Grammar:");
+    // println!("{:#?}", grammar);
 
     codegen::generate_ll1_parser(
         grammar,

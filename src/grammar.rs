@@ -58,8 +58,14 @@ pub struct Production<T, A> {
     pub action: A,
 }
 
+#[derive(Debug)]
+pub struct Symbol<T> {
+    pub binder: Option<ast::Name>,
+    pub kind: SymbolKind<T>,
+}
+
 #[derive(Debug, PartialEq, Eq, Clone)]
-pub enum Symbol<T> {
+pub enum SymbolKind<T> {
     NonTerminal(NonTerminalIdx),
     Terminal(T),
 }

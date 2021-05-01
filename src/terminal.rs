@@ -1,5 +1,7 @@
 //! Implements an arena for terminal representations
 
+use std::iter::FromIterator;
+
 use fxhash::FxHashMap;
 
 #[derive(Debug)]
@@ -38,5 +40,29 @@ impl TerminalReprArena {
 
     pub fn get_name_idx(&self, user_name: &str) -> TerminalReprIdx {
         self.map.get(user_name).unwrap().to_owned()
+    }
+
+    /// Get path to the enum variant for the terminal's kind
+    pub fn get_enum_path(&self, idx: TerminalReprIdx) -> syn::Path {
+        syn::Path {
+            leading_colon: None,
+            segments: syn::punctuated::Punctuated::from_iter(
+                vec![
+                    syn::PathSegment {
+                        ident: self.kind_type_name.clone(),
+                        arguments: syn::PathArguments::None,
+                    },
+                    syn::PathSegment {
+                        ident: self.arena[idx.0].clone(),
+                        arguments: syn::PathArguments::None,
+                    },
+                ]
+                .into_iter(),
+            ),
+        }
+    }
+
+    pub fn len_terminals(&self) -> usize {
+        self.arena.len()
     }
 }

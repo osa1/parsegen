@@ -1,5 +1,5 @@
 use crate::ast;
-use crate::grammar::{Grammar, NonTerminalIdx, Symbol};
+use crate::grammar::{Grammar, NonTerminalIdx, Symbol, SymbolKind};
 use crate::terminal::{TerminalReprArena, TerminalReprIdx};
 
 use fxhash::FxHashMap;
@@ -32,7 +32,7 @@ pub fn lower(
         for prod in productions {
             let mut symbols: Vec<Symbol<TerminalReprIdx>> = vec![];
             for sym in prod.symbols {
-                add_symbol(arena, &nt_indices, &mut symbols, sym);
+                add_symbol(arena, &nt_indices, &mut symbols, None, sym);
             }
             let nt_idx = nt_indices.get(&name.0.to_string()).unwrap();
 
@@ -52,20 +52,29 @@ fn add_symbol(
     arena: &TerminalReprArena,
     nt_indices: &FxHashMap<String, NonTerminalIdx>,
     symbols: &mut Vec<Symbol<TerminalReprIdx>>,
+    binder: Option<ast::Name>,
     symbol: ast::Symbol,
 ) {
     match symbol {
         ast::Symbol::NonTerminal(nt) => {
             let nt_name = nt.0.to_string();
             let nt_idx = nt_indices.get(&nt_name).unwrap();
-            symbols.push(Symbol::NonTerminal(*nt_idx));
+            symbols.push(Symbol {
+                binder,
+                kind: SymbolKind::NonTerminal(*nt_idx),
+            });
         }
         ast::Symbol::Terminal(ast::LitStr(str)) => {
-            symbols.push(Symbol::Terminal(arena.get_name_idx(&str.value())));
+            symbols.push(Symbol {
+                binder,
+                kind: SymbolKind::Terminal(arena.get_name_idx(&str.value())),
+            });
         }
         ast::Symbol::Repeat(_) => {
             todo!("Repeat symbol not supported yet");
         }
-        ast::Symbol::Name(_, sym) => add_symbol(arena, nt_indices, symbols, *sym),
+        ast::Symbol::Name(binder, sym) => {
+            add_symbol(arena, nt_indices, symbols, Some(binder), *sym)
+        }
     }
 }
