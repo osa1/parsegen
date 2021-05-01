@@ -10,6 +10,7 @@ pub struct Path(pub syn::Path);
 
 pub struct Lit(pub syn::Lit);
 
+#[derive(Clone)]
 pub struct Type(pub syn::Type);
 
 pub struct Ident(pub syn::Ident);
@@ -168,7 +169,7 @@ pub struct NonTerminal {
     pub visibility: Visibility,
     pub name: Ident,
     // pub macro_args: Vec<Ident>,
-    pub type_decl: Option<Type>,
+    pub type_decl: Type,
     pub productions: Vec<Production>,
 }
 
@@ -366,14 +367,8 @@ impl Parse for NonTerminal {
     fn parse(input: &ParseBuffer) -> syn::Result<Self> {
         let visibility = input.parse::<Visibility>()?;
         let name = input.parse::<Ident>()?;
-        let type_decl: Option<Type> = {
-            if input.peek(syn::token::Colon) {
-                input.parse::<syn::token::Colon>()?;
-                Some(input.parse::<Type>()?)
-            } else {
-                None
-            }
-        };
+        input.parse::<syn::token::Colon>()?;
+        let type_decl = input.parse::<Type>()?;
         input.parse::<syn::token::Eq>()?;
         let mut productions: Vec<Production> = vec![];
         if input.peek(syn::token::Brace) {
@@ -608,10 +603,10 @@ fn parse_symbol() {
 #[test]
 fn parse_nonterminal() {
     syn::parse_str::<NonTerminal>("pub Test: A = { };").unwrap();
-    syn::parse_str::<NonTerminal>(r#"Test = "a" "b" => (),"#).unwrap();
+    syn::parse_str::<NonTerminal>(r#"Test: A = "a" "b" => (),"#).unwrap();
     let non_terminal = syn::parse_str::<NonTerminal>(
         r#"
-            Test = {
+            Test: usize = {
                 "a" "b" => {
                     1
                 },

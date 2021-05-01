@@ -13,7 +13,7 @@ pub fn lower(
 
     for nt in &non_terminals {
         let nt_name = nt.name.0.to_string();
-        let nt_idx = grammar.add_non_terminal(nt_name.clone());
+        let nt_idx = grammar.add_non_terminal(nt_name.clone(), nt.type_decl.clone());
         nt_indices.insert(nt_name, nt_idx);
     }
 

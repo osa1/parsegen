@@ -1,8 +1,9 @@
-use crate::ast::{Conversion, FieldPattern, Ident, Lit, Path, Pattern, TokenEnum};
+use crate::ast::{Conversion, FieldPattern, Ident, Lit, Path, Pattern, TokenEnum, Type};
 use crate::grammar::{Grammar, NonTerminal, NonTerminalIdx, Production, Symbol};
+use crate::ll1;
 
 use fxhash::FxHashMap;
-use proc_macro2::TokenStream;
+use proc_macro2::{Span, TokenStream};
 use quote::quote;
 
 pub struct SemanticAction {
@@ -21,10 +22,24 @@ pub fn generate_ll1_parser<A>(
     let (token_kind_fn_name, token_kind_fn_decl) =
         token_kind_fn(&tokens.type_name.0, &token_kind_type_name, tokens);
 
+    let (action_result_type_name, action_result_type_decl, _) =
+        action_result_type(grammar, &tokens.conversions);
+
+    let (token_value_fn_name, token_value_fn_decl) = token_value_fn(
+        &tokens.conversions,
+        &tokens.type_name.0,
+        &action_result_type_name,
+    );
+
+    // let first_table: ll1::FirstTable<syn::Ident> = ll1::generate_first_table(grammar);
+    // let follow_table: ll1::FollowTable<syn::Ident> =
+    //     ll1::generate_follow_table::<syn::Ident, A>(grammar, &first_table);
+
     quote!(
         #token_kind_type_decl
-
         #token_kind_fn_decl
+        #action_result_type_decl
+        #token_value_fn_decl
     )
 }
 
@@ -75,7 +90,10 @@ fn token_kind_fn(
         conversions,
     } = tokens;
 
-    let fn_name = syn::Ident::new(&(type_name.to_string() + "_kind"), type_name.span());
+    let fn_name = syn::Ident::new(
+        &(type_name.to_string().to_lowercase() + "_kind"),
+        type_name.span(),
+    );
     let arg_name = syn::Ident::new("token", type_name.span());
 
     let match_alts: Vec<TokenStream> = conversions
@@ -92,6 +110,37 @@ fn token_kind_fn(
         fn #fn_name(#arg_name: &#user_token_type_name) -> #token_kind_type_name {
             match #arg_name {
                 #(#match_alts,)*
+            }
+        }
+    );
+
+    (fn_name, code)
+}
+
+/// Generates a `fn token_value(& #token_type) -> ActionResult` function that returns the value of
+/// a matched token.
+fn token_value_fn(
+    tokens: &[Conversion],
+    user_token_type_name: &syn::Ident,
+    action_result_type_name: &syn::Ident,
+) -> (syn::Ident, TokenStream) {
+    let fn_name = syn::Ident::new("token_value", Span::call_site());
+
+    let mut variants: Vec<TokenStream> = vec![];
+    for (i, Conversion { span, from, to }) in tokens.iter().enumerate() {
+        let (pattern_code, pattern_idents) = generate_pattern_syn_with_idents(to);
+        let variant_id = syn::Ident::new(&format!("Token{}", i), Span::call_site());
+        variants.push(quote!(
+            #pattern_code => {
+                #action_result_type_name::#variant_id((#(#pattern_idents),*))
+            }
+        ));
+    }
+
+    let code = quote!(
+        fn #fn_name(token: & #user_token_type_name) -> #action_result_type_name {
+            match token {
+                #(#variants)*
             }
         }
     );
@@ -142,5 +191,140 @@ fn pattern_ignore(pattern: &Pattern) -> TokenStream {
         Pattern::Lit(Lit(lit)) => quote!(#lit),
 
         Pattern::Choose(_) => quote!(_),
+    }
+}
+
+/// Declares an `ActionResult` enum type with a variant for each non-terminal in the grammar and
+/// each token with value. Used in the value stack for terminals and non-terminals.
+fn action_result_type<A>(
+    grammar: &Grammar<syn::Ident, A>,
+    tokens: &[Conversion],
+) -> (syn::Ident, TokenStream, FxHashMap<String, syn::Ident>) {
+    let action_result_type_name = syn::Ident::new("ActionResult", Span::call_site());
+
+    let mut variants: Vec<TokenStream> = vec![];
+    let mut map: FxHashMap<String, syn::Ident> = Default::default();
+
+    // Generate variants for tokens
+    // TODO: Do we need variants for tokens without values? If not, remove those. If yes, then use
+    // a single variant for all value-less tokens.
+    for (i, Conversion { to, .. }) in tokens.iter().enumerate() {
+        let variant_id = syn::Ident::new(&format!("Token{}", i), Span::call_site());
+        let pattern_types = pattern_types(to);
+        variants.push(quote!(#variant_id(#(#pattern_types,)*)));
+    }
+
+    // Generate variants for non-terminals
+    for NonTerminal {
+        non_terminal,
+        return_ty: Type(pattern_ty),
+        ..
+    } in grammar.non_terminals()
+    {
+        let variant_id =
+            syn::Ident::new(&format!("NonTerminal{}", non_terminal), Span::call_site());
+        variants.push(quote!(#variant_id(#pattern_ty)));
+        map.insert(non_terminal.clone(), variant_id);
+    }
+
+    let code = quote!(
+        enum #action_result_type_name {
+            #(#variants,)*
+        }
+    );
+
+    (action_result_type_name, code, map)
+}
+
+fn pattern_types(pat: &Pattern) -> Vec<&syn::Type> {
+    let mut ret = vec![];
+    pattern_types_(pat, &mut ret);
+    ret
+}
+
+fn pattern_types_<'a, 'b>(pat: &'a Pattern, acc: &'b mut Vec<&'a syn::Type>) {
+    match pat {
+        Pattern::Choose(Type(ty)) => {
+            acc.push(ty);
+        }
+
+        Pattern::Enum(_, pats) | Pattern::Tuple(pats) => {
+            for pat in pats {
+                pattern_types_(pat, acc);
+            }
+        }
+
+        Pattern::Struct(_, pats, _) => {
+            for FieldPattern { pattern, .. } in pats {
+                pattern_types_(pattern, acc);
+            }
+        }
+
+        Pattern::Path(_) | Pattern::Underscore | Pattern::DotDot | Pattern::Lit(_) => {}
+    }
+}
+
+/// Given a pattern, generate the code for it and return variables generated for the `Choose` nodes
+fn generate_pattern_syn_with_idents(pat: &Pattern) -> (TokenStream, Vec<syn::Ident>) {
+    let mut idents = vec![];
+    let code = generate_pattern_syn_with_idents_(pat, &mut idents);
+    (code, idents)
+}
+
+fn generate_pattern_syn_with_idents_(pat: &Pattern, idents: &mut Vec<syn::Ident>) -> TokenStream {
+    match pat {
+        Pattern::Choose(_) => {
+            let ident = syn::Ident::new(&format!("f{}", idents.len()), Span::call_site());
+            let code = quote!(#ident);
+            idents.push(ident);
+            code
+        }
+
+        Pattern::Enum(Path(path), pats) => {
+            let pats: Vec<TokenStream> = pats
+                .iter()
+                .map(|pat| generate_pattern_syn_with_idents_(pat, idents))
+                .collect();
+
+            quote!(#path(#(#pats),*))
+        }
+
+        Pattern::Struct(Path(path), fields, dots) => {
+            let mut pats: Vec<TokenStream> = fields
+                .iter()
+                .map(
+                    |FieldPattern {
+                         field_name,
+                         pattern,
+                     }| {
+                        let pattern = generate_pattern_syn_with_idents_(pattern, idents);
+                        quote!(#field_name: #pattern,)
+                    },
+                )
+                .collect();
+
+            if *dots {
+                pats.push(quote!(..));
+            }
+
+            quote!(#path { #(#pats)* })
+        }
+
+        Pattern::Tuple(pats) => {
+            let pats: Vec<TokenStream> = pats
+                .iter()
+                .map(|pat| generate_pattern_syn_with_idents_(pat, idents))
+                .collect();
+
+            quote!((#(#pats),*))
+        }
+
+        Pattern::Path(Path(path)) => quote!(#path),
+
+        Pattern::Underscore => quote!(_),
+
+        Pattern::DotDot => quote!(..),
+
+        Pattern::Lit(Lit(lit)) => quote!(#lit),
     }
 }

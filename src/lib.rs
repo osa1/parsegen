@@ -12,7 +12,6 @@ mod simulate;
 #[cfg(test)]
 mod test_grammars;
 
-use fxhash::FxHashMap;
 use proc_macro::TokenStream;
 
 #[proc_macro]

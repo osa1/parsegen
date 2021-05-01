@@ -3,12 +3,16 @@ use parsegen::parser;
 #[test]
 fn simple_1() {
     enum Token {
-        X,
+        LParen,
+        Str(String),
+        Int(i64),
     }
 
     parser! {
         enum Token {
-            "X" => Token::X,
+            "a" => Token::LParen,
+            "str" => Token::Str(<String>),
+            "int" => Token::Int(<i64>),
         }
     }
 }

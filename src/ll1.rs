@@ -6,7 +6,7 @@ use std::hash::Hash;
 
 use fxhash::{FxHashMap, FxHashSet};
 
-trait Token {
+pub trait Token {
     type Kind: Eq + Copy + Hash + fmt::Debug;
     type Value: fmt::Debug;
 
@@ -29,7 +29,7 @@ impl Token for char {
 
 /// Maps non-terminals to their first sets.
 #[derive(Debug)]
-struct FirstTable<T: Hash + Eq>(FxHashMap<NonTerminalIdx, FirstSet<T>>);
+pub struct FirstTable<T: Hash + Eq>(FxHashMap<NonTerminalIdx, FirstSet<T>>);
 
 impl<T: Hash + Eq> Default for FirstTable<T> {
     fn default() -> Self {
@@ -85,7 +85,7 @@ impl<T: Hash + Eq> FirstTable<T> {
     }
 }
 
-fn generate_first_table<T: Eq + Hash + Clone, A>(grammar: &Grammar<T, A>) -> FirstTable<T> {
+pub fn generate_first_table<T: Eq + Hash + Clone, A>(grammar: &Grammar<T, A>) -> FirstTable<T> {
     let mut table: FirstTable<T> = Default::default();
 
     let mut updated = true;
@@ -133,7 +133,7 @@ fn generate_first_table<T: Eq + Hash + Clone, A>(grammar: &Grammar<T, A>) -> Fir
 
 /// Maps non-terminals fo their follow sets.
 #[derive(Debug)]
-struct FollowTable<T: Hash + Eq>(FxHashMap<NonTerminalIdx, FollowSet<T>>);
+pub struct FollowTable<T: Hash + Eq>(FxHashMap<NonTerminalIdx, FollowSet<T>>);
 
 impl<T: Hash + Eq> Default for FollowTable<T> {
     fn default() -> Self {
@@ -189,7 +189,7 @@ impl<T: Hash + Eq> FollowTable<T> {
     }
 }
 
-fn generate_follow_table<T: Token, A>(
+pub fn generate_follow_table<T: Token, A>(
     grammar: &Grammar<T::Kind, A>,
     first_table: &FirstTable<T::Kind>,
 ) -> FollowTable<T::Kind> {

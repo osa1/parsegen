@@ -1,5 +1,7 @@
 //! A lowered representation of grammars
 
+use crate::ast;
+
 use std::convert::TryFrom;
 
 #[derive(Debug, PartialEq, Eq, Clone, Copy, PartialOrd, Ord, Hash)]
@@ -47,6 +49,7 @@ pub struct NonTerminal<T, A> {
     pub non_terminal: String,
     // Indexed by `ProductionIdx`
     pub productions: Vec<Production<T, A>>,
+    pub return_ty: ast::Type,
 }
 
 #[derive(Debug)]
@@ -78,11 +81,16 @@ impl<T, A> Grammar<T, A> {
         self.init.unwrap()
     }
 
-    pub fn add_non_terminal(&mut self, non_terminal: String) -> NonTerminalIdx {
+    pub fn add_non_terminal(
+        &mut self,
+        non_terminal: String,
+        return_ty: ast::Type,
+    ) -> NonTerminalIdx {
         let idx = self.non_terminals.len();
         self.non_terminals.push(NonTerminal {
             non_terminal,
             productions: Default::default(),
+            return_ty,
         });
         NonTerminalIdx(idx as u32)
     }
@@ -215,6 +223,10 @@ impl<T, A> Grammar<T, A> {
             non_terminal_idx: NonTerminalIdx(0),
             production_idx: ProductionIdx(0),
         }
+    }
+
+    pub fn non_terminals(&self) -> &[NonTerminal<T, A>] {
+        &self.non_terminals
     }
 
     pub fn non_terminal_indices(
