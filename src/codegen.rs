@@ -255,7 +255,7 @@ fn generate_parse_table_code(
 
 /// Generates a `PRODUCTIONS: [[Action]]` array, indexed by production index.
 ///
-/// TODO: Production indices are normally local to non-terminals. Perhaps refactor it?
+// NB. Index of a production in the array == the production's action idx
 fn generate_production_array(
     grammar: &Grammar<TerminalReprIdx, usize>,
     terminals: &TerminalReprArena,
@@ -263,7 +263,12 @@ fn generate_production_array(
     let mut action_array_names: Vec<syn::Ident> = vec![];
     let mut action_arrays: Vec<TokenStream> = vec![];
 
+    let mut n_prod = 0;
     for (p_idx, (_, _, production)) in grammar.production_indices().enumerate() {
+        // Just as a sanity check, production's action idx should be the index of the production in
+        // the array
+        assert_eq!(production.action, n_prod);
+
         let array_name = syn::Ident::new(&format!("PROD_{}", p_idx), Span::call_site());
         let action_idx = production.action;
         let mut array_elems: Vec<TokenStream> =
@@ -288,6 +293,8 @@ fn generate_production_array(
         ));
 
         action_array_names.push(array_name);
+
+        n_prod += 1;
     }
 
     let n_elems = action_arrays.len();
