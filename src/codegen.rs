@@ -1,6 +1,10 @@
 use crate::ast::{Conversion, FieldPattern, Ident, Lit, Path, Pattern, TokenEnum, Type};
+use crate::first::generate_first_table;
+use crate::follow::generate_follow_table;
 use crate::grammar::{Grammar, NonTerminal, NonTerminalIdx, Production, Symbol};
-use crate::ll1;
+use crate::terminal::{TerminalReprArena, TerminalReprIdx};
+
+use std::iter::FromIterator;
 
 use fxhash::FxHashMap;
 use proc_macro2::{Span, TokenStream};
@@ -13,11 +17,11 @@ pub struct SemanticAction {
 
 // Terminals in the grammar are the qualified enum variants (e.g. `TokenKind::T0`)
 pub fn generate_ll1_parser<A>(
-    grammar: &Grammar<syn::Ident, A>,
+    grammar: &Grammar<TerminalReprIdx, A>,
     tokens: &TokenEnum,
     token_kind_type_name: syn::Ident,
     token_kind_type_decl: TokenStream,
-    token_kind_map: FxHashMap<String, syn::Ident>,
+    terminal_arena: &TerminalReprArena,
 ) -> TokenStream {
     let (token_kind_fn_name, token_kind_fn_decl) =
         token_kind_fn(&tokens.type_name.0, &token_kind_type_name, tokens);
@@ -31,9 +35,8 @@ pub fn generate_ll1_parser<A>(
         &action_result_type_name,
     );
 
-    // let first_table: ll1::FirstTable<syn::Ident> = ll1::generate_first_table(grammar);
-    // let follow_table: ll1::FollowTable<syn::Ident> =
-    //     ll1::generate_follow_table::<syn::Ident, A>(grammar, &first_table);
+    let first_table = generate_first_table(grammar);
+    let follow_table = generate_follow_table(grammar, &first_table);
 
     quote!(
         #token_kind_type_decl
@@ -53,30 +56,29 @@ pub fn generate_ll1_parser<A>(
 /// - A map from token names (as written by the user in `enum Token { ... }`) to the their token
 ///   kind enum variants
 ///
-pub fn token_kind_type(
-    tokens: &TokenEnum,
-) -> (syn::Ident, TokenStream, FxHashMap<String, syn::Ident>) {
+pub fn token_kind_type(tokens: &TokenEnum) -> (syn::Ident, TokenStream, TerminalReprArena) {
     let TokenEnum {
         type_name: Ident(type_name),
         conversions,
     } = tokens;
 
-    let mut map: FxHashMap<String, syn::Ident> = Default::default();
-
     let type_name = syn::Ident::new(&(type_name.to_string() + "Kind"), type_name.span());
+
+    let mut arena = TerminalReprArena::new(type_name.clone());
+
     let enum_alts: Vec<syn::Ident> = conversions
         .iter()
         .enumerate()
         .map(|(i, conv)| {
             let ident = syn::Ident::new(&format!("T{}", i), conv.span);
-            map.insert(conv.from.clone(), ident.clone());
+            arena.new_terminal(conv.from.clone(), ident.clone());
             ident
         })
         .collect();
 
     let code = quote!(enum #type_name { #(#enum_alts,)* });
 
-    (type_name, code, map)
+    (type_name, code, arena)
 }
 
 /// Generates a `fn token_kind(& #token_type) -> #token_kind_type` that returns kind of a token.
@@ -197,8 +199,8 @@ fn pattern_ignore(pattern: &Pattern) -> TokenStream {
 
 /// Declares an `ActionResult` enum type with a variant for each non-terminal in the grammar and
 /// each token with value. Used in the value stack for terminals and non-terminals.
-fn action_result_type<A>(
-    grammar: &Grammar<syn::Ident, A>,
+fn action_result_type<T, A>(
+    grammar: &Grammar<T, A>,
     tokens: &[Conversion],
 ) -> (syn::Ident, TokenStream, FxHashMap<String, syn::Ident>) {
     let action_result_type_name = syn::Ident::new("ActionResult", Span::call_site());

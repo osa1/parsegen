@@ -3,11 +3,14 @@
 mod ast;
 mod codegen;
 mod earley;
+mod first;
+mod follow;
 mod grammar;
 mod graphviz;
 mod ll1;
 mod lower;
 mod simulate;
+mod terminal;
 
 #[cfg(test)]
 mod test_grammars;
@@ -40,10 +43,10 @@ pub fn parser(input: TokenStream) -> TokenStream {
 
     // Generate the token kind enum type before lowering the grammar, to avoid mapping terminal
     // strings in the parser definition to token kind enum variants multiple times.
-    let (token_kind_type_name, token_kind_type_decl, token_kind_map) =
+    let (token_kind_type_name, token_kind_type_decl, terminal_repr_arena) =
         codegen::token_kind_type(&token_enum);
 
-    let grammar = lower::lower(non_terminals, &token_kind_map);
+    let grammar = lower::lower(non_terminals, &terminal_repr_arena);
     println!("Grammar:");
     println!("{:#?}", grammar);
 
@@ -52,7 +55,7 @@ pub fn parser(input: TokenStream) -> TokenStream {
         &token_enum,
         token_kind_type_name,
         token_kind_type_decl,
-        token_kind_map,
+        &terminal_repr_arena,
     )
     .into()
 }

@@ -1,12 +1,13 @@
 use crate::ast;
 use crate::grammar::{Grammar, NonTerminalIdx, Symbol};
+use crate::terminal::{TerminalReprArena, TerminalReprIdx};
 
 use fxhash::FxHashMap;
 
 pub fn lower(
     non_terminals: Vec<ast::NonTerminal>,
-    conversions: &FxHashMap<String, syn::Ident>,
-) -> Grammar<syn::Ident, ()> {
+    arena: &TerminalReprArena,
+) -> Grammar<TerminalReprIdx, ()> {
     let mut grammar = Grammar::new();
 
     let mut nt_indices: FxHashMap<String, NonTerminalIdx> = Default::default();
@@ -28,9 +29,9 @@ pub fn lower(
         }
 
         for prod in productions {
-            let mut symbols: Vec<Symbol<syn::Ident>> = vec![];
+            let mut symbols: Vec<Symbol<TerminalReprIdx>> = vec![];
             for sym in prod.symbols {
-                add_symbol(conversions, &nt_indices, &mut symbols, sym);
+                add_symbol(arena, &nt_indices, &mut symbols, sym);
             }
             let nt_idx = nt_indices.get(&name.0.to_string()).unwrap();
             grammar.add_production(*nt_idx, symbols, ());
@@ -41,9 +42,9 @@ pub fn lower(
 }
 
 fn add_symbol(
-    conversions: &FxHashMap<String, syn::Ident>,
+    arena: &TerminalReprArena,
     nt_indices: &FxHashMap<String, NonTerminalIdx>,
-    symbols: &mut Vec<Symbol<syn::Ident>>,
+    symbols: &mut Vec<Symbol<TerminalReprIdx>>,
     symbol: ast::Symbol,
 ) {
     match symbol {
@@ -53,13 +54,11 @@ fn add_symbol(
             symbols.push(Symbol::NonTerminal(*nt_idx));
         }
         ast::Symbol::Terminal(ast::LitStr(str)) => {
-            symbols.push(Symbol::Terminal(
-                conversions.get(&str.value()).unwrap().clone(),
-            ));
+            symbols.push(Symbol::Terminal(arena.get_name_idx(&str.value())));
         }
         ast::Symbol::Repeat(_) => {
             todo!("Repeat symbol not supported yet");
         }
-        ast::Symbol::Name(_, sym) => add_symbol(conversions, nt_indices, symbols, *sym),
+        ast::Symbol::Name(_, sym) => add_symbol(arena, nt_indices, symbols, *sym),
     }
 }
