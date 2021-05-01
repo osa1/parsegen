@@ -51,7 +51,7 @@ pub fn parser(input: TokenStream) -> TokenStream {
     println!("{:#?}", grammar);
 
     codegen::generate_ll1_parser(
-        &grammar,
+        grammar,
         &token_enum,
         token_kind_type_name,
         token_kind_type_decl,

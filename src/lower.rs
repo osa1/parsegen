@@ -7,7 +7,7 @@ use fxhash::FxHashMap;
 pub fn lower(
     non_terminals: Vec<ast::NonTerminal>,
     arena: &TerminalReprArena,
-) -> Grammar<TerminalReprIdx, ()> {
+) -> Grammar<TerminalReprIdx, syn::Expr> {
     let mut grammar = Grammar::new();
 
     let mut nt_indices: FxHashMap<String, NonTerminalIdx> = Default::default();
@@ -24,8 +24,9 @@ pub fn lower(
     {
         // TODO: Not sure why we need this?
         if productions.is_empty() {
-            let nt_idx = nt_indices.get(&name.0.to_string()).unwrap();
-            grammar.add_production(*nt_idx, vec![], ());
+            // let nt_idx = nt_indices.get(&name.0.to_string()).unwrap();
+            // grammar.add_production(*nt_idx, vec![], ());
+            todo!("Empty productions not supported yet");
         }
 
         for prod in productions {
@@ -34,7 +35,13 @@ pub fn lower(
                 add_symbol(arena, &nt_indices, &mut symbols, sym);
             }
             let nt_idx = nt_indices.get(&name.0.to_string()).unwrap();
-            grammar.add_production(*nt_idx, symbols, ());
+
+            let action = match prod.action {
+                ast::Action::User(ast::Expr(expr)) => expr,
+                ast::Action::Fallible(_) => todo!("Fallible actions not supported yet"),
+            };
+
+            grammar.add_production(*nt_idx, symbols, action);
         }
     }
 

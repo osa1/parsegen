@@ -1,10 +1,8 @@
 use crate::ast::{Conversion, FieldPattern, Ident, Lit, Path, Pattern, TokenEnum, Type};
 use crate::first::generate_first_table;
 use crate::follow::generate_follow_table;
-use crate::grammar::{Grammar, NonTerminal, NonTerminalIdx, Production, Symbol};
+use crate::grammar::{Grammar, NonTerminal};
 use crate::terminal::{TerminalReprArena, TerminalReprIdx};
-
-use std::iter::FromIterator;
 
 use fxhash::FxHashMap;
 use proc_macro2::{Span, TokenStream};
@@ -16,8 +14,8 @@ pub struct SemanticAction {
 }
 
 // Terminals in the grammar are the qualified enum variants (e.g. `TokenKind::T0`)
-pub fn generate_ll1_parser<A>(
-    grammar: &Grammar<TerminalReprIdx, A>,
+pub fn generate_ll1_parser(
+    grammar: Grammar<TerminalReprIdx, syn::Expr>,
     tokens: &TokenEnum,
     token_kind_type_name: syn::Ident,
     token_kind_type_decl: TokenStream,
@@ -27,7 +25,7 @@ pub fn generate_ll1_parser<A>(
         token_kind_fn(&tokens.type_name.0, &token_kind_type_name, tokens);
 
     let (action_result_type_name, action_result_type_decl, _) =
-        action_result_type(grammar, &tokens.conversions);
+        action_result_type(&grammar, &tokens.conversions);
 
     let (token_value_fn_name, token_value_fn_decl) = token_value_fn(
         &tokens.conversions,
@@ -35,14 +33,30 @@ pub fn generate_ll1_parser<A>(
         &action_result_type_name,
     );
 
-    let first_table = generate_first_table(grammar);
-    let follow_table = generate_follow_table(grammar, &first_table);
+    let first_table = generate_first_table(&grammar);
+    let follow_table = generate_follow_table(&grammar, &first_table);
+
+    // Generate semantic action table, replace semantic actions in the grammar with their indices
+    // in the table
+    let (semantic_action_table, grammar) = generate_semantic_action_table(grammar);
+
+    let parse_fn = generate_parse_fn(&tokens.type_name.0);
 
     quote!(
         #token_kind_type_decl
         #token_kind_fn_decl
         #action_result_type_decl
         #token_value_fn_decl
+
+        type ParseError = (); // TODO
+
+        enum Action {
+            MatchNonTerminal(usize),
+            MatchTerminal(usize),
+            RunSemanticAction(usize),
+        }
+
+        #parse_fn
     )
 }
 
@@ -79,6 +93,26 @@ pub fn token_kind_type(tokens: &TokenEnum) -> (syn::Ident, TokenStream, Terminal
     let code = quote!(enum #type_name { #(#enum_alts,)* });
 
     (type_name, code, arena)
+}
+
+/// Generates the parser
+fn generate_parse_fn(token_type: &syn::Ident) -> TokenStream {
+    quote!(
+        fn parse(
+            input: &mut dyn Iterator<Item=(usize, #token_type, usize)>
+        ) -> Result<ActionResult, ParseError>
+        {
+            todo!()
+        }
+    )
+}
+
+/// Generates semantic action table (an array of `fn(&mut Vec<ActionResult>)`s) and replaces
+/// semantic actions in the grammar with their indices in the array.
+fn generate_semantic_action_table(
+    grammar: Grammar<TerminalReprIdx, syn::Expr>,
+) -> (TokenStream, Grammar<TerminalReprIdx, usize>) {
+    todo!()
 }
 
 /// Generates a `fn token_kind(& #token_type) -> #token_kind_type` that returns kind of a token.
@@ -129,7 +163,7 @@ fn token_value_fn(
     let fn_name = syn::Ident::new("token_value", Span::call_site());
 
     let mut variants: Vec<TokenStream> = vec![];
-    for (i, Conversion { span, from, to }) in tokens.iter().enumerate() {
+    for (i, Conversion { to, .. }) in tokens.iter().enumerate() {
         let (pattern_code, pattern_idents) = generate_pattern_syn_with_idents(to);
         let variant_id = syn::Ident::new(&format!("Token{}", i), Span::call_site());
         variants.push(quote!(
