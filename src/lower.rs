@@ -3,21 +3,12 @@ use crate::grammar::{Grammar, NonTerminalIdx, Symbol};
 
 use fxhash::FxHashMap;
 
-pub fn lower(parser: ast::Parser) -> Grammar<char, ()> {
+pub fn lower(non_terminals: Vec<ast::NonTerminal>) -> Grammar<char, ()> {
     let mut grammar = Grammar::new();
 
     let mut nt_indices: FxHashMap<String, NonTerminalIdx> = Default::default();
 
-    let nts: Vec<ast::NonTerminal> = parser
-        .items
-        .into_iter()
-        .filter_map(|item| match item {
-            ast::GrammarItem::TypeSynonym(_) | ast::GrammarItem::TokenEnum(_) => None,
-            ast::GrammarItem::NonTerminal(nt) => Some(nt),
-        })
-        .collect();
-
-    for nt in &nts {
+    for nt in &non_terminals {
         let nt_name = nt.name.0.to_string();
         let nt_idx = grammar.add_non_terminal(nt_name.clone());
         nt_indices.insert(nt_name, nt_idx);
@@ -25,7 +16,7 @@ pub fn lower(parser: ast::Parser) -> Grammar<char, ()> {
 
     for ast::NonTerminal {
         name, productions, ..
-    } in nts
+    } in non_terminals
     {
         // TODO: Not sure why we need this?
         if productions.is_empty() {

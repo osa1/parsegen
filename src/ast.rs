@@ -1,5 +1,6 @@
 use std::fmt;
 
+use proc_macro2::Span;
 use quote::ToTokens;
 use syn::parse::{Parse, ParseBuffer};
 
@@ -112,12 +113,13 @@ pub enum GrammarItem {
 /// The `enum Token { ... }` declaration
 #[derive(Debug)]
 pub struct TokenEnum {
-    pub type_name: Path,
+    pub type_name: Ident,
     pub conversions: Vec<Conversion>,
 }
 
 #[derive(Debug)]
 pub struct Conversion {
+    pub span: Span,
     pub from: String,
     pub to: Pattern,
 }
@@ -137,10 +139,15 @@ pub enum Pattern {
     Struct(Path, Vec<FieldPattern>, bool),
     // `(<pat1>, ..., <patN>)`
     Tuple(Vec<Pattern>),
+    // `X::Y::Z`
     Path(Path),
+    // `_`
     Underscore,
+    // `..` in a struct pattern
     DotDot,
+    // A literal
     Lit(Lit),
+    // E.g. `<i64>`, `<String>`, ...
     Choose(Type),
 }
 
@@ -302,10 +309,12 @@ impl Parse for Pattern {
 
 impl Parse for Conversion {
     fn parse(input: &ParseBuffer) -> syn::Result<Self> {
+        let span = input.span();
         let from = input.parse::<syn::LitStr>()?;
         input.parse::<syn::token::FatArrow>()?;
         let to = input.parse::<Pattern>()?;
         Ok(Conversion {
+            span,
             from: from.value(),
             to,
         })
@@ -315,7 +324,7 @@ impl Parse for Conversion {
 impl Parse for TokenEnum {
     fn parse(input: &ParseBuffer) -> syn::Result<Self> {
         input.parse::<syn::token::Enum>()?;
-        let type_name = input.parse::<Path>()?;
+        let type_name = input.parse::<Ident>()?;
         let contents;
         syn::braced!(contents in input);
         let conversions: syn::punctuated::Punctuated<Conversion, syn::token::Comma> =

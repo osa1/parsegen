@@ -1,3 +1,18 @@
+/*
+
+enum Token {
+    "(" => Token::LParen,
+    ")" => Token::RParen,
+    "+" => Token::Plus,
+    "int" => Token::Int(<i64>),
+    "id" => Token::Id(<String>),
+}
+
+
+
+*/
+
+/*
 use parsegen::parser;
 
 // Figure 1 in "Practical Earley Parsing"
@@ -71,3 +86,4 @@ fn earley_test() {
     assert!(recognize(&mut "a*a+a".chars()));
     assert!(recognize(&mut "a*a+a+a*a".chars()));
 }
+*/
