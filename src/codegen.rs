@@ -1,18 +1,13 @@
 use crate::ast::{Conversion, FieldPattern, Ident, Lit, Name, Path, Pattern, TokenEnum, Type};
 use crate::first::generate_first_table;
 use crate::follow::generate_follow_table;
-use crate::grammar::{Grammar, NonTerminal, NonTerminalIdx, Production, Symbol, SymbolKind};
+use crate::grammar::{Grammar, NonTerminal, Production, Symbol, SymbolKind};
 use crate::parse_table::{generate_parse_table, ParseTable};
 use crate::terminal::{TerminalReprArena, TerminalReprIdx};
 
 use fxhash::FxHashMap;
 use proc_macro2::{Span, TokenStream};
 use quote::quote;
-
-pub struct SemanticAction {
-    type_: syn::Type,
-    code: syn::Expr,
-}
 
 // Terminals in the grammar are the qualified enum variants (e.g. `TokenKind::T0`)
 pub fn generate_ll1_parser(
@@ -22,13 +17,13 @@ pub fn generate_ll1_parser(
     token_kind_type_decl: TokenStream,
     terminal_arena: &TerminalReprArena,
 ) -> TokenStream {
-    let (token_kind_fn_name, token_kind_fn_decl) =
+    let (_token_kind_fn_name, token_kind_fn_decl) =
         token_kind_fn(&tokens.type_name.0, &token_kind_type_name, tokens);
 
     let (action_result_type_name, action_result_type_decl, non_terminal_action_variant_name) =
         action_result_type(&grammar, &tokens.conversions);
 
-    let (token_value_fn_name, token_value_fn_decl) = token_value_fn(
+    let (_token_value_fn_name, token_value_fn_decl) = token_value_fn(
         &tokens.conversions,
         &tokens.type_name.0,
         &action_result_type_name,

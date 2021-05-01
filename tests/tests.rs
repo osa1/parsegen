@@ -17,8 +17,12 @@ fn simple_1() {
             "int" => Token::Int(<i64>),
         }
 
-        pub Test: () = {
-            "(" ")" => (),
+        pub Test1: () = {
+            <l:"("> <r:")"> => (),
+        };
+
+        pub Test2: String = {
+            <s:"str"> => s,
         };
     }
 }
