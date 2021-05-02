@@ -57,6 +57,7 @@ pub fn generate_ll1_parser(
 
         type ParseError = (); // TODO
 
+        #[derive(Clone, Copy)]
         enum Action {
             MatchNonTerminal(usize),
             MatchTerminal(#token_kind_type_name),
@@ -97,7 +98,12 @@ pub fn token_kind_type(tokens: &TokenEnum) -> (syn::Ident, TokenStream, Terminal
         })
         .collect();
 
-    let code = quote!(enum #type_name { #(#enum_alts,)* });
+    let code = quote!(
+        #[derive(Clone, Copy, PartialEq, Eq, Debug)]
+        enum #type_name {
+            #(#enum_alts,)*
+        }
+    );
 
     (type_name, code, arena)
 }
@@ -116,11 +122,22 @@ fn generate_parse_fn(token_type: &syn::Ident) -> TokenStream {
                 loop {
                     match action_stack.pop().unwrap() {
                         Action::MatchNonTerminal(nt_idx) => {
-                            // let prod_idx = PARSE_TABLE[nt_idx][token_kind(token) as usize];
-                            todo!()
+                            let prod_idx: Option<u32> = PARSE_TABLE[nt_idx][token_kind(&token.1) as usize];
+                            match prod_idx {
+                                None => panic!("Parse error: unexpected terminal"), // TODO
+                                Some(prod_idx) => {
+                                    let prod_actions = &PRODUCTIONS[prod_idx as usize];
+                                    action_stack.extend(prod_actions.iter().copied());
+                                }
+                            }
                         }
-                        Action::MatchTerminal(_) => {
-                            todo!()
+                        Action::MatchTerminal(token_kind_) => {
+                            if token_kind_ == token_kind(&token.1) {
+                                value_stack.push(token_value(&token.1));
+                            } else {
+                                panic!("Parse error: unexpected token (expected {:?}, found {:?})", token_kind_, token.1); // TODO
+                            }
+                            continue 'next_token;
                         }
                         Action::RunSemanticAction(idx) => {
                             (ACTIONS[idx])(&mut value_stack);
@@ -129,7 +146,7 @@ fn generate_parse_fn(token_type: &syn::Ident) -> TokenStream {
                 }
             }
 
-            todo!()
+            Ok(value_stack.pop().unwrap())
         }
     )
 }
@@ -299,7 +316,7 @@ fn generate_production_array(
         let mut array_elems: Vec<TokenStream> =
             vec![quote!(Action::RunSemanticAction(#action_idx))];
 
-        for symbol in &production.symbols {
+        for symbol in production.symbols.iter().rev() {
             match symbol.kind {
                 SymbolKind::NonTerminal(non_terminal_idx) => {
                     let idx = non_terminal_idx.as_usize();
