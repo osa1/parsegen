@@ -44,7 +44,8 @@ pub fn generate_ll1_parser(
 
     let parse_table = generate_parse_table_code(&grammar, &parse_table, terminal_arena);
 
-    let parse_fn = generate_parse_fn(&tokens.type_name.0);
+    let token_type = &tokens.type_name.0;
+    let parse_fn = generate_parse_fn(token_type, terminal_arena.len_terminals());
 
     quote!(
         #token_kind_type_decl
@@ -58,7 +59,7 @@ pub fn generate_ll1_parser(
         #[derive(Debug)]
         enum ParseError<E> {
             LexerError(E),
-            UnexpectedToken,
+            UnexpectedToken(#token_type),
             UnexpectedEOF,
         }
 
@@ -114,7 +115,7 @@ pub fn token_kind_type(tokens: &TokenEnum) -> (syn::Ident, TokenStream, Terminal
 }
 
 /// Generates the parser
-fn generate_parse_fn(token_type: &syn::Ident) -> TokenStream {
+fn generate_parse_fn(token_type: &syn::Ident, n_terminals: usize) -> TokenStream {
     quote!(
         fn parse<E>(
             input: &mut dyn Iterator<Item=Result<(usize, #token_type, usize), E>>
@@ -133,7 +134,7 @@ fn generate_parse_fn(token_type: &syn::Ident) -> TokenStream {
                         Action::MatchNonTerminal(nt_idx) => {
                             let prod_idx: Option<u32> = PARSE_TABLE[nt_idx][token_kind(&token.1) as usize];
                             match prod_idx {
-                                None => panic!("Parse error: unexpected terminal"), // TODO
+                                None => return Err(ParseError::UnexpectedToken(token.1)),
                                 Some(prod_idx) => {
                                     let prod_actions = &PRODUCTIONS[prod_idx as usize];
                                     action_stack.extend(prod_actions.iter().copied());
@@ -144,7 +145,7 @@ fn generate_parse_fn(token_type: &syn::Ident) -> TokenStream {
                             if token_kind_ == token_kind(&token.1) {
                                 value_stack.push(token_value(&token.1));
                             } else {
-                                panic!("Parse error: unexpected token (expected {:?}, found {:?})", token_kind_, token.1); // TODO
+                                return Err(ParseError::UnexpectedToken(token.1));
                             }
                             continue 'next_token;
                         }
@@ -154,6 +155,33 @@ fn generate_parse_fn(token_type: &syn::Ident) -> TokenStream {
                     }
                 }
             }
+
+            while let Some(action) = action_stack.pop() {
+                match action {
+                    Action::MatchNonTerminal(nt_idx) => {
+                        // Last element in token tables is EOF
+                        let prod_idx: Option<u32> = PARSE_TABLE[nt_idx][#n_terminals];
+                        match prod_idx {
+                            Some(prod_idx) => {
+                                let prod_actions = &PRODUCTIONS[prod_idx as usize];
+                                // The production should be empty
+                                assert_eq!(prod_actions.len(), 1);
+                                action_stack.extend(prod_actions.iter().copied());
+                            }
+                            None => return Err(ParseError::UnexpectedEOF),
+                        }
+                    }
+                    Action::MatchTerminal(_) => {
+                        return Err(ParseError::UnexpectedEOF);
+                    }
+                    Action::RunSemanticAction(idx) => {
+                        (ACTIONS[idx])(&mut value_stack);
+                    }
+                }
+            }
+
+            assert_eq!(action_stack.len(), 0);
+            assert_eq!(value_stack.len(), 1);
 
             Ok(value_stack.pop().unwrap())
         }
@@ -270,7 +298,8 @@ fn generate_parse_table_code(
     let n_non_terminals = grammar.non_terminals.len();
     let n_terminals = terminals.len_terminals();
 
-    let mut table: Vec<Vec<Option<u32>>> = vec![vec![None; n_terminals]; n_non_terminals];
+    // +1 for EOF
+    let mut table: Vec<Vec<Option<u32>>> = vec![vec![None; n_terminals + 1]; n_non_terminals];
 
     for ((non_terminal_idx, terminal_idx), production_idx) in &parse_table.table {
         table[non_terminal_idx.as_usize()][terminal_idx.as_usize()] = Some(
@@ -281,6 +310,19 @@ fn generate_parse_table_code(
             )
             .unwrap(),
         );
+    }
+
+    for (non_terminal_idx, _) in grammar.non_terminal_indices() {
+        if let Some(production_idx) = parse_table.get_end(non_terminal_idx) {
+            table[non_terminal_idx.as_usize()][n_terminals] = Some(
+                u32::try_from(
+                    grammar
+                        .get_production(non_terminal_idx, production_idx)
+                        .action,
+                )
+                .unwrap(),
+            );
+        }
     }
 
     let mut non_terminal_array_elems: Vec<TokenStream> = vec![];
@@ -295,8 +337,7 @@ fn generate_parse_table_code(
         non_terminal_array_elems.push(quote!([#(#array_elems),*]));
     }
 
-    let n_non_terminals = non_terminal_array_elems.len();
-    let n_terminals = terminals.len_terminals();
+    let n_terminals = n_terminals + 1;
     quote!(
         static PARSE_TABLE: [[Option<u32>; #n_terminals]; #n_non_terminals] = [
             #(#non_terminal_array_elems),*

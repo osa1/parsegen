@@ -43,7 +43,7 @@ impl ParseTable {
         self.table.get(&(non_terminal_idx, token)).copied()
     }
 
-    fn get_end(&self, non_terminal_idx: NonTerminalIdx) -> Option<ProductionIdx> {
+    pub fn get_end(&self, non_terminal_idx: NonTerminalIdx) -> Option<ProductionIdx> {
         self.end.get(&non_terminal_idx).copied()
     }
 }

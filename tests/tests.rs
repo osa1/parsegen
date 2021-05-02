@@ -35,6 +35,9 @@ fn balanced_parens_0() {
 
     let mut lexer = Lexer::new("((()))");
     assert!(parse(&mut lexer).is_ok());
+
+    let mut lexer = Lexer::new("((())");
+    assert!(parse(&mut lexer).is_err());
 }
 
 /*
