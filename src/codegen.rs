@@ -1,7 +1,7 @@
 use crate::ast::{Conversion, FieldPattern, Ident, Lit, Name, Path, Pattern, TokenEnum, Type};
 use crate::first::generate_first_table;
 use crate::follow::generate_follow_table;
-use crate::grammar::{Grammar, NonTerminal, Production, Symbol, SymbolKind};
+use crate::grammar::{Grammar, NonTerminal, NonTerminalIdx, Production, Symbol, SymbolKind};
 use crate::parse_table::{generate_parse_table, ParseTable};
 use crate::terminal::{TerminalReprArena, TerminalReprIdx};
 
@@ -45,7 +45,15 @@ pub fn generate_ll1_parser(
     let parse_table = generate_parse_table_code(&grammar, &parse_table, terminal_arena);
 
     let token_type = &tokens.type_name.0;
-    let parse_fn = generate_parse_fn(token_type, terminal_arena.len_terminals());
+    let nt0 = grammar.get_non_terminal(NonTerminalIdx(0));
+    let nt0_name = &nt0.non_terminal;
+    let Type(nt0_ret_ty) = &nt0.return_ty;
+    let parse_fn = generate_parse_fn(
+        token_type,
+        terminal_arena.len_terminals(),
+        &nt0_name,
+        nt0_ret_ty,
+    );
 
     quote!(
         #token_kind_type_decl
@@ -56,7 +64,7 @@ pub fn generate_ll1_parser(
         #production_array
         #parse_table
 
-        #[derive(Debug)]
+        #[derive(Debug, PartialEq, Eq)]
         enum ParseError<E> {
             LexerError(E),
             UnexpectedToken(#token_type),
@@ -115,11 +123,18 @@ pub fn token_kind_type(tokens: &TokenEnum) -> (syn::Ident, TokenStream, Terminal
 }
 
 /// Generates the parser
-fn generate_parse_fn(token_type: &syn::Ident, n_terminals: usize) -> TokenStream {
+fn generate_parse_fn(
+    token_type: &syn::Ident,
+    n_terminals: usize,
+    nt0_name: &str,
+    nt0_return_ty: &syn::Type,
+) -> TokenStream {
+    let nt0_method_name = syn::Ident::new(&format!("non_terminal_{}", nt0_name), Span::call_site());
+
     quote!(
         fn parse<E>(
             input: &mut dyn Iterator<Item=Result<(usize, #token_type, usize), E>>
-        ) -> Result<ActionResult, ParseError<E>>
+        ) -> Result<#nt0_return_ty, ParseError<E>>
         {
             let mut action_stack: Vec<Action> = vec![Action::MatchNonTerminal(0)];
             let mut value_stack: Vec<ActionResult> = vec![];
@@ -183,7 +198,8 @@ fn generate_parse_fn(token_type: &syn::Ident, n_terminals: usize) -> TokenStream
             assert_eq!(action_stack.len(), 0);
             assert_eq!(value_stack.len(), 1);
 
-            Ok(value_stack.pop().unwrap())
+            let value = value_stack.pop().unwrap().#nt0_method_name();
+            Ok(value)
         }
     )
 }
@@ -202,6 +218,12 @@ fn generate_semantic_action_table(
     // Action function declarations and the array
     let mut decls: Vec<TokenStream> = vec![];
     let mut fn_names: Vec<syn::Ident> = vec![];
+
+    // HACK: Maps non-terminal indices to names, temporarily
+    let nt_names: Vec<String> = non_terminals
+        .iter()
+        .map(|nt| nt.non_terminal.clone())
+        .collect();
 
     let non_terminals: Vec<NonTerminal<TerminalReprIdx, usize>> = non_terminals
         .into_iter()
@@ -223,7 +245,7 @@ fn generate_semantic_action_table(
                         // pruduction's RHS
                         let mut pop_code: Vec<TokenStream> = vec![];
 
-                        for Symbol { binder, kind: _ } in symbols.iter().rev() {
+                        for Symbol { binder, kind } in symbols.iter().rev() {
                             match binder {
                                 None => {
                                     pop_code.push(quote!(value_stack.pop()));
@@ -233,8 +255,18 @@ fn generate_semantic_action_table(
                                     name: Ident(name),
                                 }) => {
                                     let mut_ = if *mutable { quote!(mut) } else { quote!() };
+                                    let extract_method = match kind {
+                                        SymbolKind::NonTerminal(nt_idx) =>
+                                            syn::Ident::new(&format!("non_terminal_{}", nt_names[nt_idx.as_usize()]), Span::call_site())
+                                        ,
+                                        SymbolKind::Terminal(terminal_idx) => syn::Ident::new(
+                                            &format!("token_{}", terminal_idx.as_usize()),
+                                            Span::call_site(),
+                                        ),
+                                    };
                                     pop_code.push(quote!(
-                                        let #mut_ #name = value_stack.pop().unwrap()
+
+                                        let #mut_ #name = value_stack.pop().unwrap().#extract_method()
                                     ));
                                 }
                             }
@@ -523,6 +555,9 @@ fn action_result_type<T, A>(
     let mut variants: Vec<TokenStream> = vec![];
     let mut map: FxHashMap<String, syn::Ident> = Default::default();
 
+    // Inherent methods for extracting fields of variants
+    let mut extraction_fns: Vec<TokenStream> = vec![];
+
     // Generate variants for tokens
     // TODO: Do we need variants for tokens without values? If not, remove those. If yes, then use
     // a single variant for all value-less tokens.
@@ -530,6 +565,22 @@ fn action_result_type<T, A>(
         let variant_id = syn::Ident::new(&format!("Token{}", i), Span::call_site());
         let pattern_types = pattern_types(to);
         variants.push(quote!(#variant_id(#(#pattern_types,)*)));
+
+        let method_id = syn::Ident::new(&format!("token_{}", i), Span::call_site());
+        let field_ids: Vec<syn::Ident> = pattern_types
+            .iter()
+            .enumerate()
+            .map(|(i, _)| syn::Ident::new(&format!("f{}", i), Span::call_site()))
+            .collect();
+
+        extraction_fns.push(quote!(
+            fn #method_id(self) -> (#(#pattern_types),*) {
+                match self {
+                    Self::#variant_id(#(#field_ids),*) => (#(#field_ids),*),
+                    _ => unreachable!(),
+                }
+            }
+        ));
     }
 
     // Generate variants for non-terminals
@@ -542,12 +593,28 @@ fn action_result_type<T, A>(
         let variant_id =
             syn::Ident::new(&format!("NonTerminal{}", non_terminal), Span::call_site());
         variants.push(quote!(#variant_id(#pattern_ty)));
+
+        let method_id =
+            syn::Ident::new(&format!("non_terminal_{}", non_terminal), Span::call_site());
+        extraction_fns.push(quote!(
+            fn #method_id(self) -> #pattern_ty {
+                match self {
+                    Self::#variant_id(f) => f,
+                    _ => unreachable!(),
+                }
+            }
+        ));
+
         map.insert(non_terminal.clone(), variant_id);
     }
 
     let code = quote!(
         enum #action_result_type_name {
             #(#variants,)*
+        }
+
+        impl #action_result_type_name {
+            #(#extraction_fns)*
         }
     );
 

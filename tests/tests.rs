@@ -3,7 +3,7 @@ use parsegen::parser;
 
 #[test]
 fn balanced_parens_0() {
-    #[derive(Debug)]
+    #[derive(Debug, PartialEq, Eq)]
     enum Token {
         LParen,
         RParen,
@@ -24,17 +24,17 @@ fn balanced_parens_0() {
             ")" => Token::RParen,
         }
 
-        pub Test: () = {
-            "(" Test ")" => (),
-            => (),
+        pub Test: usize = {
+            "(" <t:Test> ")" => t + 1,
+            => 0,
         };
     }
 
     let mut lexer = Lexer::new("()");
-    assert!(parse(&mut lexer).is_ok());
+    assert_eq!(parse(&mut lexer), Ok(1));
 
     let mut lexer = Lexer::new("((()))");
-    assert!(parse(&mut lexer).is_ok());
+    assert_eq!(parse(&mut lexer), Ok(3));
 
     let mut lexer = Lexer::new("((())");
     assert!(parse(&mut lexer).is_err());
