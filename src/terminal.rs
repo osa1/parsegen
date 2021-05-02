@@ -19,6 +19,12 @@ pub struct TerminalReprArena {
 #[derive(Debug, PartialEq, Eq, PartialOrd, Ord, Hash, Clone, Copy)]
 pub struct TerminalReprIdx(usize);
 
+impl TerminalReprIdx {
+    pub fn as_usize(self) -> usize {
+        self.0
+    }
+}
+
 impl TerminalReprArena {
     pub fn new(kind_type_name: syn::Ident) -> Self {
         TerminalReprArena {

@@ -5,6 +5,8 @@ use crate::grammar::{Grammar, NonTerminal, Production, Symbol, SymbolKind};
 use crate::parse_table::{generate_parse_table, ParseTable};
 use crate::terminal::{TerminalReprArena, TerminalReprIdx};
 
+use std::convert::TryFrom;
+
 use fxhash::FxHashMap;
 use proc_macro2::{Span, TokenStream};
 use quote::quote;
@@ -40,7 +42,7 @@ pub fn generate_ll1_parser(
 
     let production_array = generate_production_array(&grammar, terminal_arena);
 
-    let _ = generate_parse_table_code(&grammar, &parse_table, terminal_arena);
+    let parse_table = generate_parse_table_code(&grammar, &parse_table, terminal_arena);
 
     let parse_fn = generate_parse_fn(&tokens.type_name.0);
 
@@ -51,6 +53,7 @@ pub fn generate_ll1_parser(
         #token_value_fn_decl
         #(#semantic_action_table)*
         #production_array
+        #parse_table
 
         type ParseError = (); // TODO
 
@@ -238,10 +241,32 @@ fn generate_parse_table_code(
     parse_table: &ParseTable,
     terminals: &TerminalReprArena,
 ) -> TokenStream {
-    let mut non_terminal_array_elems: Vec<TokenStream> = vec![];
+    let n_non_terminals = grammar.non_terminals.len();
+    let n_terminals = terminals.len_terminals();
+
+    let mut table: Vec<Vec<Option<u32>>> = vec![vec![None; n_terminals]; n_non_terminals];
 
     for ((non_terminal_idx, terminal_idx), production_idx) in &parse_table.table {
-        // TODO
+        table[non_terminal_idx.as_usize()][terminal_idx.as_usize()] = Some(
+            u32::try_from(
+                grammar
+                    .get_production(*non_terminal_idx, *production_idx)
+                    .action,
+            )
+            .unwrap(),
+        );
+    }
+
+    let mut non_terminal_array_elems: Vec<TokenStream> = vec![];
+    for terminal_array in &table {
+        let mut array_elems: Vec<TokenStream> = vec![];
+        for production_idx in terminal_array {
+            match production_idx {
+                Option::None => array_elems.push(quote!(None)),
+                Option::Some(production_idx) => array_elems.push(quote!(Some(#production_idx))),
+            }
+        }
+        non_terminal_array_elems.push(quote!([#(#array_elems),*]));
     }
 
     let n_non_terminals = non_terminal_array_elems.len();
