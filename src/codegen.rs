@@ -55,7 +55,12 @@ pub fn generate_ll1_parser(
         #production_array
         #parse_table
 
-        type ParseError = (); // TODO
+        #[derive(Debug)]
+        enum ParseError<E> {
+            LexerError(E),
+            UnexpectedToken,
+            UnexpectedEOF,
+        }
 
         #[derive(Clone, Copy)]
         enum Action {
@@ -111,14 +116,18 @@ pub fn token_kind_type(tokens: &TokenEnum) -> (syn::Ident, TokenStream, Terminal
 /// Generates the parser
 fn generate_parse_fn(token_type: &syn::Ident) -> TokenStream {
     quote!(
-        fn parse(
-            input: &mut dyn Iterator<Item=(usize, #token_type, usize)>
-        ) -> Result<ActionResult, ParseError>
+        fn parse<E>(
+            input: &mut dyn Iterator<Item=Result<(usize, #token_type, usize), E>>
+        ) -> Result<ActionResult, ParseError<E>>
         {
             let mut action_stack: Vec<Action> = vec![Action::MatchNonTerminal(0)];
             let mut value_stack: Vec<ActionResult> = vec![];
 
             'next_token: for (token_index, token) in input.enumerate() {
+                let token = match token {
+                    Err(err) => return Err(ParseError::LexerError(err)),
+                    Ok(token) => token,
+                };
                 loop {
                     match action_stack.pop().unwrap() {
                         Action::MatchNonTerminal(nt_idx) => {

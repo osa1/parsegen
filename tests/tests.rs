@@ -7,7 +7,6 @@ fn balanced_parens_0() {
     enum Token {
         LParen,
         RParen,
-        Empty,
     }
 
     lexer! {
@@ -16,7 +15,6 @@ fn balanced_parens_0() {
         rule Init {
             "(" => |lexer| lexer.return_(Token::LParen),
             ")" => |lexer| lexer.return_(Token::RParen),
-            " " => |lexer| lexer.return_(Token::Empty),
         }
     }
 
@@ -24,26 +22,19 @@ fn balanced_parens_0() {
         enum Token {
             "(" => Token::LParen,
             ")" => Token::RParen,
-            "empty" => Token::Empty,
         }
 
         pub Test: () = {
             "(" Test ")" => (),
-            "empty" => (),
+            => (),
         };
     }
 
-    {
-        let lexer = Lexer::new("( )");
-        let tokens: Vec<(usize, Token, usize)> = lexer.map(|t| t.unwrap()).collect();
-        assert!(parse(&mut tokens.into_iter()).is_ok());
-    }
+    let mut lexer = Lexer::new("()");
+    assert!(parse(&mut lexer).is_ok());
 
-    {
-        let lexer = Lexer::new("((( )))");
-        let tokens: Vec<(usize, Token, usize)> = lexer.map(|t| t.unwrap()).collect();
-        assert!(parse(&mut tokens.into_iter()).is_ok());
-    }
+    let mut lexer = Lexer::new("((()))");
+    assert!(parse(&mut lexer).is_ok());
 }
 
 /*
