@@ -272,7 +272,7 @@ fn generate_parse_table_code(
     let n_non_terminals = non_terminal_array_elems.len();
     let n_terminals = terminals.len_terminals();
     quote!(
-        static PARSE_TABLE: [[usize; #n_terminals]; #n_non_terminals] = [
+        static PARSE_TABLE: [[Option<u32>; #n_terminals]; #n_non_terminals] = [
             #(#non_terminal_array_elems),*
         ];
     )
@@ -285,7 +285,7 @@ fn generate_production_array(
     grammar: &Grammar<TerminalReprIdx, usize>,
     terminals: &TerminalReprArena,
 ) -> TokenStream {
-    let mut action_array_names: Vec<syn::Ident> = vec![];
+    let mut action_array_names: Vec<TokenStream> = vec![];
     let mut action_arrays: Vec<TokenStream> = vec![];
 
     let mut n_prod = 0;
@@ -307,7 +307,7 @@ fn generate_production_array(
                 }
                 SymbolKind::Terminal(terminal_idx) => {
                     let terminal_path = terminals.get_enum_path(terminal_idx);
-                    array_elems.push(quote!(Action::MatchNonTerminal(#terminal_path)));
+                    array_elems.push(quote!(Action::MatchTerminal(#terminal_path)));
                 }
             }
         }
@@ -317,7 +317,7 @@ fn generate_production_array(
             static #array_name: [Action; #n_actions] = [#(#array_elems),*];
         ));
 
-        action_array_names.push(array_name);
+        action_array_names.push(quote!(&#array_name));
 
         n_prod += 1;
     }
