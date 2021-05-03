@@ -19,8 +19,7 @@ pub fn generate_ll1_parser(
     token_kind_type_decl: TokenStream,
     terminal_arena: &TerminalReprArena,
 ) -> TokenStream {
-    let (_token_kind_fn_name, token_kind_fn_decl) =
-        token_kind_fn(&tokens.type_name.0, &token_kind_type_name, tokens);
+    let (_token_kind_fn_name, token_kind_fn_decl) = token_kind_fn(&token_kind_type_name, tokens);
 
     let (action_result_type_name, action_result_type_decl, non_terminal_action_variant_name) =
         action_result_type(&grammar, &tokens.conversions);
@@ -437,7 +436,6 @@ fn generate_production_array(
 
 /// Generates a `fn token_kind(& #token_type) -> #token_kind_type` that returns kind of a token.
 fn token_kind_fn(
-    user_token_type_name: &syn::Ident,
     token_kind_type_name: &syn::Ident,
     tokens: &TokenEnum,
 ) -> (syn::Ident, TokenStream) {
@@ -463,7 +461,7 @@ fn token_kind_fn(
         .collect();
 
     let code = quote!(
-        fn #fn_name(#arg_name: &#user_token_type_name) -> #token_kind_type_name {
+        fn #fn_name(#arg_name: &#type_name) -> #token_kind_type_name {
             match #arg_name {
                 #(#match_alts,)*
             }
