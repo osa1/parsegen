@@ -92,3 +92,28 @@ fn token_lifetimes() {
         assert_eq!(parse(&mut lexer), Ok("abc".to_owned()));
     }
 }
+
+// This used to cause a compile-time panic caused by not adding a non-terminal to the follow table
+// because it's never used in any of the production RHSs.
+#[test]
+fn bug_1() {
+    enum Token {
+        A,
+        B,
+    }
+
+    parser! {
+        enum Token {
+            "a" => Token::A,
+            "b" => Token::B,
+        }
+
+        Test1: Token = {
+            => todo!(),
+        };
+
+        Test2: Token = {
+            => todo!(),
+        };
+    }
+}
