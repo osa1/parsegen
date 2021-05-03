@@ -49,7 +49,7 @@ pub struct NonTerminal<T, A> {
     pub non_terminal: String,
     // Indexed by `ProductionIdx`
     pub productions: Vec<Production<T, A>>,
-    pub return_ty: ast::Type,
+    pub return_ty: syn::Type,
 }
 
 #[derive(Debug)]
@@ -90,7 +90,7 @@ impl<T, A> Grammar<T, A> {
     pub fn add_non_terminal(
         &mut self,
         non_terminal: String,
-        return_ty: ast::Type,
+        return_ty: syn::Type,
     ) -> NonTerminalIdx {
         let idx = self.non_terminals.len();
         self.non_terminals.push(NonTerminal {

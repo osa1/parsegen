@@ -1,4 +1,4 @@
-use crate::ast::{Conversion, FieldPattern, Ident, Lit, Name, Path, Pattern, TokenEnum, Type};
+use crate::ast::{Conversion, FieldPattern, Name, Pattern, TokenEnum};
 use crate::first::generate_first_table;
 use crate::follow::generate_follow_table;
 use crate::grammar::{Grammar, NonTerminal, NonTerminalIdx, Production, Symbol, SymbolKind};
@@ -26,7 +26,7 @@ pub fn generate_ll1_parser(
 
     let (_token_value_fn_name, token_value_fn_decl) = token_value_fn(
         &tokens.conversions,
-        &tokens.type_name.0,
+        &tokens.type_name,
         &action_result_type_name,
     );
 
@@ -43,7 +43,7 @@ pub fn generate_ll1_parser(
 
     let parse_table = generate_parse_table_code(&grammar, &parse_table, terminal_arena);
 
-    let token_type = &tokens.type_name.0;
+    let token_type = &tokens.type_name;
 
     let parse_fn = {
         if grammar.non_terminals.is_empty() {
@@ -51,7 +51,7 @@ pub fn generate_ll1_parser(
         } else {
             let nt0 = grammar.get_non_terminal(NonTerminalIdx(0));
             let nt0_name = &nt0.non_terminal;
-            let Type(nt0_ret_ty) = &nt0.return_ty;
+            let nt0_ret_ty = &nt0.return_ty;
             generate_parse_fn(
                 token_type,
                 terminal_arena.len_terminals(),
@@ -100,7 +100,7 @@ pub fn generate_ll1_parser(
 ///
 pub fn token_kind_type(tokens: &TokenEnum) -> (syn::Ident, TokenStream, TerminalReprArena) {
     let TokenEnum {
-        type_name: Ident(type_name),
+        type_name,
         conversions,
     } = tokens;
 
@@ -258,7 +258,7 @@ fn generate_semantic_action_table(
                                 }
                                 Some(Name {
                                     mutable,
-                                    name: Ident(name),
+                                    name,
                                 }) => {
                                     let mut_ = if *mutable { quote!(mut) } else { quote!() };
                                     let extract_method = match kind {
@@ -440,7 +440,7 @@ fn token_kind_fn(
     tokens: &TokenEnum,
 ) -> (syn::Ident, TokenStream) {
     let TokenEnum {
-        type_name: Ident(type_name),
+        type_name,
         conversions,
     } = tokens;
 
@@ -506,12 +506,12 @@ fn token_value_fn(
 /// Given a `Pattern`, generate the pattern syntax for it, using `_` for the "choose" argument.
 fn pattern_ignore(pattern: &Pattern) -> TokenStream {
     match pattern {
-        Pattern::Enum(Path(path), pats) => {
+        Pattern::Enum(path, pats) => {
             let pats: Vec<TokenStream> = pats.iter().map(pattern_ignore).collect();
             quote!(#path(#(#pats,)*))
         }
 
-        Pattern::Struct(Path(path), fields, dot) => {
+        Pattern::Struct(path, fields, dot) => {
             let mut pats: Vec<TokenStream> = fields
                 .iter()
                 .map(
@@ -537,13 +537,13 @@ fn pattern_ignore(pattern: &Pattern) -> TokenStream {
             quote!((#(#pats,)*))
         }
 
-        Pattern::Path(Path(path)) => quote!(#path),
+        Pattern::Path(path) => quote!(#path),
 
         Pattern::Underscore => quote!(_),
 
         Pattern::DotDot => quote!(..),
 
-        Pattern::Lit(Lit(lit)) => quote!(#lit),
+        Pattern::Lit(lit) => quote!(#lit),
 
         Pattern::Choose(_) => quote!(_),
     }
@@ -591,7 +591,7 @@ fn action_result_type<T, A>(
     // Generate variants for non-terminals
     for NonTerminal {
         non_terminal,
-        return_ty: Type(pattern_ty),
+        return_ty: pattern_ty,
         ..
     } in grammar.non_terminals()
     {
@@ -634,7 +634,7 @@ fn pattern_types(pat: &Pattern) -> Vec<&syn::Type> {
 
 fn pattern_types_<'a, 'b>(pat: &'a Pattern, acc: &'b mut Vec<&'a syn::Type>) {
     match pat {
-        Pattern::Choose(Type(ty)) => {
+        Pattern::Choose(ty) => {
             acc.push(ty);
         }
 
@@ -670,7 +670,7 @@ fn generate_pattern_syn_with_idents_(pat: &Pattern, idents: &mut Vec<syn::Ident>
             code
         }
 
-        Pattern::Enum(Path(path), pats) => {
+        Pattern::Enum(path, pats) => {
             let pats: Vec<TokenStream> = pats
                 .iter()
                 .map(|pat| generate_pattern_syn_with_idents_(pat, idents))
@@ -679,7 +679,7 @@ fn generate_pattern_syn_with_idents_(pat: &Pattern, idents: &mut Vec<syn::Ident>
             quote!(#path(#(#pats),*))
         }
 
-        Pattern::Struct(Path(path), fields, dots) => {
+        Pattern::Struct(path, fields, dots) => {
             let mut pats: Vec<TokenStream> = fields
                 .iter()
                 .map(
@@ -709,12 +709,12 @@ fn generate_pattern_syn_with_idents_(pat: &Pattern, idents: &mut Vec<syn::Ident>
             quote!((#(#pats),*))
         }
 
-        Pattern::Path(Path(path)) => quote!(#path),
+        Pattern::Path(path) => quote!(#path),
 
         Pattern::Underscore => quote!(_),
 
         Pattern::DotDot => quote!(..),
 
-        Pattern::Lit(Lit(lit)) => quote!(#lit),
+        Pattern::Lit(lit) => quote!(#lit),
     }
 }

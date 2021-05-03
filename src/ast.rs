@@ -1,95 +1,5 @@
-use std::fmt;
-
 use proc_macro2::Span;
-use quote::ToTokens;
 use syn::parse::{Parse, ParseBuffer};
-
-////////////////////////////////////////////////////////////////////////////////
-
-pub struct Path(pub syn::Path);
-
-pub struct Lit(pub syn::Lit);
-
-#[derive(Clone)]
-pub struct Type(pub syn::Type);
-
-pub struct Ident(pub syn::Ident);
-
-pub struct Expr(pub syn::Expr);
-
-pub struct LitStr(pub syn::LitStr);
-
-impl fmt::Debug for Path {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        self.0.to_token_stream().fmt(f)
-    }
-}
-
-impl fmt::Debug for Lit {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        self.0.to_token_stream().fmt(f)
-    }
-}
-
-impl fmt::Debug for Type {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        self.0.to_token_stream().fmt(f)
-    }
-}
-
-impl fmt::Debug for Ident {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        self.0.to_string().fmt(f)
-    }
-}
-
-impl fmt::Debug for Expr {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        "<expr>".fmt(f)
-    }
-}
-
-impl fmt::Debug for LitStr {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        self.0.value().fmt(f)
-    }
-}
-
-impl Parse for Path {
-    fn parse(input: &ParseBuffer) -> syn::Result<Self> {
-        Ok(Path(input.parse::<syn::Path>()?))
-    }
-}
-
-impl Parse for Lit {
-    fn parse(input: &ParseBuffer) -> syn::Result<Self> {
-        Ok(Lit(input.parse::<syn::Lit>()?))
-    }
-}
-
-impl Parse for Type {
-    fn parse(input: &ParseBuffer) -> syn::Result<Self> {
-        Ok(Type(input.parse::<syn::Type>()?))
-    }
-}
-
-impl Parse for Ident {
-    fn parse(input: &ParseBuffer) -> syn::Result<Self> {
-        Ok(Ident(input.parse::<syn::Ident>()?))
-    }
-}
-
-impl Parse for Expr {
-    fn parse(input: &ParseBuffer) -> syn::Result<Self> {
-        Ok(Expr(input.parse::<syn::Expr>()?))
-    }
-}
-
-impl Parse for LitStr {
-    fn parse(input: &ParseBuffer) -> syn::Result<Self> {
-        Ok(LitStr(input.parse::<syn::LitStr>()?))
-    }
-}
 
 ////////////////////////////////////////////////////////////////////////////////
 
@@ -114,7 +24,7 @@ pub enum GrammarItem {
 /// The `enum Token { ... }` declaration
 #[derive(Debug)]
 pub struct TokenEnum {
-    pub type_name: Ident,
+    pub type_name: syn::Ident,
     pub conversions: Vec<Conversion>,
 }
 
@@ -127,29 +37,29 @@ pub struct Conversion {
 
 #[derive(Debug)]
 pub struct TypeSynonym {
-    pub name: Ident,
-    pub ty: Type,
+    pub name: syn::Ident,
+    pub ty: syn::Type,
 }
 
 /// A pattern used in token definitions
 #[derive(Debug)]
 pub enum Pattern {
     // `X::Y(<pat1>,...,<patN>)`
-    Enum(Path, Vec<Pattern>),
+    Enum(syn::Path, Vec<Pattern>),
     // `X::Y { f1: <pat1>, ..., fN: <patN>, .. }`. The `..` part is optional (the `bool` field).
-    Struct(Path, Vec<FieldPattern>, bool),
+    Struct(syn::Path, Vec<FieldPattern>, bool),
     // `(<pat1>, ..., <patN>)`
     Tuple(Vec<Pattern>),
     // `X::Y::Z`
-    Path(Path),
+    Path(syn::Path),
     // `_`
     Underscore,
     // `..` in a struct pattern
     DotDot,
     // A literal
-    Lit(Lit),
+    Lit(syn::Lit),
     // E.g. `<i64>`, `<String>`, ...
-    Choose(Type),
+    Choose(syn::Type),
 }
 
 #[derive(Debug)]
@@ -167,9 +77,9 @@ pub enum Visibility {
 #[derive(Debug)]
 pub struct NonTerminal {
     pub visibility: Visibility,
-    pub name: Ident,
+    pub name: syn::Ident,
     // pub macro_args: Vec<Ident>,
-    pub type_decl: Type,
+    pub type_decl: syn::Type,
     pub productions: Vec<Production>,
 }
 
@@ -182,10 +92,10 @@ pub struct Production {
 #[derive(Debug)]
 pub enum Symbol {
     /// A terminal, defined in the token enum
-    Terminal(LitStr),
+    Terminal(syn::LitStr),
 
     /// A nonterminal, should be defined in the same grammar
-    NonTerminal(Ident),
+    NonTerminal(syn::Ident),
 
     /// `X+`, `X*`, `X?`
     Repeat(Box<Repeat>),
@@ -198,7 +108,7 @@ pub enum Symbol {
 #[derive(Debug)]
 pub struct Name {
     pub mutable: bool,
-    pub name: Ident,
+    pub name: syn::Ident,
 }
 
 #[derive(Debug)]
@@ -216,8 +126,8 @@ pub enum RepeatOp {
 
 #[derive(Debug)]
 pub enum Action {
-    User(Expr),
-    Fallible(Expr),
+    User(syn::Expr),
+    Fallible(syn::Expr),
 }
 
 impl Parse for FieldPattern {
@@ -238,7 +148,7 @@ impl Parse for Pattern {
             input.parse::<syn::token::Dot2>()?;
             Ok(Pattern::DotDot)
         } else if input.peek(syn::Lit) {
-            Ok(Pattern::Lit(Lit(input.parse::<syn::Lit>()?)))
+            Ok(Pattern::Lit(input.parse::<syn::Lit>()?))
         } else if input.peek(syn::token::Underscore) {
             input.parse::<syn::token::Underscore>()?;
             Ok(Pattern::Underscore)
@@ -264,7 +174,7 @@ impl Parse for Pattern {
                 for pair in pats.into_pairs() {
                     fields.push(pair.into_value());
                 }
-                Ok(Pattern::Enum(Path(path.path), fields))
+                Ok(Pattern::Enum(path.path, fields))
             } else if input.peek(syn::token::Brace) {
                 let contents;
                 syn::braced!(contents in input);
@@ -288,19 +198,15 @@ impl Parse for Pattern {
                         }
                     }
                 }
-                Ok(Pattern::Struct(
-                    Path(path.path),
-                    field_patterns,
-                    trailing_dots,
-                ))
+                Ok(Pattern::Struct(path.path, field_patterns, trailing_dots))
             } else {
-                Ok(Pattern::Path(Path(path.path)))
+                Ok(Pattern::Path(path.path))
             }
         } else if input.peek(syn::token::Lt) {
             input.parse::<syn::token::Lt>()?;
             let ty = input.parse::<syn::Type>()?;
             input.parse::<syn::token::Gt>()?;
-            Ok(Pattern::Choose(Type(ty)))
+            Ok(Pattern::Choose(ty))
         } else {
             // TODO: error message
             panic!()
@@ -325,7 +231,7 @@ impl Parse for Conversion {
 impl Parse for TokenEnum {
     fn parse(input: &ParseBuffer) -> syn::Result<Self> {
         input.parse::<syn::token::Enum>()?;
-        let type_name = input.parse::<Ident>()?;
+        let type_name = input.parse::<syn::Ident>()?;
         let contents;
         syn::braced!(contents in input);
         let conversions: syn::punctuated::Punctuated<Conversion, syn::token::Comma> =
@@ -344,9 +250,9 @@ impl Parse for TokenEnum {
 impl Parse for TypeSynonym {
     fn parse(input: &ParseBuffer) -> syn::Result<Self> {
         input.parse::<syn::token::Type>()?;
-        let name = input.parse::<Ident>()?;
+        let name = input.parse::<syn::Ident>()?;
         input.parse::<syn::token::Eq>()?;
-        let ty = input.parse::<Type>()?;
+        let ty = input.parse::<syn::Type>()?;
         input.parse::<syn::token::Semi>()?;
         Ok(TypeSynonym { name, ty })
     }
@@ -366,9 +272,9 @@ impl Parse for Visibility {
 impl Parse for NonTerminal {
     fn parse(input: &ParseBuffer) -> syn::Result<Self> {
         let visibility = input.parse::<Visibility>()?;
-        let name = input.parse::<Ident>()?;
+        let name = input.parse::<syn::Ident>()?;
         input.parse::<syn::token::Colon>()?;
-        let type_decl = input.parse::<Type>()?;
+        let type_decl = input.parse::<syn::Type>()?;
         input.parse::<syn::token::Eq>()?;
         let mut productions: Vec<Production> = vec![];
         if input.peek(syn::token::Brace) {
@@ -434,12 +340,12 @@ impl Parse for Symbol {
 
 fn symbol0(input: &ParseBuffer) -> syn::Result<Symbol> {
     // TODO: No peek for LitStr?
-    match input.parse::<LitStr>() {
+    match input.parse::<syn::LitStr>() {
         Ok(str) => return Ok(Symbol::Terminal(str)),
         Err(_) => {}
     }
 
-    match input.parse::<Ident>() {
+    match input.parse::<syn::Ident>() {
         Ok(ident) => return Ok(Symbol::NonTerminal(ident)),
         Err(_) => {}
     }
@@ -447,7 +353,7 @@ fn symbol0(input: &ParseBuffer) -> syn::Result<Symbol> {
     // if input.peek(syn::token::Lt) {
     input.parse::<syn::token::Lt>()?;
     let mutable = input.parse::<syn::token::Mut>().is_ok();
-    let name = input.parse::<Ident>()?;
+    let name = input.parse::<syn::Ident>()?;
     input.parse::<syn::token::Colon>()?;
     let symbol = input.parse::<Symbol>()?;
     input.parse::<syn::token::Gt>()?;
@@ -460,9 +366,9 @@ impl Parse for Action {
         input.parse::<syn::token::FatArrow>()?;
         if input.peek(syn::token::Question) {
             input.parse::<syn::token::Question>()?;
-            Ok(Action::Fallible(input.parse::<Expr>()?))
+            Ok(Action::Fallible(input.parse::<syn::Expr>()?))
         } else {
-            Ok(Action::User(input.parse::<Expr>()?))
+            Ok(Action::User(input.parse::<syn::Expr>()?))
         }
     }
 }
