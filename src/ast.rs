@@ -25,6 +25,7 @@ pub enum GrammarItem {
 #[derive(Debug)]
 pub struct TokenEnum {
     pub type_name: syn::Ident,
+    pub type_lifetimes: Vec<syn::Lifetime>,
     pub conversions: Vec<Conversion>,
 }
 
@@ -232,6 +233,22 @@ impl Parse for TokenEnum {
     fn parse(input: &ParseBuffer) -> syn::Result<Self> {
         input.parse::<syn::token::Enum>()?;
         let type_name = input.parse::<syn::Ident>()?;
+
+        let type_lifetimes: Vec<syn::Lifetime> = {
+            if input.peek(syn::token::Lt) {
+                input.parse::<syn::token::Lt>()?;
+                let mut lifetimes = vec![];
+                while !input.peek(syn::token::Gt) {
+                    lifetimes.push(input.parse::<syn::Lifetime>()?);
+                    let _ = input.parse::<syn::token::Comma>();
+                }
+                input.parse::<syn::token::Gt>()?;
+                lifetimes
+            } else {
+                vec![]
+            }
+        };
+
         let contents;
         syn::braced!(contents in input);
         let conversions: syn::punctuated::Punctuated<Conversion, syn::token::Comma> =
@@ -239,6 +256,7 @@ impl Parse for TokenEnum {
 
         Ok(TokenEnum {
             type_name,
+            type_lifetimes,
             conversions: conversions
                 .into_pairs()
                 .map(|pair| pair.into_value())

@@ -22,11 +22,12 @@ pub fn generate_ll1_parser(
     let (_token_kind_fn_name, token_kind_fn_decl) = token_kind_fn(&token_kind_type_name, tokens);
 
     let (action_result_type_name, action_result_type_decl, non_terminal_action_variant_name) =
-        action_result_type(&grammar, &tokens.conversions);
+        action_result_type(&grammar, &tokens.conversions, &tokens.type_lifetimes);
 
     let (_token_value_fn_name, token_value_fn_decl) = token_value_fn(
         &tokens.conversions,
         &tokens.type_name,
+        &tokens.type_lifetimes,
         &action_result_type_name,
     );
 
@@ -36,14 +37,18 @@ pub fn generate_ll1_parser(
 
     // Generate semantic action table, replace semantic actions in the grammar with their indices
     // in the table
-    let (semantic_action_table, grammar) =
-        generate_semantic_action_table(grammar, &non_terminal_action_variant_name);
+    let (semantic_action_table, grammar) = generate_semantic_action_table(
+        grammar,
+        &non_terminal_action_variant_name,
+        &tokens.type_lifetimes,
+    );
 
     let production_array = generate_production_array(&grammar, terminal_arena);
 
     let parse_table = generate_parse_table_code(&grammar, &parse_table, terminal_arena);
 
     let token_type = &tokens.type_name;
+    let token_lifetimes = &tokens.type_lifetimes;
 
     let parse_fn = {
         if grammar.non_terminals.is_empty() {
@@ -54,6 +59,7 @@ pub fn generate_ll1_parser(
             let nt0_ret_ty = &nt0.return_ty;
             generate_parse_fn(
                 token_type,
+                token_lifetimes,
                 terminal_arena.len_terminals(),
                 &nt0_name,
                 nt0_ret_ty,
@@ -71,9 +77,9 @@ pub fn generate_ll1_parser(
         #parse_table
 
         #[derive(Debug, PartialEq, Eq)]
-        enum ParseError<E> {
+        enum ParseError<T, E> {
             LexerError(E),
-            UnexpectedToken(#token_type),
+            UnexpectedToken(T),
             UnexpectedEOF,
         }
 
@@ -101,12 +107,13 @@ pub fn generate_ll1_parser(
 pub fn token_kind_type(tokens: &TokenEnum) -> (syn::Ident, TokenStream, TerminalReprArena) {
     let TokenEnum {
         type_name,
+        type_lifetimes: _,
         conversions,
     } = tokens;
 
-    let type_name = syn::Ident::new(&(type_name.to_string() + "Kind"), type_name.span());
+    let token_kind_name = syn::Ident::new(&(type_name.to_string() + "Kind"), type_name.span());
 
-    let mut arena = TerminalReprArena::new(type_name.clone());
+    let mut arena = TerminalReprArena::new(token_kind_name.clone());
 
     let enum_alts: Vec<syn::Ident> = conversions
         .iter()
@@ -120,17 +127,18 @@ pub fn token_kind_type(tokens: &TokenEnum) -> (syn::Ident, TokenStream, Terminal
 
     let code = quote!(
         #[derive(Clone, Copy, PartialEq, Eq, Debug)]
-        enum #type_name {
+        enum #token_kind_name {
             #(#enum_alts,)*
         }
     );
 
-    (type_name, code, arena)
+    (token_kind_name, code, arena)
 }
 
 /// Generates the parser
 fn generate_parse_fn(
     token_type: &syn::Ident,
+    token_lifetimes: &[syn::Lifetime],
     n_terminals: usize,
     nt0_name: &str,
     nt0_return_ty: &syn::Type,
@@ -138,9 +146,9 @@ fn generate_parse_fn(
     let nt0_method_name = syn::Ident::new(&format!("non_terminal_{}", nt0_name), Span::call_site());
 
     quote!(
-        fn parse<E>(
-            input: &mut dyn Iterator<Item=Result<(usize, #token_type, usize), E>>
-        ) -> Result<#nt0_return_ty, ParseError<E>>
+        fn parse<#(#token_lifetimes,)* E>(
+            input: &mut dyn Iterator<Item=Result<(usize, #token_type<#(#token_lifetimes),*>, usize), E>>
+        ) -> Result<#nt0_return_ty, ParseError<#token_type<#(#token_lifetimes),*>, E>>
         {
             let mut action_stack: Vec<Action> = vec![Action::MatchNonTerminal(0)];
             let mut value_stack: Vec<ActionResult> = vec![];
@@ -215,6 +223,7 @@ fn generate_parse_fn(
 fn generate_semantic_action_table(
     grammar: Grammar<TerminalReprIdx, syn::Expr>,
     non_terminal_action_variant_name: &FxHashMap<String, syn::Ident>,
+    token_lifetimes: &[syn::Lifetime],
 ) -> (Vec<TokenStream>, Grammar<TerminalReprIdx, usize>) {
     let Grammar {
         init,
@@ -288,7 +297,7 @@ fn generate_semantic_action_table(
                             non_terminal_action_variant_name.get(&non_terminal).unwrap();
 
                         decls.push(quote!(
-                            fn #fn_name(value_stack: &mut Vec<ActionResult>) {
+                            fn #fn_name<#(#token_lifetimes),*>(value_stack: &mut Vec<ActionResult<#(#token_lifetimes),*>>) {
                                 #(#pop_code;)*
                                 value_stack.push(ActionResult::#non_terminal_variant(#action));
                             }
@@ -441,6 +450,7 @@ fn token_kind_fn(
 ) -> (syn::Ident, TokenStream) {
     let TokenEnum {
         type_name,
+        type_lifetimes,
         conversions,
     } = tokens;
 
@@ -461,7 +471,10 @@ fn token_kind_fn(
         .collect();
 
     let code = quote!(
-        fn #fn_name(#arg_name: &#type_name) -> #token_kind_type_name {
+        fn #fn_name<#(#type_lifetimes),*>(
+            #arg_name: &#type_name<#(#type_lifetimes),*>
+        ) -> #token_kind_type_name
+        {
             match #arg_name {
                 #(#match_alts,)*
             }
@@ -476,6 +489,7 @@ fn token_kind_fn(
 fn token_value_fn(
     tokens: &[Conversion],
     user_token_type_name: &syn::Ident,
+    user_token_type_lifetimes: &[syn::Lifetime],
     action_result_type_name: &syn::Ident,
 ) -> (syn::Ident, TokenStream) {
     let fn_name = syn::Ident::new("token_value", Span::call_site());
@@ -493,7 +507,10 @@ fn token_value_fn(
     }
 
     let code = quote!(
-        fn #fn_name(token: & #user_token_type_name) -> #action_result_type_name {
+        fn #fn_name<#(#user_token_type_lifetimes),*>(
+            token: &#user_token_type_name<#(#user_token_type_lifetimes),*>
+        ) -> #action_result_type_name<#(#user_token_type_lifetimes),*>
+        {
             match token {
                 #(#variants)*
             }
@@ -554,6 +571,7 @@ fn pattern_ignore(pattern: &Pattern) -> TokenStream {
 fn action_result_type<T, A>(
     grammar: &Grammar<T, A>,
     tokens: &[Conversion],
+    token_lifetimes: &[syn::Lifetime],
 ) -> (syn::Ident, TokenStream, FxHashMap<String, syn::Ident>) {
     let action_result_type_name = syn::Ident::new("ActionResult", Span::call_site());
 
@@ -614,11 +632,11 @@ fn action_result_type<T, A>(
     }
 
     let code = quote!(
-        enum #action_result_type_name {
+        enum #action_result_type_name<#(#token_lifetimes),*> {
             #(#variants,)*
         }
 
-        impl #action_result_type_name {
+        impl<#(#token_lifetimes),*> #action_result_type_name<#(#token_lifetimes),*> {
             #(#extraction_fns)*
         }
     );
