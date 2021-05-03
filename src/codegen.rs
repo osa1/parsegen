@@ -45,15 +45,22 @@ pub fn generate_ll1_parser(
     let parse_table = generate_parse_table_code(&grammar, &parse_table, terminal_arena);
 
     let token_type = &tokens.type_name.0;
-    let nt0 = grammar.get_non_terminal(NonTerminalIdx(0));
-    let nt0_name = &nt0.non_terminal;
-    let Type(nt0_ret_ty) = &nt0.return_ty;
-    let parse_fn = generate_parse_fn(
-        token_type,
-        terminal_arena.len_terminals(),
-        &nt0_name,
-        nt0_ret_ty,
-    );
+
+    let parse_fn = {
+        if grammar.non_terminals.is_empty() {
+            TokenStream::new()
+        } else {
+            let nt0 = grammar.get_non_terminal(NonTerminalIdx(0));
+            let nt0_name = &nt0.non_terminal;
+            let Type(nt0_ret_ty) = &nt0.return_ty;
+            generate_parse_fn(
+                token_type,
+                terminal_arena.len_terminals(),
+                &nt0_name,
+                nt0_ret_ty,
+            )
+        }
+    };
 
     quote!(
         #token_kind_type_decl
