@@ -33,7 +33,7 @@ pub fn generate_ll1_parser(
 
     let first_table = generate_first_table(&grammar);
     let follow_table = generate_follow_table(&grammar, &first_table);
-    let parse_table = generate_parse_table(&grammar, &first_table, &follow_table);
+    let parse_table = generate_parse_table(&grammar, terminal_arena, &first_table, &follow_table);
 
     // Generate semantic action table, replace semantic actions in the grammar with their indices
     // in the table

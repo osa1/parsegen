@@ -58,6 +58,7 @@ fn add_symbol(
     match symbol {
         ast::Symbol::NonTerminal(nt) => {
             let nt_name = nt.to_string();
+            // TODO: This line fails when a non-terminal is used before defined, during development
             let nt_idx = nt_indices.get(&nt_name).unwrap();
             symbols.push(Symbol {
                 binder,

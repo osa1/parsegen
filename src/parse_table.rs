@@ -1,7 +1,7 @@
 use crate::first::FirstTable;
 use crate::follow::FollowTable;
 use crate::grammar::{Grammar, NonTerminalIdx, ProductionIdx, SymbolKind};
-use crate::terminal::TerminalReprIdx;
+use crate::terminal::{TerminalReprArena, TerminalReprIdx};
 
 use fxhash::FxHashMap;
 
@@ -19,14 +19,27 @@ pub struct ParseTable {
 }
 
 impl ParseTable {
-    fn add(
+    fn add<A>(
         &mut self,
+        grammar: &Grammar<TerminalReprIdx, A>,
+        terminals: &TerminalReprArena,
         non_terminal_idx: NonTerminalIdx,
         token: TerminalReprIdx,
         production_idx: ProductionIdx,
     ) {
         let old = self.table.insert((non_terminal_idx, token), production_idx);
-        assert_eq!(old, None);
+
+        if let Some(old) = old {
+            let non_terminal = grammar.get_non_terminal(non_terminal_idx);
+            let token_user_name = terminals.get_terminal_user_name(token);
+            panic!(
+                "Multiple productions defined for ({}, {:?}): {{p{}, p{}}}",
+                non_terminal.name(),
+                token_user_name,
+                old.as_usize(),
+                production_idx.as_usize(),
+            );
+        }
     }
 
     /// Same as `add`, except the token is EOF (`$`)
@@ -50,6 +63,7 @@ impl ParseTable {
 
 pub fn generate_parse_table<A>(
     grammar: &Grammar<TerminalReprIdx, A>,
+    terminals: &TerminalReprArena,
     first_table: &FirstTable,
     follow_table: &FollowTable,
 ) -> ParseTable {
@@ -62,7 +76,13 @@ pub fn generate_parse_table<A>(
                 SymbolKind::NonTerminal(nt_idx) => {
                     let nt_firsts = first_table.get_first(*nt_idx);
                     for terminal in nt_firsts.terminals() {
-                        table.add(non_terminal_idx, terminal.clone(), production_idx);
+                        table.add(
+                            grammar,
+                            terminals,
+                            non_terminal_idx,
+                            terminal.clone(),
+                            production_idx,
+                        );
                     }
                     if !nt_firsts.has_empty() {
                         all_empty = false;
@@ -70,7 +90,13 @@ pub fn generate_parse_table<A>(
                     }
                 }
                 SymbolKind::Terminal(terminal) => {
-                    table.add(non_terminal_idx, terminal.clone(), production_idx);
+                    table.add(
+                        grammar,
+                        terminals,
+                        non_terminal_idx,
+                        terminal.clone(),
+                        production_idx,
+                    );
                     all_empty = false;
                     break;
                 }
@@ -81,7 +107,13 @@ pub fn generate_parse_table<A>(
             // table. This often happens during development of a parser.
             let nt_follows = follow_table.get_follow(non_terminal_idx);
             for terminal in nt_follows.terminals() {
-                table.add(non_terminal_idx, terminal.clone(), production_idx);
+                table.add(
+                    grammar,
+                    terminals,
+                    non_terminal_idx,
+                    terminal.clone(),
+                    production_idx,
+                );
             }
             if nt_follows.has_end() {
                 table.add_end(non_terminal_idx, production_idx);

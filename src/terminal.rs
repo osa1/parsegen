@@ -7,13 +7,21 @@ use fxhash::FxHashMap;
 #[derive(Debug)]
 pub struct TerminalReprArena {
     /// Where we allocate terminal representations
-    arena: Vec<syn::Ident>,
+    arena: Vec<TerminalRepr>,
 
     /// Maps user-written terminal names (in `enum Token { ... }`) to their indices in the arena
     map: FxHashMap<String, TerminalReprIdx>,
 
     /// Name of the enum type generated for terminal kinds
     kind_type_name: syn::Ident,
+}
+
+#[derive(Debug)]
+struct TerminalRepr {
+    /// Variant name of the terminal in the token kind enum
+    ident: syn::Ident,
+    /// User-written name of the terminal
+    name: String,
 }
 
 #[derive(Debug, PartialEq, Eq, PartialOrd, Ord, Hash, Clone, Copy)]
@@ -39,8 +47,11 @@ impl TerminalReprArena {
     pub fn new_terminal(&mut self, user_name: String, variant_name: syn::Ident) -> TerminalReprIdx {
         assert!(!self.map.contains_key(&user_name));
         let idx = TerminalReprIdx(self.arena.len());
-        self.map.insert(user_name, idx);
-        self.arena.push(variant_name);
+        self.map.insert(user_name.clone(), idx);
+        self.arena.push(TerminalRepr {
+            ident: variant_name,
+            name: user_name,
+        });
         idx
     }
 
@@ -59,13 +70,17 @@ impl TerminalReprArena {
                         arguments: syn::PathArguments::None,
                     },
                     syn::PathSegment {
-                        ident: self.arena[idx.0].clone(),
+                        ident: self.arena[idx.0].ident.clone(),
                         arguments: syn::PathArguments::None,
                     },
                 ]
                 .into_iter(),
             ),
         }
+    }
+
+    pub fn get_terminal_user_name(&self, idx: TerminalReprIdx) -> &str {
+        &self.arena[idx.0].name
     }
 
     pub fn len_terminals(&self) -> usize {
