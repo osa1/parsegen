@@ -79,13 +79,12 @@ pub fn generate_parse_table<A>(
         if all_empty {
             // When a non-terminal never appears in a RHS it won't have an entry in the follow
             // table. This often happens during development of a parser.
-            if let Some(nt_follows) = follow_table.get_follow(non_terminal_idx) {
-                for terminal in nt_follows.terminals() {
-                    table.add(non_terminal_idx, terminal.clone(), production_idx);
-                }
-                if nt_follows.has_end() {
-                    table.add_end(non_terminal_idx, production_idx);
-                }
+            let nt_follows = follow_table.get_follow(non_terminal_idx);
+            for terminal in nt_follows.terminals() {
+                table.add(non_terminal_idx, terminal.clone(), production_idx);
+            }
+            if nt_follows.has_end() {
+                table.add_end(non_terminal_idx, production_idx);
             }
         }
     }

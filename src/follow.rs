@@ -4,19 +4,11 @@ use crate::first::FirstTable;
 use crate::grammar::{Grammar, NonTerminalIdx, SymbolKind};
 use crate::terminal::TerminalReprIdx;
 
-use std::collections::hash_map::Entry;
-
-use fxhash::{FxHashMap, FxHashSet};
+use fxhash::FxHashSet;
 
 /// Maps non-terminals fo their follow sets
 #[derive(Debug)]
-pub struct FollowTable(FxHashMap<NonTerminalIdx, FollowSet>);
-
-impl Default for FollowTable {
-    fn default() -> Self {
-        FollowTable(Default::default())
-    }
-}
+pub struct FollowTable(Vec<FollowSet>);
 
 #[derive(Debug, Clone)]
 pub struct FollowSet {
@@ -44,35 +36,27 @@ impl FollowSet {
 }
 
 impl FollowTable {
+    fn new(n_non_terminals: usize) -> FollowTable {
+        FollowTable(vec![Default::default(); n_non_terminals])
+    }
+
     /// Returns whether the value is added
     fn add_follow(&mut self, non_terminal_idx: NonTerminalIdx, terminal: TerminalReprIdx) -> bool {
-        self.0
-            .entry(non_terminal_idx)
-            .or_default()
+        self.0[non_terminal_idx.as_usize()]
             .terminals
             .insert(terminal)
     }
 
     /// Returns whether the value is changed
     fn set_end(&mut self, non_terminal_idx: NonTerminalIdx) -> bool {
-        match self.0.entry(non_terminal_idx) {
-            Entry::Occupied(mut entry) => {
-                let old_value = entry.get().end;
-                entry.get_mut().end = true;
-                old_value != true
-            }
-            Entry::Vacant(entry) => {
-                entry.insert(FollowSet {
-                    end: true,
-                    terminals: Default::default(),
-                });
-                true
-            }
-        }
+        let end = &mut self.0[non_terminal_idx.as_usize()].end;
+        let old_value = *end;
+        *end = true;
+        old_value != true
     }
 
-    pub fn get_follow(&self, non_terminal_idx: NonTerminalIdx) -> Option<&FollowSet> {
-        self.0.get(&non_terminal_idx)
+    pub fn get_follow(&self, non_terminal_idx: NonTerminalIdx) -> &FollowSet {
+        &self.0[non_terminal_idx.as_usize()]
     }
 }
 
@@ -80,7 +64,7 @@ pub fn generate_follow_table<A>(
     grammar: &Grammar<TerminalReprIdx, A>,
     first_table: &FirstTable,
 ) -> FollowTable {
-    let mut table: FollowTable = Default::default();
+    let mut table = FollowTable::new(grammar.non_terminals().len());
 
     table.set_end(NonTerminalIdx(0));
 
@@ -134,13 +118,12 @@ pub fn generate_follow_table<A>(
                     // If we've reached here then the our non-terminal appears the end of the
                     // RHS, so follow set should be the follow set of the current production's
                     // non-terminal
-                    if let Some(nt_follows) = table.get_follow(non_terminal_idx_).cloned() {
-                        if nt_follows.end {
-                            updated |= table.set_end(non_terminal_idx);
-                        }
-                        for follow in nt_follows.terminals {
-                            updated |= table.add_follow(non_terminal_idx, follow);
-                        }
+                    let nt_follows = table.get_follow(non_terminal_idx_).clone();
+                    if nt_follows.end {
+                        updated |= table.set_end(non_terminal_idx);
+                    }
+                    for follow in nt_follows.terminals {
+                        updated |= table.add_follow(non_terminal_idx, follow);
                     }
                 }
             }
