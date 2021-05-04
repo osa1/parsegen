@@ -1,7 +1,7 @@
 use crate::ast::{Conversion, FieldPattern, Name, Pattern, TokenEnum};
 use crate::first::generate_first_table;
 use crate::follow::generate_follow_table;
-use crate::grammar::{Grammar, NonTerminal, NonTerminalIdx, Production, Symbol, SymbolKind};
+use crate::grammar::{Grammar, NonTerminal, Production, Symbol, SymbolKind};
 use crate::parse_table::{generate_parse_table, ParseTable};
 use crate::terminal::{TerminalReprArena, TerminalReprIdx};
 
@@ -50,19 +50,15 @@ pub fn generate_ll1_parser(
     let token_type = &tokens.type_name;
     let token_lifetimes = &tokens.type_lifetimes;
 
-    let parse_fn = {
+    let (parse_fn, nt_types) = {
         if grammar.non_terminals.is_empty() {
-            TokenStream::new()
+            (TokenStream::new(), vec![])
         } else {
-            let nt0 = grammar.get_non_terminal(NonTerminalIdx(0));
-            let nt0_name = &nt0.non_terminal;
-            let nt0_ret_ty = &nt0.return_ty;
-            generate_parse_fn(
-                token_type,
-                token_lifetimes,
-                terminal_arena.len_terminals(),
-                &nt0_name,
-                nt0_ret_ty,
+            (
+                generate_parse_fn(token_type, token_lifetimes, terminal_arena.len_terminals()),
+                // For public non-terminals, generate a type with a `parse` method that calls our
+                // top-level parse function
+                generate_pub_non_terminal_types(&grammar, token_type, token_lifetimes),
             )
         }
     };
@@ -77,7 +73,7 @@ pub fn generate_ll1_parser(
         #parse_table
 
         #[derive(Debug, PartialEq, Eq)]
-        enum ParseError<T, E> {
+        pub enum ParseError<T, E> {
             LexerError(E),
             UnexpectedToken(T),
             UnexpectedEOF,
@@ -91,6 +87,8 @@ pub fn generate_ll1_parser(
         }
 
         #parse_fn
+
+        #(#nt_types)*
     )
 }
 
@@ -135,20 +133,21 @@ pub fn token_kind_type(tokens: &TokenEnum) -> (syn::Ident, TokenStream, Terminal
     (token_kind_name, code, arena)
 }
 
-/// Generates the parser
+/// Generates the parser function
 fn generate_parse_fn(
     token_type: &syn::Ident,
     token_lifetimes: &[syn::Lifetime],
     n_terminals: usize,
-    nt0_name: &str,
-    nt0_return_ty: &syn::Type,
+    // nt0_name: &str,
+    // nt0_return_ty: &syn::Type,
 ) -> TokenStream {
-    let nt0_method_name = syn::Ident::new(&format!("non_terminal_{}", nt0_name), Span::call_site());
+    // let nt0_method_name = syn::Ident::new(&format!("non_terminal_{}", nt0_name), Span::call_site());
 
     quote!(
-        fn parse<#(#token_lifetimes,)* E>(
-            input: &mut dyn Iterator<Item=Result<(usize, #token_type<#(#token_lifetimes),*>, usize), E>>
-        ) -> Result<#nt0_return_ty, ParseError<#token_type<#(#token_lifetimes),*>, E>>
+        fn parse<#(#token_lifetimes,)* E, R>(
+            input: &mut dyn Iterator<Item=Result<(usize, #token_type<#(#token_lifetimes),*>, usize), E>>,
+            extract_nt_return_value: fn(ActionResult<#(#token_lifetimes),*>) -> R,
+        ) -> Result<R, ParseError<#token_type<#(#token_lifetimes),*>, E>>
         {
             let mut action_stack: Vec<Action> = vec![Action::MatchNonTerminal(0)];
             let mut value_stack: Vec<ActionResult> = vec![];
@@ -212,10 +211,49 @@ fn generate_parse_fn(
             assert_eq!(action_stack.len(), 0);
             assert_eq!(value_stack.len(), 1);
 
-            let value = value_stack.pop().unwrap().#nt0_method_name();
+            let value = extract_nt_return_value(value_stack.pop().unwrap());
             Ok(value)
         }
     )
+}
+
+fn generate_pub_non_terminal_types<T, A>(
+    grammar: &Grammar<T, A>,
+    token_type: &syn::Ident,
+    token_lifetimes: &[syn::Lifetime],
+) -> Vec<TokenStream> {
+    let mut types: Vec<TokenStream> = vec![];
+
+    for NonTerminal {
+        non_terminal,
+        return_ty,
+        public,
+        ..
+    } in grammar.non_terminals()
+    {
+        if !public {
+            continue;
+        }
+
+        let nt_method_name =
+            syn::Ident::new(&format!("non_terminal_{}", non_terminal), Span::call_site());
+        let non_terminal = syn::Ident::new(non_terminal, Span::call_site());
+
+        types.push(quote!(
+            pub struct #non_terminal;
+
+            impl #non_terminal {
+                pub fn parse<#(#token_lifetimes,)* E>(
+                    input: &mut dyn Iterator<Item=Result<(usize, #token_type<#(#token_lifetimes),*>, usize), E>>
+                ) -> Result<#return_ty, ParseError<#token_type<#(#token_lifetimes),*>, E>>
+                {
+                    parse::<E, #return_ty>(input, ActionResult::#nt_method_name)
+                }
+            }
+        ));
+    }
+
+    types
 }
 
 /// Generates semantic action functions, semantic action table (array of semantic action functions)
@@ -250,6 +288,7 @@ fn generate_semantic_action_table(
                     non_terminal,
                     productions,
                     return_ty,
+                    public,
                 },
             )| {
                 let productions: Vec<Production<TerminalReprIdx, usize>> = productions
@@ -316,6 +355,7 @@ fn generate_semantic_action_table(
                     non_terminal,
                     productions,
                     return_ty,
+                    public,
                 }
             },
         )

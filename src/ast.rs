@@ -69,10 +69,16 @@ pub struct FieldPattern {
     pub pattern: Pattern,
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone, Copy)]
 pub enum Visibility {
     Pub,
     Priv,
+}
+
+impl Visibility {
+    pub fn is_pub(&self) -> bool {
+        matches!(self, Visibility::Pub)
+    }
 }
 
 #[derive(Debug)]

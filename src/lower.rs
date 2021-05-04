@@ -14,7 +14,11 @@ pub fn lower(
 
     for nt in &non_terminals {
         let nt_name = nt.name.to_string();
-        let nt_idx = grammar.add_non_terminal(nt_name.clone(), nt.type_decl.clone());
+        let nt_idx = grammar.add_non_terminal(
+            nt_name.clone(),
+            nt.type_decl.clone(),
+            nt.visibility.is_pub(),
+        );
         nt_indices.insert(nt_name, nt_idx);
     }
 
@@ -58,8 +62,10 @@ fn add_symbol(
     match symbol {
         ast::Symbol::NonTerminal(nt) => {
             let nt_name = nt.to_string();
-            // TODO: This line fails when a non-terminal is used before defined, during development
-            let nt_idx = nt_indices.get(&nt_name).unwrap();
+            let nt_idx = match nt_indices.get(&nt_name) {
+                None => panic!("Non-terminal not defined: {}", nt_name),
+                Some(nt_idx) => nt_idx,
+            };
             symbols.push(Symbol {
                 binder,
                 kind: SymbolKind::NonTerminal(*nt_idx),

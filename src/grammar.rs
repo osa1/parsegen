@@ -50,6 +50,7 @@ pub struct NonTerminal<T, A> {
     // Indexed by `ProductionIdx`
     pub productions: Vec<Production<T, A>>,
     pub return_ty: syn::Type,
+    pub public: bool,
 }
 
 pub struct Production<T, A> {
@@ -99,12 +100,14 @@ impl<T, A> Grammar<T, A> {
         &mut self,
         non_terminal: String,
         return_ty: syn::Type,
+        public: bool,
     ) -> NonTerminalIdx {
         let idx = self.non_terminals.len();
         self.non_terminals.push(NonTerminal {
             non_terminal,
             productions: Default::default(),
             return_ty,
+            public,
         });
         NonTerminalIdx(idx as u32)
     }

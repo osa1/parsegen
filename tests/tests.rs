@@ -4,7 +4,7 @@ use parsegen::parser;
 #[test]
 fn balanced_parens() {
     #[derive(Debug, PartialEq, Eq)]
-    enum Token {
+    pub enum Token {
         LParen,
         RParen,
     }
@@ -31,19 +31,19 @@ fn balanced_parens() {
     }
 
     let mut lexer = Lexer::new("()");
-    assert_eq!(parse(&mut lexer), Ok(1));
+    assert_eq!(Test::parse(&mut lexer), Ok(1));
 
     let mut lexer = Lexer::new("((()))");
-    assert_eq!(parse(&mut lexer), Ok(3));
+    assert_eq!(Test::parse(&mut lexer), Ok(3));
 
     let mut lexer = Lexer::new("((())");
-    assert!(parse(&mut lexer).is_err());
+    assert!(Test::parse(&mut lexer).is_err());
 }
 
 #[test]
 fn token_lifetimes() {
     #[derive(Debug, PartialEq, Eq)]
-    enum Token<'input> {
+    pub enum Token<'input> {
         Id(&'input str),
     }
 
@@ -72,7 +72,7 @@ fn token_lifetimes() {
         }
 
         let mut lexer = Lexer::new("abc");
-        assert_eq!(parse(&mut lexer), Ok("abc"));
+        assert_eq!(Test::parse(&mut lexer), Ok("abc"));
     }
 
     {
@@ -89,7 +89,7 @@ fn token_lifetimes() {
         }
 
         let mut lexer = Lexer::new("a b c");
-        assert_eq!(parse(&mut lexer), Ok("abc".to_owned()));
+        assert_eq!(Test::parse(&mut lexer), Ok("abc".to_owned()));
     }
 }
 
@@ -101,7 +101,7 @@ fn bug_1() {
     // TODO: Add this in macro expansion
     #![allow(unreachable_code)]
 
-    enum Token {
+    pub enum Token {
         A,
     }
 
@@ -110,11 +110,11 @@ fn bug_1() {
             "a" => Token::A,
         }
 
-        Test1: Token = {
+        pub Test1: Token = {
             => todo!(),
         };
 
-        Test2: Token = {
+        pub Test2: Token = {
             => todo!(),
         };
     }
@@ -128,7 +128,7 @@ fn bug_2() {
     // TODO: Add this in macro expansion
     #![allow(unreachable_code)]
 
-    enum Token {
+    pub enum Token {
         A,
     }
 
@@ -137,11 +137,11 @@ fn bug_2() {
             "a" => Token::A,
         }
 
-        Test1: Token = {
+        pub Test1: Token = {
             Test2 Test1 => todo!(),
         };
 
-        Test2: Token = {
+        pub Test2: Token = {
             => todo!(),
         };
     }
