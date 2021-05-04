@@ -60,7 +60,7 @@ pub fn generate_parse_table<A>(
         for symbol in production.symbols() {
             match &symbol.kind {
                 SymbolKind::NonTerminal(nt_idx) => {
-                    let nt_firsts = first_table.get_first(*nt_idx).unwrap();
+                    let nt_firsts = first_table.get_first(*nt_idx);
                     for terminal in nt_firsts.terminals() {
                         table.add(non_terminal_idx, terminal.clone(), production_idx);
                     }

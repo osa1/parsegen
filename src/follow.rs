@@ -113,8 +113,7 @@ pub fn generate_follow_table<A>(
                                 continue 'symbol_loop_0;
                             }
                             SymbolKind::NonTerminal(next_non_terminal) => {
-                                let next_first_set =
-                                    first_table.get_first(next_non_terminal).unwrap();
+                                let next_first_set = first_table.get_first(next_non_terminal);
                                 for next_first in next_first_set.terminals().iter() {
                                     updated |=
                                         table.add_follow(non_terminal_idx, next_first.clone());

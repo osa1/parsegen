@@ -97,19 +97,48 @@ fn token_lifetimes() {
 // because it's never used in any of the production RHSs.
 #[test]
 fn bug_1() {
+    #![allow(dead_code)]
+    // TODO: Add this in macro expansion
+    #![allow(unreachable_code)]
+
     enum Token {
         A,
-        B,
     }
 
     parser! {
         enum Token {
             "a" => Token::A,
-            "b" => Token::B,
         }
 
         Test1: Token = {
             => todo!(),
+        };
+
+        Test2: Token = {
+            => todo!(),
+        };
+    }
+}
+
+// Similar to the above, but the panic would occur because of a missing non-terminal in the first
+// set.
+#[test]
+fn bug_2() {
+    #![allow(dead_code)]
+    // TODO: Add this in macro expansion
+    #![allow(unreachable_code)]
+
+    enum Token {
+        A,
+    }
+
+    parser! {
+        enum Token {
+            "a" => Token::A,
+        }
+
+        Test1: Token = {
+            Test2 Test1 => todo!(),
         };
 
         Test2: Token = {

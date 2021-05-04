@@ -52,10 +52,18 @@ pub struct NonTerminal<T, A> {
     pub return_ty: syn::Type,
 }
 
-#[derive(Debug)]
 pub struct Production<T, A> {
     pub symbols: Vec<Symbol<T>>,
     pub action: A,
+}
+
+impl<T: std::fmt::Debug, A> std::fmt::Debug for Production<T, A> {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("Production")
+            .field("symbols", &self.symbols)
+            .field("action", &"...")
+            .finish()
+    }
 }
 
 #[derive(Debug)]
