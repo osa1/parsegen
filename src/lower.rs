@@ -26,13 +26,6 @@ pub fn lower(
         name, productions, ..
     } in non_terminals
     {
-        // TODO: Not sure why we need this?
-        if productions.is_empty() {
-            // let nt_idx = nt_indices.get(&name.0.to_string()).unwrap();
-            // grammar.add_production(*nt_idx, vec![], ());
-            todo!("Empty productions not supported yet");
-        }
-
         for prod in productions {
             let mut symbols: Vec<Symbol<TerminalReprIdx>> = vec![];
             for sym in prod.symbols {

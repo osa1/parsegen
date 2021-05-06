@@ -64,7 +64,12 @@ pub fn generate_follow_table<A>(
     grammar: &Grammar<TerminalReprIdx, A>,
     first_table: &FirstTable,
 ) -> FollowTable {
+    let n_non_terminals = grammar.non_terminals().len();
     let mut table = FollowTable::new(grammar.non_terminals().len());
+
+    if n_non_terminals == 0 {
+        return table;
+    }
 
     table.set_end(NonTerminalIdx(0));
 
