@@ -1,11 +1,15 @@
 #![allow(dead_code)]
 
+#[macro_use]
+mod maplit;
+
 mod ast;
 mod codegen;
 mod first;
 mod follow;
 mod grammar;
 mod lower;
+mod lr0;
 mod parse_table;
 mod terminal;
 
@@ -13,8 +17,8 @@ mod terminal;
 // mod simulate;
 // mod graphviz;
 
-// #[cfg(test)]
-// mod test_grammars;
+#[cfg(test)]
+mod test_grammars;
 
 use proc_macro::TokenStream;
 

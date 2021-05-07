@@ -73,7 +73,7 @@ pub struct Symbol<T> {
     pub kind: SymbolKind<T>,
 }
 
-#[derive(Debug, PartialEq, Eq, Clone)]
+#[derive(Debug, PartialEq, Eq, PartialOrd, Ord, Hash, Clone)]
 pub enum SymbolKind<T> {
     NonTerminal(NonTerminalIdx),
     Terminal(T),

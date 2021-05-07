@@ -1,19 +1,38 @@
-use crate::grammar::{Grammar, Symbol};
+use crate::grammar::{Grammar, NonTerminalIdx, Symbol, SymbolKind};
+
+fn nt(idx: NonTerminalIdx) -> Symbol<char> {
+    Symbol {
+        binder: None,
+        kind: SymbolKind::NonTerminal(idx),
+    }
+}
+
+fn t(char: char) -> Symbol<char> {
+    Symbol {
+        binder: None,
+        kind: SymbolKind::Terminal(char),
+    }
+}
+
+fn add_non_terminal(grammar: &mut Grammar<char, ()>, non_terminal: &str) -> NonTerminalIdx {
+    grammar.add_non_terminal(
+        non_terminal.to_owned(),
+        syn::Type::Tuple(syn::TypeTuple {
+            paren_token: syn::token::Paren {
+                span: proc_macro2::Span::call_site(),
+            },
+            elems: syn::punctuated::Punctuated::new(),
+        }),
+        true,
+    )
+}
 
 // E -> E + E | n
 pub fn grammar1() -> Grammar<char, ()> {
     let mut grammar: Grammar<char, ()> = Grammar::new();
-    let e_nt_idx = grammar.add_non_terminal("E".to_owned());
-    grammar.add_production(
-        e_nt_idx,
-        vec![
-            Symbol::NonTerminal(e_nt_idx),
-            Symbol::Terminal('+'),
-            Symbol::NonTerminal(e_nt_idx),
-        ],
-        (),
-    );
-    grammar.add_production(e_nt_idx, vec![Symbol::Terminal('n')], ());
+    let e_nt_idx = add_non_terminal(&mut grammar, "E");
+    grammar.add_production(e_nt_idx, vec![nt(e_nt_idx), t('+'), nt(e_nt_idx)], ());
+    grammar.add_production(e_nt_idx, vec![t('n')], ());
     grammar.set_init(e_nt_idx);
     grammar
 }
@@ -24,24 +43,19 @@ pub fn grammar1() -> Grammar<char, ()> {
 // E -> {empty}
 pub fn grammar2() -> Grammar<char, ()> {
     let mut grammar: Grammar<char, ()> = Grammar::new();
-    let s_nt_idx = grammar.add_non_terminal("S".to_owned());
-    let a_nt_idx = grammar.add_non_terminal("A".to_owned());
-    let e_nt_idx = grammar.add_non_terminal("E".to_owned());
+    let s_nt_idx = add_non_terminal(&mut grammar, "S");
+    let a_nt_idx = add_non_terminal(&mut grammar, "A");
+    let e_nt_idx = add_non_terminal(&mut grammar, "E");
 
     grammar.set_init(s_nt_idx);
 
     grammar.add_production(
         s_nt_idx,
-        vec![
-            Symbol::NonTerminal(a_nt_idx),
-            Symbol::NonTerminal(a_nt_idx),
-            Symbol::NonTerminal(a_nt_idx),
-            Symbol::NonTerminal(a_nt_idx),
-        ],
+        vec![nt(a_nt_idx), nt(a_nt_idx), nt(a_nt_idx), nt(a_nt_idx)],
         (),
     );
-    grammar.add_production(a_nt_idx, vec![Symbol::Terminal('a')], ());
-    grammar.add_production(a_nt_idx, vec![Symbol::NonTerminal(e_nt_idx)], ());
+    grammar.add_production(a_nt_idx, vec![t('a')], ());
+    grammar.add_production(a_nt_idx, vec![nt(e_nt_idx)], ());
     grammar.add_production(e_nt_idx, vec![], ());
     grammar
 }
@@ -52,47 +66,27 @@ pub fn grammar2() -> Grammar<char, ()> {
 // C -> a
 pub fn grammar3() -> Grammar<char, ()> {
     let mut grammar: Grammar<char, ()> = Grammar::new();
-    let s_nt_idx = grammar.add_non_terminal("S".to_owned());
-    let a_nt_idx = grammar.add_non_terminal("A".to_owned());
-    let b_nt_idx = grammar.add_non_terminal("B".to_owned());
-    let c_nt_idx = grammar.add_non_terminal("C".to_owned());
+    let s_nt_idx = add_non_terminal(&mut grammar, "S");
+    let a_nt_idx = add_non_terminal(&mut grammar, "A");
+    let b_nt_idx = add_non_terminal(&mut grammar, "B");
+    let c_nt_idx = add_non_terminal(&mut grammar, "C");
 
     grammar.set_init(s_nt_idx);
 
     // S -> A
-    grammar.add_production(s_nt_idx, vec![Symbol::NonTerminal(a_nt_idx)], ());
+    grammar.add_production(s_nt_idx, vec![nt(a_nt_idx)], ());
     // A -> Ba
-    grammar.add_production(
-        a_nt_idx,
-        vec![Symbol::NonTerminal(b_nt_idx), Symbol::Terminal('a')],
-        (),
-    );
+    grammar.add_production(a_nt_idx, vec![nt(b_nt_idx), t('a')], ());
     // A -> Bb
-    grammar.add_production(
-        a_nt_idx,
-        vec![Symbol::NonTerminal(b_nt_idx), Symbol::Terminal('b')],
-        (),
-    );
+    grammar.add_production(a_nt_idx, vec![nt(b_nt_idx), t('b')], ());
     // A -> Cab
-    grammar.add_production(
-        a_nt_idx,
-        vec![
-            Symbol::NonTerminal(c_nt_idx),
-            Symbol::Terminal('a'),
-            Symbol::Terminal('b'),
-        ],
-        (),
-    );
+    grammar.add_production(a_nt_idx, vec![nt(c_nt_idx), t('a'), t('b')], ());
     // A -> Ad
-    grammar.add_production(
-        a_nt_idx,
-        vec![Symbol::NonTerminal(a_nt_idx), Symbol::Terminal('d')],
-        (),
-    );
+    grammar.add_production(a_nt_idx, vec![nt(a_nt_idx), t('d')], ());
     // B -> a
-    grammar.add_production(b_nt_idx, vec![Symbol::Terminal('a')], ());
+    grammar.add_production(b_nt_idx, vec![t('a')], ());
     // C -> a
-    grammar.add_production(c_nt_idx, vec![Symbol::Terminal('a')], ());
+    grammar.add_production(c_nt_idx, vec![t('a')], ());
 
     grammar
 }
@@ -102,30 +96,22 @@ pub fn grammar3() -> Grammar<char, ()> {
 // T -> aB | a
 pub fn grammar4() -> Grammar<char, ()> {
     let mut grammar: Grammar<char, ()> = Grammar::new();
-    let s_nt_idx = grammar.add_non_terminal("S".to_owned());
-    let b_nt_idx = grammar.add_non_terminal("B".to_owned());
-    let t_nt_idx = grammar.add_non_terminal("T".to_owned());
+    let s_nt_idx = add_non_terminal(&mut grammar, "S");
+    let b_nt_idx = add_non_terminal(&mut grammar, "B");
+    let t_nt_idx = add_non_terminal(&mut grammar, "T");
 
     grammar.set_init(s_nt_idx);
 
     // S -> ST
-    grammar.add_production(
-        s_nt_idx,
-        vec![Symbol::NonTerminal(s_nt_idx), Symbol::NonTerminal(t_nt_idx)],
-        (),
-    );
+    grammar.add_production(s_nt_idx, vec![nt(s_nt_idx), nt(t_nt_idx)], ());
     // S -> a
-    grammar.add_production(s_nt_idx, vec![Symbol::Terminal('a')], ());
+    grammar.add_production(s_nt_idx, vec![t('a')], ());
     // B -> (empty)
     grammar.add_production(b_nt_idx, vec![], ());
     // T -> aB
-    grammar.add_production(
-        t_nt_idx,
-        vec![Symbol::Terminal('a'), Symbol::NonTerminal(b_nt_idx)],
-        (),
-    );
+    grammar.add_production(t_nt_idx, vec![t('a'), nt(b_nt_idx)], ());
     // T -> a
-    grammar.add_production(t_nt_idx, vec![Symbol::Terminal('a')], ());
+    grammar.add_production(t_nt_idx, vec![t('a')], ());
 
     grammar
 }
@@ -137,75 +123,74 @@ pub fn grammar4() -> Grammar<char, ()> {
 // F -> ( E ) | n
 pub fn grammar5() -> Grammar<char, ()> {
     let mut grammar: Grammar<char, ()> = Grammar::new();
-    let e_nt_idx = grammar.add_non_terminal("E".to_owned());
-    let e1_nt_idx = grammar.add_non_terminal("E'".to_owned());
-    let t_nt_idx = grammar.add_non_terminal("T".to_owned());
-    let t1_nt_idx = grammar.add_non_terminal("T'".to_owned());
-    let f_nt_idx = grammar.add_non_terminal("F".to_owned());
+    let e_nt_idx = add_non_terminal(&mut grammar, "E");
+    let e1_nt_idx = add_non_terminal(&mut grammar, "E'");
+    let t_nt_idx = add_non_terminal(&mut grammar, "T");
+    let t1_nt_idx = add_non_terminal(&mut grammar, "T'");
+    let f_nt_idx = add_non_terminal(&mut grammar, "F");
 
     grammar.set_init(e_nt_idx);
 
     // E -> T E'
-    grammar.add_production(
-        e_nt_idx,
-        vec![
-            Symbol::NonTerminal(t_nt_idx),
-            Symbol::NonTerminal(e1_nt_idx),
-        ],
-        (),
-    );
+    grammar.add_production(e_nt_idx, vec![nt(t_nt_idx), nt(e1_nt_idx)], ());
 
     // E' -> + T E'
-    grammar.add_production(
-        e1_nt_idx,
-        vec![
-            Symbol::Terminal('+'),
-            Symbol::NonTerminal(t_nt_idx),
-            Symbol::NonTerminal(e1_nt_idx),
-        ],
-        (),
-    );
+    grammar.add_production(e1_nt_idx, vec![t('+'), nt(t_nt_idx), nt(e1_nt_idx)], ());
 
     // E' -> (empty)
     grammar.add_production(e1_nt_idx, vec![], ());
 
     // T -> F T'
-    grammar.add_production(
-        t_nt_idx,
-        vec![
-            Symbol::NonTerminal(f_nt_idx),
-            Symbol::NonTerminal(t1_nt_idx),
-        ],
-        (),
-    );
+    grammar.add_production(t_nt_idx, vec![nt(f_nt_idx), nt(t1_nt_idx)], ());
 
     // T' -> * F T'
-    grammar.add_production(
-        t1_nt_idx,
-        vec![
-            Symbol::Terminal('*'),
-            Symbol::NonTerminal(f_nt_idx),
-            Symbol::NonTerminal(t1_nt_idx),
-        ],
-        (),
-    );
+    grammar.add_production(t1_nt_idx, vec![t('*'), nt(f_nt_idx), nt(t1_nt_idx)], ());
 
     // T' -> (empty)
     grammar.add_production(t1_nt_idx, vec![], ());
 
     // F -> ( E )
-    grammar.add_production(
-        f_nt_idx,
-        vec![
-            Symbol::Terminal('('),
-            Symbol::NonTerminal(e_nt_idx),
-            Symbol::Terminal(')'),
-        ],
-        (),
-    );
+    grammar.add_production(f_nt_idx, vec![t('('), nt(e_nt_idx), t(')')], ());
 
     // F -> n
-    grammar.add_production(f_nt_idx, vec![Symbol::Terminal('n')], ());
+    grammar.add_production(f_nt_idx, vec![t('n')], ());
+
+    grammar
+}
+
+// Figure 4.1 in dragon book. grammar5 is the left-factored version of this grammar.
+//
+// E -> E + T | T
+// T -> T * F | F
+// F -> ( E ) | id
+pub fn grammar6() -> Grammar<char, ()> {
+    let mut grammar: Grammar<char, ()> = Grammar::new();
+
+    let e0_nt_idx = add_non_terminal(&mut grammar, "E0");
+    let e_nt_idx = add_non_terminal(&mut grammar, "E");
+    let t_nt_idx = add_non_terminal(&mut grammar, "T");
+    let f_nt_idx = add_non_terminal(&mut grammar, "F");
+
+    // E0 -> E
+    grammar.add_production(e0_nt_idx, vec![nt(e_nt_idx)], ());
+
+    // E -> E + T
+    grammar.add_production(e_nt_idx, vec![nt(e_nt_idx), t('+'), nt(t_nt_idx)], ());
+
+    // E -> T
+    grammar.add_production(e_nt_idx, vec![nt(t_nt_idx)], ());
+
+    // T -> T * F
+    grammar.add_production(t_nt_idx, vec![nt(t_nt_idx), t('*'), nt(f_nt_idx)], ());
+
+    // T -> F
+    grammar.add_production(t_nt_idx, vec![nt(f_nt_idx)], ());
+
+    // F -> ( E )
+    grammar.add_production(f_nt_idx, vec![t('('), nt(e_nt_idx), t(')')], ());
+
+    // F -> id
+    grammar.add_production(f_nt_idx, vec![t('x')], ());
 
     grammar
 }
