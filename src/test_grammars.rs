@@ -1,20 +1,20 @@
 use crate::grammar::{Grammar, NonTerminalIdx, Symbol, SymbolKind};
 
-fn nt(idx: NonTerminalIdx) -> Symbol<char> {
+fn nt<T>(idx: NonTerminalIdx) -> Symbol<T> {
     Symbol {
         binder: None,
         kind: SymbolKind::NonTerminal(idx),
     }
 }
 
-fn t(char: char) -> Symbol<char> {
+fn t<T>(token: T) -> Symbol<T> {
     Symbol {
         binder: None,
-        kind: SymbolKind::Terminal(char),
+        kind: SymbolKind::Terminal(token),
     }
 }
 
-fn add_non_terminal(grammar: &mut Grammar<char, ()>, non_terminal: &str) -> NonTerminalIdx {
+fn add_non_terminal<T>(grammar: &mut Grammar<T, ()>, non_terminal: &str) -> NonTerminalIdx {
     grammar.add_non_terminal(
         non_terminal.to_owned(),
         syn::Type::Tuple(syn::TypeTuple {
@@ -158,13 +158,22 @@ pub fn grammar5() -> Grammar<char, ()> {
     grammar
 }
 
+#[derive(Debug, PartialEq, Eq, PartialOrd, Ord, Hash, Clone, Copy)]
+pub enum Grammar6Token {
+    LParen,
+    RParen,
+    Plus,
+    Star,
+    Id,
+}
+
 // Figure 4.1 in dragon book. grammar5 is the left-factored version of this grammar.
 //
 // E -> E + T | T
 // T -> T * F | F
 // F -> ( E ) | id
-pub fn grammar6() -> Grammar<char, ()> {
-    let mut grammar: Grammar<char, ()> = Grammar::new();
+pub fn grammar6() -> Grammar<Grammar6Token, ()> {
+    let mut grammar: Grammar<Grammar6Token, ()> = Grammar::new();
 
     let e0_nt_idx = add_non_terminal(&mut grammar, "E0");
     let e_nt_idx = add_non_terminal(&mut grammar, "E");
@@ -175,22 +184,38 @@ pub fn grammar6() -> Grammar<char, ()> {
     grammar.add_production(e0_nt_idx, vec![nt(e_nt_idx)], ());
 
     // E -> E + T
-    grammar.add_production(e_nt_idx, vec![nt(e_nt_idx), t('+'), nt(t_nt_idx)], ());
+    grammar.add_production(
+        e_nt_idx,
+        vec![nt(e_nt_idx), t(Grammar6Token::Plus), nt(t_nt_idx)],
+        (),
+    );
 
     // E -> T
     grammar.add_production(e_nt_idx, vec![nt(t_nt_idx)], ());
 
     // T -> T * F
-    grammar.add_production(t_nt_idx, vec![nt(t_nt_idx), t('*'), nt(f_nt_idx)], ());
+    grammar.add_production(
+        t_nt_idx,
+        vec![nt(t_nt_idx), t(Grammar6Token::Star), nt(f_nt_idx)],
+        (),
+    );
 
     // T -> F
     grammar.add_production(t_nt_idx, vec![nt(f_nt_idx)], ());
 
     // F -> ( E )
-    grammar.add_production(f_nt_idx, vec![t('('), nt(e_nt_idx), t(')')], ());
+    grammar.add_production(
+        f_nt_idx,
+        vec![
+            t(Grammar6Token::LParen),
+            nt(e_nt_idx),
+            t(Grammar6Token::RParen),
+        ],
+        (),
+    );
 
     // F -> id
-    grammar.add_production(f_nt_idx, vec![t('x')], ());
+    grammar.add_production(f_nt_idx, vec![t(Grammar6Token::Id)], ());
 
     grammar
 }
