@@ -1,5 +1,5 @@
 use crate::follow::FollowTable;
-use crate::grammar::{Grammar, NonTerminalIdx, ProductionIdx, Symbol, SymbolKind};
+use crate::grammar::{Grammar, NonTerminalIdx, Production, ProductionIdx, Symbol, SymbolKind};
 
 use std::collections::BTreeSet;
 use std::hash::Hash;
@@ -210,7 +210,8 @@ fn symbols_eq<T: Eq>(ss1: &[Symbol<T>], ss2: &[SymbolKind<T>]) -> bool {
     ss1.len() == ss2.len() && ss1.iter().zip(ss2).all(|(s1, s2)| s1.kind == *s2)
 }
 
-enum SLRAction {
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum LRAction {
     /// Shift current terminal, switch to given state
     Shift(StateIdx),
 
@@ -221,59 +222,67 @@ enum SLRAction {
     Accept,
 }
 
-struct SLR0Table {
-    action: FxHashMap<(StateIdx, Option<char>), SLRAction>,
+struct SLR1Table<T: Eq + Hash> {
+    action: FxHashMap<(StateIdx, Option<T>), LRAction>,
     goto: FxHashMap<(StateIdx, NonTerminalIdx), StateIdx>,
 }
 
-impl Default for SLR0Table {
+impl<T: Eq + Hash> Default for SLR1Table<T> {
     fn default() -> Self {
-        SLR0Table {
+        SLR1Table {
             action: Default::default(),
             goto: Default::default(),
         }
     }
 }
 
-impl SLR0Table {
-    fn add_shift(&mut self, state: StateIdx, token: char, next_state: StateIdx) {
+impl<T: Eq + Hash> SLR1Table<T> {
+    fn add_shift(&mut self, state: StateIdx, token: T, next_state: StateIdx) {
         let old = self
             .action
-            .insert((state, Some(token)), SLRAction::Shift(next_state));
+            .insert((state, Some(token)), LRAction::Shift(next_state));
         assert!(old.is_none());
     }
 
     fn add_reduce(
         &mut self,
         state: StateIdx,
-        token: char,
+        token: Option<T>,
         non_terminal_idx: NonTerminalIdx,
         production_idx: ProductionIdx,
     ) {
         let old = self.action.insert(
-            (state, Some(token)),
-            SLRAction::Reduce(non_terminal_idx, production_idx),
+            (state, token),
+            LRAction::Reduce(non_terminal_idx, production_idx),
         );
         assert!(old.is_none());
     }
 
     fn add_accept(&mut self, state: StateIdx) {
-        let old = self.action.insert((state, None), SLRAction::Accept);
-        assert!(old.is_none());
+        let old = self.action.insert((state, None), LRAction::Accept);
+        // assert_eq!(old, None);
     }
 
     fn add_goto(&mut self, state: StateIdx, non_terminal_idx: NonTerminalIdx, next: StateIdx) {
         let old = self.goto.insert((state, non_terminal_idx), next);
         assert!(old.is_none());
     }
+
+    fn get_action(&self, state: StateIdx, non_terminal: Option<T>) -> Option<LRAction> {
+        self.action.get(&(state, non_terminal)).copied()
+    }
+
+    fn get_goto(&self, state: StateIdx, non_terminal: NonTerminalIdx) -> Option<StateIdx> {
+        self.goto.get(&(state, non_terminal)).cloned()
+    }
 }
 
-fn build_slr1_table<A>(
-    grammar: &Grammar<char, A>,
-    automaton: &LR0Automaton<char>,
-    follow_table: FollowTable<char>,
-) -> SLR0Table {
-    let mut table: SLR0Table = Default::default();
+fn build_slr1_table<T: Eq + Hash + Copy, A>(
+    grammar: &Grammar<T, A>,
+    automaton: &LR0Automaton<T>,
+    follow_table: &FollowTable<T>,
+) -> SLR1Table<T> {
+    let mut table: SLR1Table<T> = Default::default();
 
     for (state_idx, State { items, goto }) in automaton.state_indices() {
         for item in items {
@@ -288,13 +297,19 @@ fn build_slr1_table<A>(
 
             // Rule 2.b
             if item.is_cursor_at_end(grammar) {
-                for follow in follow_table.get_follow(item.non_terminal_idx).terminals() {
+                let follow_set = follow_table.get_follow(item.non_terminal_idx);
+
+                for follow in follow_set.terminals() {
                     table.add_reduce(
                         state_idx,
-                        *follow,
+                        Some(*follow),
                         item.non_terminal_idx,
                         item.production_idx,
                     );
+                }
+
+                if follow_set.has_end() {
+                    table.add_reduce(state_idx, None, item.non_terminal_idx, item.production_idx);
                 }
             }
 
@@ -318,23 +333,87 @@ fn build_slr1_table<A>(
     table
 }
 
-fn simulate(table: &SLR0Table, input: &str) {
-    todo!()
+// Figure 3.36 in dragon book
+fn simulate<T: Eq + Hash + Copy + fmt::Debug, A>(
+    table: &SLR1Table<T>,
+    grammar: &Grammar<T, A>,
+    mut input: impl Iterator<Item = T>,
+) {
+    let mut stack: Vec<StateIdx> = vec![StateIdx(0)];
+
+    let mut a = input.next();
+
+    loop {
+        let s = *stack.last().unwrap();
+        match table.get_action(s, a) {
+            Some(action) => {
+                match action {
+                    LRAction::Shift(t) => {
+                        stack.push(t);
+                        a = input.next();
+                    }
+                    LRAction::Reduce(non_terminal_idx, terminal_idx) => {
+                        let production = grammar.get_production(non_terminal_idx, terminal_idx);
+                        let n_symbols = production.symbols().len();
+                        for _ in 0..n_symbols {
+                            stack.pop();
+                        }
+                        let s = *stack.last().unwrap();
+                        match table.get_goto(s, non_terminal_idx) {
+                            None => panic!("Stuck! (1)"),
+                            Some(next) => stack.push(next),
+                        }
+                        // TODO: semantic action
+                    }
+                    LRAction::Accept => {
+                        break;
+                    }
+                }
+            }
+            None => {
+                panic!(
+                    "Stuck! state = {:?}, stack = {:?}, token = {:?}",
+                    s, stack, a
+                );
+            }
+        }
+    }
+
+    println!(
+        "Parsing done. Stack = {:?}, input.next() = {:?}",
+        stack,
+        input.next()
+    );
 }
 
 use std::fmt;
 
-struct ItemDisplay<'a, A> {
+struct ItemDisplay<'a, T, A> {
     item: Item,
-    grammar: &'a Grammar<char, A>,
+    grammar: &'a Grammar<T, A>,
 }
 
 struct LR0AutomatonDisplay<'a, 'b, T, A> {
     automaton: &'a LR0Automaton<T>,
-    grammar: &'b Grammar<char, A>,
+    grammar: &'b Grammar<T, A>,
 }
 
-impl<'a, A> fmt::Display for ItemDisplay<'a, A> {
+struct SLR1TableDisplay<'a, 'b, T: Eq + Hash, A> {
+    table: &'a SLR1Table<T>,
+    grammar: &'b Grammar<T, A>,
+}
+
+struct LRActionDisplay<'a, T, A> {
+    action: LRAction,
+    grammar: &'a Grammar<T, A>,
+}
+
+struct ProductionDisplay<'a, 'b, T, A> {
+    production: &'a Production<T, A>,
+    grammar: &'b Grammar<T, A>,
+}
+
+impl<'a, T: fmt::Debug, A> fmt::Display for ItemDisplay<'a, T, A> {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         let non_terminal = self.grammar.get_non_terminal(self.item.non_terminal_idx);
         write!(f, "[{} -> ", non_terminal.non_terminal)?;
@@ -346,9 +425,9 @@ impl<'a, A> fmt::Display for ItemDisplay<'a, A> {
             if symbol_idx == self.item.cursor {
                 write!(f, "|")?;
             }
-            match symbol.kind {
+            match &symbol.kind {
                 SymbolKind::NonTerminal(nt) => {
-                    let nt = self.grammar.get_non_terminal(nt);
+                    let nt = self.grammar.get_non_terminal(*nt);
                     write!(f, "{}", nt.non_terminal)?;
                 }
                 SymbolKind::Terminal(t) => {
@@ -400,6 +479,95 @@ impl<'a, 'b, T: fmt::Debug, A> fmt::Display for LR0AutomatonDisplay<'a, 'b, T, A
             }
 
             writeln!(f, "}}")?;
+        }
+        Ok(())
+    }
+}
+
+impl<'a, 'b, T: Eq + Hash + Clone + fmt::Debug, A> fmt::Display for SLR1TableDisplay<'a, 'b, T, A> {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        let mut actions: FxHashMap<StateIdx, Vec<(Option<T>, LRAction)>> = Default::default();
+        let mut gotos: FxHashMap<StateIdx, Vec<(NonTerminalIdx, StateIdx)>> = Default::default();
+        let mut states: BTreeSet<StateIdx> = Default::default();
+
+        for ((state, t), action) in self.table.action.iter() {
+            states.insert(*state);
+            actions
+                .entry(*state)
+                .or_default()
+                .push((t.clone(), *action));
+        }
+
+        for ((state, nt), next) in self.table.goto.iter() {
+            states.insert(*state);
+            gotos.entry(*state).or_default().push((*nt, *next));
+        }
+
+        for state in states.iter() {
+            writeln!(f, "{}: {{", state.0)?;
+            if let Some(actions) = actions.get(state) {
+                for (token, action) in actions {
+                    writeln!(
+                        f,
+                        "  {:?} -> {}",
+                        token,
+                        LRActionDisplay {
+                            action: *action,
+                            grammar: self.grammar
+                        }
+                    )?;
+                }
+            }
+            if let Some(gotos) = gotos.get(state) {
+                for (nt, next) in gotos {
+                    let nt = &self.grammar.get_non_terminal(*nt).non_terminal;
+                    writeln!(f, "  GOTO {:?} -> {}", nt, next.0)?;
+                }
+            }
+            writeln!(f, "}}")?;
+        }
+
+        Ok(())
+    }
+}
+
+impl<'a, T: fmt::Debug, A> fmt::Display for LRActionDisplay<'a, T, A> {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self.action {
+            LRAction::Shift(next) => write!(f, "Shift {}", next.0),
+            LRAction::Reduce(nt, p) => {
+                let p = self.grammar.get_production(nt, p);
+                let nt = self.grammar.get_non_terminal(nt);
+                write!(
+                    f,
+                    "Reduce {} -> {}",
+                    nt.non_terminal,
+                    ProductionDisplay {
+                        production: p,
+                        grammar: self.grammar
+                    }
+                )
+            }
+            LRAction::Accept => write!(f, "Accept"),
+        }
+    }
+}
+
+impl<'a, 'b, T: fmt::Debug, A> fmt::Display for ProductionDisplay<'a, 'b, T, A> {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        for (symbol_idx, symbol) in self.production.symbols().iter().enumerate() {
+            match &symbol.kind {
+                SymbolKind::NonTerminal(nt) => {
+                    let nt = self.grammar.get_non_terminal(*nt);
+                    write!(f, "{}", nt.non_terminal)?;
+                }
+                SymbolKind::Terminal(t) => {
+                    write!(f, "{:?}", t)?;
+                }
+            }
+            if symbol_idx != self.production.symbols().len() - 1 {
+                write!(f, " ")?;
+            }
         }
         Ok(())
     }
@@ -609,4 +777,40 @@ fn automaton_1() {
     );
 
     assert_eq!(automaton.states.len(), 12);
+}
+
+#[test]
+fn simulate1() {
+    use crate::first::generate_first_table;
+    use crate::follow::generate_follow_table;
+    use crate::test_grammars::{grammar6, Grammar6Token};
+
+    let grammar = grammar6();
+    let first = generate_first_table(&grammar);
+    let follow = generate_follow_table(&grammar, &first);
+    let lr_automaton = compute_lr0_automaton(&grammar);
+
+    println!(
+        "{}",
+        LR0AutomatonDisplay {
+            automaton: &lr_automaton,
+            grammar: &grammar
+        }
+    );
+
+    let slr1 = build_slr1_table(&grammar, &lr_automaton, &follow);
+
+    println!(
+        "{}",
+        SLR1TableDisplay {
+            table: &slr1,
+            grammar: &grammar
+        }
+    );
+
+    simulate(
+        &slr1,
+        &grammar,
+        vec![Grammar6Token::Id, Grammar6Token::Plus, Grammar6Token::Id].into_iter(),
+    );
 }
