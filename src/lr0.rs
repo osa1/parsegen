@@ -104,6 +104,15 @@ impl<T: Clone> LR1Item<T> {
         item.cursor += 1;
         item
     }
+
+    fn try_advance<T1, A>(&self, grammar: &Grammar<T1, A>) -> Option<LR1Item<T>> {
+        let production = self.get_production(grammar);
+        if self.cursor == production.symbols().len() {
+            None
+        } else {
+            Some(self.advance())
+        }
+    }
 }
 
 fn compute_lr0_closure<T, A>(
@@ -236,6 +245,43 @@ fn compute_lr0_goto<T: Eq, A>(
     }
 
     compute_lr0_closure(grammar, &goto)
+}
+
+fn compute_lr1_goto<T: Hash + Clone + Eq + Ord, A>(
+    state: &BTreeSet<LR1Item<T>>,
+    symbol: &SymbolKind<T>,
+    grammar: &Grammar<T, A>,
+    first: &FirstTable<T>,
+) -> BTreeSet<LR1Item<T>> {
+    let mut goto: BTreeSet<LR1Item<T>> = Default::default();
+
+    for item in state {
+        if let Some(next_symbol) = item.next_symbol(grammar) {
+            if next_symbol == symbol {
+                goto.insert(item.advance());
+            }
+        }
+    }
+
+    compute_lr1_closure(grammar, first, &goto)
+}
+
+#[derive(Debug)]
+struct LR1State<T: Clone> {
+    items: BTreeSet<LR1Item<T>>,
+    goto: FxHashMap<SymbolKind<T>, StateIdx>,
+}
+
+#[derive(Debug)]
+struct LR1Automaton<T: Clone> {
+    // Indexed by `StateIdx`
+    states: Vec<LR1State<T>>,
+    // Maps existing item sets to their state indices, to maintain sharing.
+    state_indices: FxHashMap<BTreeSet<LR1Item<T>>, StateIdx>,
+}
+
+fn compute_lr1_states<T: Clone, A>(grammar: &Grammar<T, A>) -> LR1Automaton<T> {
+    todo!()
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
