@@ -183,6 +183,12 @@ struct NonTerminalIndicesIter<'grammar, T, A> {
     non_terminal_idx: NonTerminalIdx,
 }
 
+struct NonTerminalProductionIndicesIter<'grammar, T, A> {
+    grammar: &'grammar Grammar<T, A>,
+    non_terminal_idx: NonTerminalIdx,
+    production_idx: ProductionIdx,
+}
+
 impl<'grammar, T, A> Iterator for ProductionIndicesIter<'grammar, T, A> {
     type Item = (NonTerminalIdx, ProductionIdx, &'grammar Production<T, A>);
 
@@ -216,18 +222,29 @@ impl<'grammar, T, A> Iterator for NonTerminalIndicesIter<'grammar, T, A> {
     type Item = (NonTerminalIdx, &'grammar NonTerminal<T, A>);
 
     fn next(&mut self) -> Option<Self::Item> {
-        match self
-            .grammar
+        self.grammar
             .non_terminals
             .get(self.non_terminal_idx.as_usize())
-        {
-            None => None,
-            Some(non_terminal) => {
+            .map(|non_terminal| {
                 let idx = self.non_terminal_idx;
                 self.non_terminal_idx = NonTerminalIdx(self.non_terminal_idx.0 + 1);
-                Some((idx, non_terminal))
-            }
-        }
+                (idx, non_terminal)
+            })
+    }
+}
+
+impl<'grammar, T, A> Iterator for NonTerminalProductionIndicesIter<'grammar, T, A> {
+    type Item = (ProductionIdx, &'grammar Production<T, A>);
+
+    fn next(&mut self) -> Option<Self::Item> {
+        let production_idx = self.production_idx;
+        self.grammar.non_terminals[self.non_terminal_idx.as_usize()]
+            .productions
+            .get(production_idx.as_usize())
+            .map(|production| {
+                self.production_idx = ProductionIdx(production_idx.0 + 1);
+                (production_idx, production)
+            })
     }
 }
 
@@ -252,6 +269,17 @@ impl<T, A> Grammar<T, A> {
         NonTerminalIndicesIter {
             grammar: self,
             non_terminal_idx: NonTerminalIdx(0),
+        }
+    }
+
+    pub fn non_terminal_production_indices(
+        &self,
+        non_terminal: NonTerminalIdx,
+    ) -> impl Iterator<Item = (ProductionIdx, &Production<T, A>)> {
+        NonTerminalProductionIndicesIter {
+            grammar: self,
+            non_terminal_idx: non_terminal,
+            production_idx: ProductionIdx(0),
         }
     }
 }

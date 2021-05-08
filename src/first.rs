@@ -17,6 +17,10 @@ pub struct FirstSet<T: Eq + Hash> {
 }
 
 impl<T: Eq + Hash> FirstSet<T> {
+    pub fn add(&mut self, terminal: T) {
+        self.terminals.insert(terminal);
+    }
+
     pub fn terminals(&self) -> &FxHashSet<T> {
         &self.terminals
     }

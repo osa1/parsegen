@@ -1,3 +1,4 @@
+use crate::first::{FirstSet, FirstTable};
 use crate::follow::FollowTable;
 use crate::grammar::{Grammar, NonTerminalIdx, Production, ProductionIdx, Symbol, SymbolKind};
 
@@ -7,15 +8,15 @@ use std::hash::Hash;
 use fxhash::{FxHashMap, FxHashSet};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
-struct Item {
+struct LR0Item {
     non_terminal_idx: NonTerminalIdx,
     production_idx: ProductionIdx,
     cursor: usize,
 }
 
-impl Item {
-    fn new(non_terminal_idx: NonTerminalIdx, production_idx: ProductionIdx) -> Item {
-        Item {
+impl LR0Item {
+    fn new(non_terminal_idx: NonTerminalIdx, production_idx: ProductionIdx) -> LR0Item {
+        LR0Item {
             non_terminal_idx,
             production_idx,
             cursor: 0,
@@ -26,8 +27,8 @@ impl Item {
         non_terminal_idx: NonTerminalIdx,
         production_idx: ProductionIdx,
         cursor: usize,
-    ) -> Item {
-        Item {
+    ) -> LR0Item {
+        LR0Item {
             non_terminal_idx,
             production_idx,
             cursor,
@@ -54,8 +55,8 @@ impl Item {
         self.next_symbol(grammar).is_none()
     }
 
-    fn advance(&self) -> Item {
-        Item {
+    fn advance(&self) -> LR0Item {
+        LR0Item {
             non_terminal_idx: self.non_terminal_idx,
             production_idx: self.production_idx,
             cursor: self.cursor + 1,
@@ -63,20 +64,65 @@ impl Item {
     }
 }
 
-fn compute_closure<T, A>(grammar: &Grammar<T, A>, items: &BTreeSet<Item>) -> BTreeSet<Item> {
-    let mut closure: BTreeSet<Item> = items.clone();
+#[derive(Debug, PartialEq, Eq, PartialOrd, Ord, Hash, Clone)]
+struct LR1Item<T: Clone> {
+    non_terminal_idx: NonTerminalIdx,
+    production_idx: ProductionIdx,
+    cursor: usize,
+    // None => EOF
+    lookahead: Option<T>,
+}
+
+impl<T: Clone> LR1Item<T> {
+    fn next_symbol<'grammar, T1, A>(
+        &self,
+        grammar: &'grammar Grammar<T1, A>,
+    ) -> Option<&'grammar SymbolKind<T1>> {
+        let production = grammar.get_production(self.non_terminal_idx, self.production_idx);
+        production.symbols().get(self.cursor).map(|s| &s.kind)
+    }
+
+    fn next_non_terminal<'grammar, T1, A>(
+        &self,
+        grammar: &'grammar Grammar<T1, A>,
+    ) -> Option<NonTerminalIdx> {
+        match self.next_symbol(grammar) {
+            Some(SymbolKind::NonTerminal(nt_idx)) => Some(*nt_idx),
+            _ => None,
+        }
+    }
+
+    fn get_production<'grammar, T1, A>(
+        &self,
+        grammar: &'grammar Grammar<T1, A>,
+    ) -> &'grammar Production<T1, A> {
+        grammar.get_production(self.non_terminal_idx, self.production_idx)
+    }
+
+    fn advance(&self) -> LR1Item<T> {
+        let mut item: LR1Item<T> = (*self).clone();
+        item.cursor += 1;
+        item
+    }
+}
+
+fn compute_lr0_closure<T, A>(
+    grammar: &Grammar<T, A>,
+    items: &BTreeSet<LR0Item>,
+) -> BTreeSet<LR0Item> {
+    let mut closure: BTreeSet<LR0Item> = items.clone();
 
     let mut updated = true;
     while updated {
         updated = false;
 
-        let mut new_items: FxHashSet<Item> = Default::default();
+        let mut new_items: FxHashSet<LR0Item> = Default::default();
 
         for item in &closure {
             if let Some(next_nt) = item.next_non_terminal(grammar) {
                 let nt = grammar.get_non_terminal(next_nt);
                 for prod_idx in nt.production_indices() {
-                    let item = Item::new(next_nt, prod_idx);
+                    let item = LR0Item::new(next_nt, prod_idx);
                     if !closure.contains(&item) {
                         updated |= new_items.insert(item);
                     }
@@ -90,12 +136,96 @@ fn compute_closure<T, A>(grammar: &Grammar<T, A>, items: &BTreeSet<Item>) -> BTr
     closure
 }
 
-fn compute_goto<T: Eq, A>(
+fn compute_lr1_closure<T: Ord + Eq + Hash + Clone, A>(
     grammar: &Grammar<T, A>,
-    items: &BTreeSet<Item>,
+    first_table: &FirstTable<T>,
+    items: &BTreeSet<LR1Item<T>>,
+) -> BTreeSet<LR1Item<T>> {
+    let mut closure: BTreeSet<LR1Item<T>> = items.clone();
+
+    let mut updated = true;
+    while updated {
+        updated = false;
+
+        for item in items {
+            if let Some(next) = item.next_non_terminal(grammar) {
+                // Need to find the `first` set of the item after `next`. So if the item is
+                //
+                //     [ X -> ... . B x | t ]
+                //
+                // `next` is `B`. We need the first set of `x t`, where `x` is whatever's next after
+                // `B` (not a single terminal/non-terminal, but the whole rest of the production), and
+                // `t` is the item's lookahead token.
+                let first = {
+                    let production = item.get_production(grammar);
+                    let mut first: FirstSet<T> = Default::default();
+                    if item.cursor + 1 == production.symbols().len() {
+                        // `B` is the last symbol in the production, so the first set is just `t`
+                        if let Some(lookahead) = &item.lookahead {
+                            first.add(lookahead.clone());
+                        }
+                    } else {
+                        // Otherwise scan through symbols after `B`. The process is the same as follow set
+                        // computation
+                        let mut end_allowed = true;
+                        for symbol in &production.symbols()[item.cursor + 1..] {
+                            match &symbol.kind {
+                                SymbolKind::Terminal(t) => {
+                                    end_allowed = false;
+                                    first.add(t.clone());
+                                }
+                                SymbolKind::NonTerminal(nt) => {
+                                    let nt_first = first_table.get_first(*nt);
+                                    for t in nt_first.terminals() {
+                                        first.add(t.clone());
+                                    }
+                                    if !nt_first.has_empty() {
+                                        end_allowed = false;
+                                        break;
+                                    }
+                                }
+                            }
+                        }
+                        if end_allowed {
+                            if let Some(lookahead) = &item.lookahead {
+                                first.add(lookahead.clone());
+                            }
+                        }
+                    }
+                    first
+                };
+
+                for (production_idx, _) in grammar.non_terminal_production_indices(next) {
+                    for t in first.terminals() {
+                        updated |= closure.insert(LR1Item {
+                            non_terminal_idx: next,
+                            production_idx,
+                            cursor: 0,
+                            lookahead: Some(t.clone()),
+                        });
+                    }
+                    if first.has_empty() {
+                        updated |= closure.insert(LR1Item {
+                            non_terminal_idx: next,
+                            production_idx,
+                            cursor: 0,
+                            lookahead: None,
+                        });
+                    }
+                }
+            }
+        }
+    }
+
+    closure
+}
+
+fn compute_lr0_goto<T: Eq, A>(
+    grammar: &Grammar<T, A>,
+    items: &BTreeSet<LR0Item>,
     symbol: &SymbolKind<T>,
-) -> BTreeSet<Item> {
-    let mut goto: BTreeSet<Item> = Default::default();
+) -> BTreeSet<LR0Item> {
+    let mut goto: BTreeSet<LR0Item> = Default::default();
 
     for item in items {
         if let Some(next_symbol) = item.next_symbol(grammar) {
@@ -105,7 +235,7 @@ fn compute_goto<T: Eq, A>(
         }
     }
 
-    compute_closure(grammar, &goto)
+    compute_lr0_closure(grammar, &goto)
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
@@ -113,9 +243,9 @@ struct StateIdx(usize);
 
 #[derive(Debug)]
 struct LR0Automaton<T> {
-    states: Vec<State<T>>,
+    states: Vec<LR0State<T>>,
     // Maps existing item sets to their state indices, to maintain sharing.
-    state_indices: FxHashMap<BTreeSet<Item>, StateIdx>,
+    state_indices: FxHashMap<BTreeSet<LR0Item>, StateIdx>,
 }
 
 impl<T> Default for LR0Automaton<T> {
@@ -128,7 +258,7 @@ impl<T> Default for LR0Automaton<T> {
 }
 
 impl<T> LR0Automaton<T> {
-    fn state_indices(&self) -> impl Iterator<Item = (StateIdx, &State<T>)> {
+    fn state_indices(&self) -> impl Iterator<Item = (StateIdx, &LR0State<T>)> {
         self.states
             .iter()
             .enumerate()
@@ -137,18 +267,18 @@ impl<T> LR0Automaton<T> {
 }
 
 #[derive(Debug)]
-struct State<T> {
-    items: BTreeSet<Item>,
+struct LR0State<T> {
+    items: BTreeSet<LR0Item>,
     goto: FxHashMap<SymbolKind<T>, StateIdx>,
 }
 
 impl<T: Eq + Hash> LR0Automaton<T> {
-    fn add_state_or_get_idx(&mut self, state: BTreeSet<Item>) -> (StateIdx, bool) {
+    fn add_state_or_get_idx(&mut self, state: BTreeSet<LR0Item>) -> (StateIdx, bool) {
         match self.state_indices.get(&state) {
             Some(idx) => (*idx, false),
             None => {
                 let idx = self.states.len();
-                self.states.push(State {
+                self.states.push(LR0State {
                     items: state.clone(),
                     goto: Default::default(),
                 });
@@ -158,11 +288,11 @@ impl<T: Eq + Hash> LR0Automaton<T> {
         }
     }
 
-    fn get_state_items(&self, idx: StateIdx) -> &BTreeSet<Item> {
+    fn get_state_items(&self, idx: StateIdx) -> &BTreeSet<LR0Item> {
         &self.get_state(idx).items
     }
 
-    fn get_state(&self, idx: StateIdx) -> &State<T> {
+    fn get_state(&self, idx: StateIdx) -> &LR0State<T> {
         &self.states[idx.0]
     }
 
@@ -175,9 +305,9 @@ impl<T: Eq + Hash> LR0Automaton<T> {
 fn compute_lr0_automaton<T: Eq + Hash + Clone, A>(grammar: &Grammar<T, A>) -> LR0Automaton<T> {
     let mut automaton: LR0Automaton<T> = Default::default();
 
-    let init = compute_closure(
+    let init = compute_lr0_closure(
         grammar,
-        &btreeset! { Item::new(NonTerminalIdx(0), ProductionIdx(0)) },
+        &btreeset! { LR0Item::new(NonTerminalIdx(0), ProductionIdx(0)) },
     );
 
     let (init_state_idx, _) = automaton.add_state_or_get_idx(init);
@@ -194,7 +324,7 @@ fn compute_lr0_automaton<T: Eq + Hash + Clone, A>(grammar: &Grammar<T, A>) -> LR
         }
 
         for symbol in state_next_symbols {
-            let goto = compute_goto(grammar, &state, &symbol);
+            let goto = compute_lr0_goto(grammar, &state, &symbol);
             let (goto_state, added) = automaton.add_state_or_get_idx(goto);
             if added {
                 work_list.push(goto_state);
@@ -284,7 +414,7 @@ fn build_slr1_table<T: Eq + Hash + Copy, A>(
 ) -> SLR1Table<T> {
     let mut table: SLR1Table<T> = Default::default();
 
-    for (state_idx, State { items, goto }) in automaton.state_indices() {
+    for (state_idx, LR0State { items, goto }) in automaton.state_indices() {
         for item in items {
             // let production = grammar.get_production(non_terminal_idx, production_idx);
 
@@ -389,7 +519,7 @@ fn simulate<T: Eq + Hash + Copy + fmt::Debug, A>(
 use std::fmt;
 
 struct ItemDisplay<'a, T, A> {
-    item: Item,
+    item: LR0Item,
     grammar: &'a Grammar<T, A>,
 }
 
@@ -577,19 +707,19 @@ impl<'a, 'b, T: fmt::Debug, A> fmt::Display for ProductionDisplay<'a, 'b, T, A> 
 fn closure_1() {
     let grammar = crate::test_grammars::grammar6();
 
-    let i0: BTreeSet<Item> = btreeset! { Item::new(NonTerminalIdx(0), ProductionIdx(0)) };
-    let i0_closure = compute_closure(&grammar, &i0);
+    let i0: BTreeSet<LR0Item> = btreeset! { LR0Item::new(NonTerminalIdx(0), ProductionIdx(0)) };
+    let i0_closure = compute_lr0_closure(&grammar, &i0);
 
     assert_eq!(
         i0_closure,
         btreeset! {
-            Item::new(NonTerminalIdx(0), ProductionIdx(0)), // E0 -> . E
-            Item::new(NonTerminalIdx(1), ProductionIdx(0)), // E -> . E + T
-            Item::new(NonTerminalIdx(1), ProductionIdx(1)), // E -> . T
-            Item::new(NonTerminalIdx(2), ProductionIdx(0)), // T -> . T * F
-            Item::new(NonTerminalIdx(2), ProductionIdx(1)), // T -> . F
-            Item::new(NonTerminalIdx(3), ProductionIdx(0)), // F -> . ( E )
-            Item::new(NonTerminalIdx(3), ProductionIdx(1)), // F -> . id
+            LR0Item::new(NonTerminalIdx(0), ProductionIdx(0)), // E0 -> . E
+            LR0Item::new(NonTerminalIdx(1), ProductionIdx(0)), // E -> . E + T
+            LR0Item::new(NonTerminalIdx(1), ProductionIdx(1)), // E -> . T
+            LR0Item::new(NonTerminalIdx(2), ProductionIdx(0)), // T -> . T * F
+            LR0Item::new(NonTerminalIdx(2), ProductionIdx(1)), // T -> . F
+            LR0Item::new(NonTerminalIdx(3), ProductionIdx(0)), // F -> . ( E )
+            LR0Item::new(NonTerminalIdx(3), ProductionIdx(1)), // F -> . id
         }
     );
 }
@@ -600,21 +730,21 @@ fn goto_1() {
 
     let grammar = grammar6();
 
-    let i0: BTreeSet<Item> = btreeset! {
-        Item::new_with_cursor(NonTerminalIdx(0), ProductionIdx(0), 1), // E0 -> E .
-        Item::new_with_cursor(NonTerminalIdx(1), ProductionIdx(0), 1), // E -> E . + T
+    let i0: BTreeSet<LR0Item> = btreeset! {
+        LR0Item::new_with_cursor(NonTerminalIdx(0), ProductionIdx(0), 1), // E0 -> E .
+        LR0Item::new_with_cursor(NonTerminalIdx(1), ProductionIdx(0), 1), // E -> E . + T
     };
 
-    let goto = compute_goto(&grammar, &i0, &SymbolKind::Terminal(Grammar6Token::Plus));
+    let goto = compute_lr0_goto(&grammar, &i0, &SymbolKind::Terminal(Grammar6Token::Plus));
 
     assert_eq!(
         goto,
         btreeset! {
-            Item::new_with_cursor(NonTerminalIdx(1), ProductionIdx(0), 2), // E -> E + . T
-            Item::new(NonTerminalIdx(2), ProductionIdx(0)), // T -> . T * F
-            Item::new(NonTerminalIdx(2), ProductionIdx(1)), // T -> . F
-            Item::new(NonTerminalIdx(3), ProductionIdx(0)), // F -> . ( E )
-            Item::new(NonTerminalIdx(3), ProductionIdx(1)), // F -> . id
+            LR0Item::new_with_cursor(NonTerminalIdx(1), ProductionIdx(0), 2), // E -> E + . T
+            LR0Item::new(NonTerminalIdx(2), ProductionIdx(0)), // T -> . T * F
+            LR0Item::new(NonTerminalIdx(2), ProductionIdx(1)), // T -> . F
+            LR0Item::new(NonTerminalIdx(3), ProductionIdx(0)), // F -> . ( E )
+            LR0Item::new(NonTerminalIdx(3), ProductionIdx(1)), // F -> . id
         }
     );
 }
@@ -636,13 +766,13 @@ fn automaton_1() {
     assert_eq!(
         i0.items,
         btreeset! {
-            Item::new(e0_nt_idx, ProductionIdx(0)), // E0 -> . E
-            Item::new(e_nt_idx, ProductionIdx(0)), // E -> . E + T
-            Item::new(e_nt_idx, ProductionIdx(1)), // E -> . T
-            Item::new(t_nt_idx, ProductionIdx(0)), // T -> . T * F
-            Item::new(t_nt_idx, ProductionIdx(1)), // T -> . F
-            Item::new(f_nt_idx, ProductionIdx(0)), // F -> . ( E )
-            Item::new(f_nt_idx, ProductionIdx(1)), // F -> . id
+            LR0Item::new(e0_nt_idx, ProductionIdx(0)), // E0 -> . E
+            LR0Item::new(e_nt_idx, ProductionIdx(0)), // E -> . E + T
+            LR0Item::new(e_nt_idx, ProductionIdx(1)), // E -> . T
+            LR0Item::new(t_nt_idx, ProductionIdx(0)), // T -> . T * F
+            LR0Item::new(t_nt_idx, ProductionIdx(1)), // T -> . F
+            LR0Item::new(f_nt_idx, ProductionIdx(0)), // F -> . ( E )
+            LR0Item::new(f_nt_idx, ProductionIdx(1)), // F -> . id
         }
     );
 
@@ -651,8 +781,8 @@ fn automaton_1() {
     assert_eq!(
         i1.items,
         btreeset! {
-            Item::new_with_cursor(e0_nt_idx, ProductionIdx(0), 1), // E0 -> E .
-            Item::new_with_cursor(e_nt_idx, ProductionIdx(0), 1), // E -> E . + T
+            LR0Item::new_with_cursor(e0_nt_idx, ProductionIdx(0), 1), // E0 -> E .
+            LR0Item::new_with_cursor(e_nt_idx, ProductionIdx(0), 1), // E -> E . + T
         }
     );
 
@@ -661,8 +791,8 @@ fn automaton_1() {
     assert_eq!(
         i2.items,
         btreeset! {
-            Item::new_with_cursor(e_nt_idx, ProductionIdx(1), 1), // E -> T .
-            Item::new_with_cursor(t_nt_idx, ProductionIdx(0), 1), // T -> T . * F
+            LR0Item::new_with_cursor(e_nt_idx, ProductionIdx(1), 1), // E -> T .
+            LR0Item::new_with_cursor(t_nt_idx, ProductionIdx(0), 1), // T -> T . * F
         }
     );
 
@@ -671,7 +801,7 @@ fn automaton_1() {
     assert_eq!(
         i3.items,
         btreeset! {
-            Item::new_with_cursor(t_nt_idx, ProductionIdx(1), 1), // T -> F .
+            LR0Item::new_with_cursor(t_nt_idx, ProductionIdx(1), 1), // T -> F .
         }
     );
 
@@ -683,13 +813,13 @@ fn automaton_1() {
     assert_eq!(
         i4.items,
         btreeset! {
-            Item::new_with_cursor(f_nt_idx, ProductionIdx(0), 1), // F -> ( . E )
-            Item::new(e_nt_idx, ProductionIdx(0)), // E -> . E + T
-            Item::new(e_nt_idx, ProductionIdx(1)), // E -> . T
-            Item::new(t_nt_idx, ProductionIdx(0)), // T -> . T * F
-            Item::new(t_nt_idx, ProductionIdx(1)), // T -> . F
-            Item::new(f_nt_idx, ProductionIdx(0)), // F -> . ( E )
-            Item::new(f_nt_idx, ProductionIdx(1)), // F -> . id
+            LR0Item::new_with_cursor(f_nt_idx, ProductionIdx(0), 1), // F -> ( . E )
+            LR0Item::new(e_nt_idx, ProductionIdx(0)), // E -> . E + T
+            LR0Item::new(e_nt_idx, ProductionIdx(1)), // E -> . T
+            LR0Item::new(t_nt_idx, ProductionIdx(0)), // T -> . T * F
+            LR0Item::new(t_nt_idx, ProductionIdx(1)), // T -> . F
+            LR0Item::new(f_nt_idx, ProductionIdx(0)), // F -> . ( E )
+            LR0Item::new(f_nt_idx, ProductionIdx(1)), // F -> . id
         }
     );
 
@@ -701,7 +831,7 @@ fn automaton_1() {
     assert_eq!(
         i5.items,
         btreeset! {
-            Item::new_with_cursor(f_nt_idx, ProductionIdx(1), 1), // F -> id .
+            LR0Item::new_with_cursor(f_nt_idx, ProductionIdx(1), 1), // F -> id .
         }
     );
 
@@ -713,11 +843,11 @@ fn automaton_1() {
     assert_eq!(
         i6.items,
         btreeset! {
-            Item::new_with_cursor(e_nt_idx, ProductionIdx(0), 2), // E -> E + . T
-            Item::new(t_nt_idx, ProductionIdx(0)), // T -> . T * F
-            Item::new(t_nt_idx, ProductionIdx(1)), // T -> . F
-            Item::new(f_nt_idx, ProductionIdx(0)), // F -> . ( E )
-            Item::new(f_nt_idx, ProductionIdx(1)), // F -> . id
+            LR0Item::new_with_cursor(e_nt_idx, ProductionIdx(0), 2), // E -> E + . T
+            LR0Item::new(t_nt_idx, ProductionIdx(0)), // T -> . T * F
+            LR0Item::new(t_nt_idx, ProductionIdx(1)), // T -> . F
+            LR0Item::new(f_nt_idx, ProductionIdx(0)), // F -> . ( E )
+            LR0Item::new(f_nt_idx, ProductionIdx(1)), // F -> . id
         }
     );
 
@@ -729,9 +859,9 @@ fn automaton_1() {
     assert_eq!(
         i7.items,
         btreeset! {
-            Item::new_with_cursor(t_nt_idx, ProductionIdx(0), 2), // T -> T * . F
-            Item::new(f_nt_idx, ProductionIdx(0)), // F -> . ( E )
-            Item::new(f_nt_idx, ProductionIdx(1)), // F -> . id
+            LR0Item::new_with_cursor(t_nt_idx, ProductionIdx(0), 2), // T -> T * . F
+            LR0Item::new(f_nt_idx, ProductionIdx(0)), // F -> . ( E )
+            LR0Item::new(f_nt_idx, ProductionIdx(1)), // F -> . id
         }
     );
 
@@ -740,8 +870,8 @@ fn automaton_1() {
     assert_eq!(
         i8.items,
         btreeset! {
-            Item::new_with_cursor(f_nt_idx, ProductionIdx(0), 2), // F -> ( E . )
-            Item::new_with_cursor(e_nt_idx, ProductionIdx(0), 1), // E -> E . + T
+            LR0Item::new_with_cursor(f_nt_idx, ProductionIdx(0), 2), // F -> ( E . )
+            LR0Item::new_with_cursor(e_nt_idx, ProductionIdx(0), 1), // E -> E . + T
         }
     );
 
@@ -750,8 +880,8 @@ fn automaton_1() {
     assert_eq!(
         i9.items,
         btreeset! {
-            Item::new_with_cursor(e_nt_idx, ProductionIdx(0), 3), // E -> E + T .
-            Item::new_with_cursor(t_nt_idx, ProductionIdx(0), 1), // T -> T . * F
+            LR0Item::new_with_cursor(e_nt_idx, ProductionIdx(0), 3), // E -> E + T .
+            LR0Item::new_with_cursor(t_nt_idx, ProductionIdx(0), 1), // T -> T . * F
         }
     );
 
@@ -760,7 +890,7 @@ fn automaton_1() {
     assert_eq!(
         i10.items,
         btreeset! {
-            Item::new_with_cursor(t_nt_idx, ProductionIdx(0), 3), // T -> T * F .
+            LR0Item::new_with_cursor(t_nt_idx, ProductionIdx(0), 3), // T -> T * F .
         }
     );
 
@@ -772,7 +902,7 @@ fn automaton_1() {
     assert_eq!(
         i11.items,
         btreeset! {
-            Item::new_with_cursor(f_nt_idx, ProductionIdx(0), 3), // F -> ( E ) .
+            LR0Item::new_with_cursor(f_nt_idx, ProductionIdx(0), 3), // F -> ( E ) .
         }
     );
 
