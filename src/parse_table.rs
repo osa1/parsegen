@@ -64,8 +64,8 @@ impl ParseTable {
 pub fn generate_parse_table<A>(
     grammar: &Grammar<TerminalReprIdx, A>,
     terminals: &TerminalReprArena,
-    first_table: &FirstTable,
-    follow_table: &FollowTable,
+    first_table: &FirstTable<TerminalReprIdx>,
+    follow_table: &FollowTable<TerminalReprIdx>,
 ) -> ParseTable {
     let mut table: ParseTable = Default::default();
 

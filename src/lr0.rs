@@ -1,3 +1,4 @@
+use crate::follow::FollowTable;
 use crate::grammar::{Grammar, NonTerminalIdx, ProductionIdx, Symbol, SymbolKind};
 
 use std::collections::BTreeSet;
@@ -47,6 +48,10 @@ impl Item {
             Some(SymbolKind::NonTerminal(nt_idx)) => Some(*nt_idx),
             _ => None,
         }
+    }
+
+    fn is_cursor_at_end<T, A>(&self, grammar: &Grammar<T, A>) -> bool {
+        self.next_symbol(grammar).is_none()
     }
 
     fn advance(&self) -> Item {
@@ -122,10 +127,19 @@ impl<T> Default for LR0Automaton<T> {
     }
 }
 
+impl<T> LR0Automaton<T> {
+    fn state_indices(&self) -> impl Iterator<Item = (StateIdx, &State<T>)> {
+        self.states
+            .iter()
+            .enumerate()
+            .map(|(i, s)| (StateIdx(i), s))
+    }
+}
+
 #[derive(Debug)]
 struct State<T> {
-    set: BTreeSet<Item>,
-    transitions: FxHashMap<SymbolKind<T>, StateIdx>,
+    items: BTreeSet<Item>,
+    goto: FxHashMap<SymbolKind<T>, StateIdx>,
 }
 
 impl<T: Eq + Hash> LR0Automaton<T> {
@@ -135,8 +149,8 @@ impl<T: Eq + Hash> LR0Automaton<T> {
             None => {
                 let idx = self.states.len();
                 self.states.push(State {
-                    set: state.clone(),
-                    transitions: Default::default(),
+                    items: state.clone(),
+                    goto: Default::default(),
                 });
                 self.state_indices.insert(state, StateIdx(idx));
                 (StateIdx(idx), true)
@@ -145,15 +159,15 @@ impl<T: Eq + Hash> LR0Automaton<T> {
     }
 
     fn get_state_items(&self, idx: StateIdx) -> &BTreeSet<Item> {
-        &self.get_state(idx).set
+        &self.get_state(idx).items
     }
 
     fn get_state(&self, idx: StateIdx) -> &State<T> {
         &self.states[idx.0]
     }
 
-    fn add_transition(&mut self, from: StateIdx, to: StateIdx, symbol: SymbolKind<T>) {
-        self.states[from.0].transitions.insert(symbol, to);
+    fn add_goto(&mut self, from: StateIdx, to: StateIdx, symbol: SymbolKind<T>) {
+        self.states[from.0].goto.insert(symbol, to);
     }
 }
 
@@ -185,7 +199,7 @@ fn compute_lr0_automaton<T: Eq + Hash + Clone, A>(grammar: &Grammar<T, A>) -> LR
             if added {
                 work_list.push(goto_state);
             }
-            automaton.add_transition(state_idx, goto_state, symbol);
+            automaton.add_goto(state_idx, goto_state, symbol);
         }
     }
 
@@ -196,90 +210,116 @@ fn symbols_eq<T: Eq>(ss1: &[Symbol<T>], ss2: &[SymbolKind<T>]) -> bool {
     ss1.len() == ss2.len() && ss1.iter().zip(ss2).all(|(s1, s2)| s1.kind == *s2)
 }
 
-fn simulate<A>(grammar: &Grammar<char, A>, input: &str) {
-    let automaton = compute_lr0_automaton(grammar);
+enum SLRAction {
+    /// Shift current terminal, switch to given state
+    Shift(StateIdx),
 
-    println!(
-        "{}",
-        LR0AutomatonDisplay {
-            automaton: &automaton,
-            grammar
+    /// Reduce using the given production
+    Reduce(NonTerminalIdx, ProductionIdx),
+
+    /// Accept the input
+    Accept,
+}
+
+struct SLR0Table {
+    action: FxHashMap<(StateIdx, Option<char>), SLRAction>,
+    goto: FxHashMap<(StateIdx, NonTerminalIdx), StateIdx>,
+}
+
+impl Default for SLR0Table {
+    fn default() -> Self {
+        SLR0Table {
+            action: Default::default(),
+            goto: Default::default(),
         }
-    );
+    }
+}
 
-    // FIXME: we only need state stack. terminals are useful for semantic actions.
-    let mut symbol_stack: Vec<SymbolKind<char>> = vec![];
-    let mut state_stack: Vec<StateIdx> = vec![StateIdx(0)];
-
-    let mut chars = input.chars();
-    let mut current_char = chars.next();
-    'main_loop: loop {
-        let char = match current_char {
-            None => break,
-            Some(char) => char,
-        };
-
-        println!("char={:?}", char);
-        println!("symbol_stack={:?}", symbol_stack);
-        println!("state_stack={:?}", state_stack);
-
-        let current_state_idx = *state_stack.last().unwrap();
-        let current_state = automaton.get_state(current_state_idx);
-
-        // Shift
-        if let Some(next_state) = current_state.transitions.get(&SymbolKind::Terminal(char)) {
-            state_stack.push(*next_state);
-            symbol_stack.push(SymbolKind::Terminal(char));
-            current_char = chars.next();
-
-            println!("--- Shifting {:?}, new state={}", char, next_state.0);
-
-            continue 'main_loop;
-        }
-
-        // Reduce
-        for item in current_state.set.iter().copied() {
-            let item_production =
-                grammar.get_production(item.non_terminal_idx, item.production_idx);
-
-            let item_symbols = item_production.symbols();
-            let item_n_symbols = item_symbols.len();
-
-            if item.cursor != item_n_symbols {
-                continue;
-            }
-
-            if symbol_stack.len() < item_n_symbols {
-                continue;
-            }
-
-            let stack_symbols = &symbol_stack[symbol_stack.len() - item_n_symbols..];
-            if symbols_eq(item_symbols, stack_symbols) {
-                println!("Reducing item {}", ItemDisplay { item, grammar });
-
-                for _ in 0..item_n_symbols {
-                    symbol_stack.pop();
-                }
-                symbol_stack.push(SymbolKind::NonTerminal(item.non_terminal_idx));
-                state_stack.pop();
-                let current_state_idx = *state_stack.last().unwrap();
-                let current_state = automaton.get_state(current_state_idx);
-                match current_state
-                    .transitions
-                    .get(&SymbolKind::NonTerminal(item.non_terminal_idx))
-                {
-                    None => panic!("Stuck!"),
-                    Some(next_state) => state_stack.push(*next_state),
-                }
-                continue 'main_loop;
-            }
-        }
-
-        panic!("Can't shift or reduce");
+impl SLR0Table {
+    fn add_shift(&mut self, state: StateIdx, token: char, next_state: StateIdx) {
+        let old = self
+            .action
+            .insert((state, Some(token)), SLRAction::Shift(next_state));
+        assert!(old.is_none());
     }
 
-    println!("Final symbol stack = {:?}", symbol_stack);
-    println!("Final state  stack = {:?}", state_stack);
+    fn add_reduce(
+        &mut self,
+        state: StateIdx,
+        token: char,
+        non_terminal_idx: NonTerminalIdx,
+        production_idx: ProductionIdx,
+    ) {
+        let old = self.action.insert(
+            (state, Some(token)),
+            SLRAction::Reduce(non_terminal_idx, production_idx),
+        );
+        assert!(old.is_none());
+    }
+
+    fn add_accept(&mut self, state: StateIdx) {
+        let old = self.action.insert((state, None), SLRAction::Accept);
+        assert!(old.is_none());
+    }
+
+    fn add_goto(&mut self, state: StateIdx, non_terminal_idx: NonTerminalIdx, next: StateIdx) {
+        let old = self.goto.insert((state, non_terminal_idx), next);
+        assert!(old.is_none());
+    }
+}
+
+fn build_slr1_table<A>(
+    grammar: &Grammar<char, A>,
+    automaton: &LR0Automaton<char>,
+    follow_table: FollowTable<char>,
+) -> SLR0Table {
+    let mut table: SLR0Table = Default::default();
+
+    for (state_idx, State { items, goto }) in automaton.state_indices() {
+        for item in items {
+            // let production = grammar.get_production(non_terminal_idx, production_idx);
+
+            // Rule 2.a
+            if let Some(SymbolKind::Terminal(t)) = item.next_symbol(grammar) {
+                if let Some(next_state) = goto.get(&SymbolKind::Terminal(*t)) {
+                    table.add_shift(state_idx, *t, *next_state);
+                }
+            }
+
+            // Rule 2.b
+            if item.is_cursor_at_end(grammar) {
+                for follow in follow_table.get_follow(item.non_terminal_idx).terminals() {
+                    table.add_reduce(
+                        state_idx,
+                        *follow,
+                        item.non_terminal_idx,
+                        item.production_idx,
+                    );
+                }
+            }
+
+            // Rule 2.c
+            // S' -> S .
+            if item.non_terminal_idx == NonTerminalIdx(0)
+                && item.production_idx == ProductionIdx(0)
+                && item.cursor == 1
+            {
+                table.add_accept(state_idx);
+            }
+        }
+
+        for (symbol_kind, next) in goto {
+            if let SymbolKind::NonTerminal(non_terminal_idx) = symbol_kind {
+                table.add_goto(state_idx, *non_terminal_idx, *next);
+            }
+        }
+    }
+
+    table
+}
+
+fn simulate(table: &SLR0Table, input: &str) {
+    todo!()
 }
 
 use std::fmt;
@@ -332,7 +372,7 @@ impl<'a, 'b, T: fmt::Debug, A> fmt::Display for LR0AutomatonDisplay<'a, 'b, T, A
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         for (state_idx, state) in self.automaton.states.iter().enumerate() {
             writeln!(f, "{}: {{", state_idx)?;
-            for item in &state.set {
+            for item in &state.items {
                 writeln!(
                     f,
                     "  {}",
@@ -343,7 +383,7 @@ impl<'a, 'b, T: fmt::Debug, A> fmt::Display for LR0AutomatonDisplay<'a, 'b, T, A
                 )?;
             }
 
-            for (symbol, next) in state.transitions.iter() {
+            for (symbol, next) in state.goto.iter() {
                 match symbol {
                     SymbolKind::NonTerminal(nt) => {
                         writeln!(
@@ -426,7 +466,7 @@ fn automaton_1() {
 
     let i0 = &automaton.states[0];
     assert_eq!(
-        i0.set,
+        i0.items,
         btreeset! {
             Item::new(e0_nt_idx, ProductionIdx(0)), // E0 -> . E
             Item::new(e_nt_idx, ProductionIdx(0)), // E -> . E + T
@@ -438,51 +478,42 @@ fn automaton_1() {
         }
     );
 
-    let i1_idx = i0
-        .transitions
-        .get(&SymbolKind::NonTerminal(e_nt_idx))
-        .unwrap();
+    let i1_idx = i0.goto.get(&SymbolKind::NonTerminal(e_nt_idx)).unwrap();
     let i1 = &automaton.states[i1_idx.0];
     assert_eq!(
-        i1.set,
+        i1.items,
         btreeset! {
             Item::new_with_cursor(e0_nt_idx, ProductionIdx(0), 1), // E0 -> E .
             Item::new_with_cursor(e_nt_idx, ProductionIdx(0), 1), // E -> E . + T
         }
     );
 
-    let i2_idx = i0
-        .transitions
-        .get(&SymbolKind::NonTerminal(t_nt_idx))
-        .unwrap();
+    let i2_idx = i0.goto.get(&SymbolKind::NonTerminal(t_nt_idx)).unwrap();
     let i2 = &automaton.states[i2_idx.0];
     assert_eq!(
-        i2.set,
+        i2.items,
         btreeset! {
             Item::new_with_cursor(e_nt_idx, ProductionIdx(1), 1), // E -> T .
             Item::new_with_cursor(t_nt_idx, ProductionIdx(0), 1), // T -> T . * F
         }
     );
 
-    let i3_idx = i0
-        .transitions
-        .get(&SymbolKind::NonTerminal(f_nt_idx))
-        .unwrap();
+    let i3_idx = i0.goto.get(&SymbolKind::NonTerminal(f_nt_idx)).unwrap();
     let i3 = &automaton.states[i3_idx.0];
     assert_eq!(
-        i3.set,
+        i3.items,
         btreeset! {
             Item::new_with_cursor(t_nt_idx, ProductionIdx(1), 1), // T -> F .
         }
     );
 
     let i4_idx = i0
-        .transitions
+        .goto
         .get(&SymbolKind::Terminal(Grammar6Token::LParen))
         .unwrap();
     let i4 = &automaton.states[i4_idx.0];
     assert_eq!(
-        i4.set,
+        i4.items,
         btreeset! {
             Item::new_with_cursor(f_nt_idx, ProductionIdx(0), 1), // F -> ( . E )
             Item::new(e_nt_idx, ProductionIdx(0)), // E -> . E + T
@@ -495,24 +526,24 @@ fn automaton_1() {
     );
 
     let i5_idx = i0
-        .transitions
+        .goto
         .get(&SymbolKind::Terminal(Grammar6Token::Id))
         .unwrap();
     let i5 = &automaton.states[i5_idx.0];
     assert_eq!(
-        i5.set,
+        i5.items,
         btreeset! {
             Item::new_with_cursor(f_nt_idx, ProductionIdx(1), 1), // F -> id .
         }
     );
 
     let i6_idx = i1
-        .transitions
+        .goto
         .get(&SymbolKind::Terminal(Grammar6Token::Plus))
         .unwrap();
     let i6 = &automaton.states[i6_idx.0];
     assert_eq!(
-        i6.set,
+        i6.items,
         btreeset! {
             Item::new_with_cursor(e_nt_idx, ProductionIdx(0), 2), // E -> E + . T
             Item::new(t_nt_idx, ProductionIdx(0)), // T -> . T * F
@@ -523,12 +554,12 @@ fn automaton_1() {
     );
 
     let i7_idx = i2
-        .transitions
+        .goto
         .get(&SymbolKind::Terminal(Grammar6Token::Star))
         .unwrap();
     let i7 = &automaton.states[i7_idx.0];
     assert_eq!(
-        i7.set,
+        i7.items,
         btreeset! {
             Item::new_with_cursor(t_nt_idx, ProductionIdx(0), 2), // T -> T * . F
             Item::new(f_nt_idx, ProductionIdx(0)), // F -> . ( E )
@@ -536,60 +567,46 @@ fn automaton_1() {
         }
     );
 
-    let i8_idx = i4
-        .transitions
-        .get(&SymbolKind::NonTerminal(e_nt_idx))
-        .unwrap();
+    let i8_idx = i4.goto.get(&SymbolKind::NonTerminal(e_nt_idx)).unwrap();
     let i8 = &automaton.states[i8_idx.0];
     assert_eq!(
-        i8.set,
+        i8.items,
         btreeset! {
             Item::new_with_cursor(f_nt_idx, ProductionIdx(0), 2), // F -> ( E . )
             Item::new_with_cursor(e_nt_idx, ProductionIdx(0), 1), // E -> E . + T
         }
     );
 
-    let i9_idx = i6
-        .transitions
-        .get(&SymbolKind::NonTerminal(t_nt_idx))
-        .unwrap();
+    let i9_idx = i6.goto.get(&SymbolKind::NonTerminal(t_nt_idx)).unwrap();
     let i9 = &automaton.states[i9_idx.0];
     assert_eq!(
-        i9.set,
+        i9.items,
         btreeset! {
             Item::new_with_cursor(e_nt_idx, ProductionIdx(0), 3), // E -> E + T .
             Item::new_with_cursor(t_nt_idx, ProductionIdx(0), 1), // T -> T . * F
         }
     );
 
-    let i10_idx = i7
-        .transitions
-        .get(&SymbolKind::NonTerminal(f_nt_idx))
-        .unwrap();
+    let i10_idx = i7.goto.get(&SymbolKind::NonTerminal(f_nt_idx)).unwrap();
     let i10 = &automaton.states[i10_idx.0];
     assert_eq!(
-        i10.set,
+        i10.items,
         btreeset! {
             Item::new_with_cursor(t_nt_idx, ProductionIdx(0), 3), // T -> T * F .
         }
     );
 
     let i11_idx = i8
-        .transitions
+        .goto
         .get(&SymbolKind::Terminal(Grammar6Token::RParen))
         .unwrap();
     let i11 = &automaton.states[i11_idx.0];
     assert_eq!(
-        i11.set,
+        i11.items,
         btreeset! {
             Item::new_with_cursor(f_nt_idx, ProductionIdx(0), 3), // F -> ( E ) .
         }
     );
 
     assert_eq!(automaton.states.len(), 12);
-}
-
-#[test]
-fn simulate_1() {
-    // simulate(&crate::test_grammars::grammar6(), "x*x");
 }

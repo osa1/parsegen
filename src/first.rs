@@ -1,22 +1,23 @@
 //! Implementation of "first" sets
 
 use crate::grammar::{Grammar, NonTerminalIdx, SymbolKind};
-use crate::terminal::TerminalReprIdx;
+
+use std::hash::Hash;
 
 use fxhash::FxHashSet;
 
 /// Maps non-terminals to their first sets
 #[derive(Debug)]
-pub struct FirstTable(Vec<FirstSet>);
+pub struct FirstTable<T: Eq + Hash>(Vec<FirstSet<T>>);
 
 #[derive(Debug, Clone)]
-pub struct FirstSet {
+pub struct FirstSet<T: Eq + Hash> {
     empty: bool,
-    terminals: FxHashSet<TerminalReprIdx>,
+    terminals: FxHashSet<T>,
 }
 
-impl FirstSet {
-    pub fn terminals(&self) -> &FxHashSet<TerminalReprIdx> {
+impl<T: Eq + Hash> FirstSet<T> {
+    pub fn terminals(&self) -> &FxHashSet<T> {
         &self.terminals
     }
 
@@ -25,7 +26,7 @@ impl FirstSet {
     }
 }
 
-impl Default for FirstSet {
+impl<T: Eq + Hash> Default for FirstSet<T> {
     fn default() -> Self {
         FirstSet {
             empty: false,
@@ -34,13 +35,17 @@ impl Default for FirstSet {
     }
 }
 
-impl FirstTable {
-    fn new(n_non_terminals: usize) -> FirstTable {
-        FirstTable(vec![Default::default(); n_non_terminals])
+impl<T: Eq + Hash> FirstTable<T> {
+    fn new(n_non_terminals: usize) -> FirstTable<T> {
+        let mut sets = Vec::with_capacity(n_non_terminals);
+        for _ in 0..n_non_terminals {
+            sets.push(FirstSet::default());
+        }
+        FirstTable(sets)
     }
 
     /// Returns whether the value is added
-    fn add_first(&mut self, non_terminal_idx: NonTerminalIdx, terminal: TerminalReprIdx) -> bool {
+    fn add_first(&mut self, non_terminal_idx: NonTerminalIdx, terminal: T) -> bool {
         self.0[non_terminal_idx.as_usize()]
             .terminals
             .insert(terminal)
@@ -54,13 +59,13 @@ impl FirstTable {
         old_value != true
     }
 
-    pub fn get_first(&self, non_terminal_idx: NonTerminalIdx) -> &FirstSet {
+    pub fn get_first(&self, non_terminal_idx: NonTerminalIdx) -> &FirstSet<T> {
         &self.0[non_terminal_idx.as_usize()]
     }
 }
 
-pub fn generate_first_table<A>(grammar: &Grammar<TerminalReprIdx, A>) -> FirstTable {
-    let mut table = FirstTable::new(grammar.non_terminals().len());
+pub fn generate_first_table<T: Eq + Hash + Copy, A>(grammar: &Grammar<T, A>) -> FirstTable<T> {
+    let mut table: FirstTable<T> = FirstTable::new(grammar.non_terminals().len());
 
     let mut updated = true;
     while updated {
