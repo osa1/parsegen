@@ -219,3 +219,51 @@ pub fn grammar6() -> Grammar<Grammar6Token, ()> {
 
     grammar
 }
+
+#[derive(Debug, PartialEq, Eq, PartialOrd, Ord, Hash, Clone, Copy)]
+pub enum Grammar7Token {
+    Eq,
+    Star,
+    Id,
+}
+
+// Figure 4.49 (assignment with lvalues)
+//
+// S0 -> S
+// S -> L = R | R
+// L -> * R | id
+// R -> L
+//
+// Not ambiguous, but not SLR(1)!
+pub fn grammar7() -> Grammar<Grammar7Token, ()> {
+    let mut grammar: Grammar<Grammar7Token, ()> = Grammar::new();
+
+    let s0_nt_idx = add_non_terminal(&mut grammar, "S0");
+    let s_nt_idx = add_non_terminal(&mut grammar, "S");
+    let l_nt_idx = add_non_terminal(&mut grammar, "R");
+    let r_nt_idx = add_non_terminal(&mut grammar, "R");
+
+    // S0 -> S
+    grammar.add_production(s0_nt_idx, vec![nt(s_nt_idx)], ());
+
+    // S -> L = R
+    grammar.add_production(
+        s_nt_idx,
+        vec![nt(l_nt_idx), t(Grammar7Token::Eq), nt(r_nt_idx)],
+        (),
+    );
+
+    // S -> R
+    grammar.add_production(s_nt_idx, vec![nt(r_nt_idx)], ());
+
+    // L -> * R
+    grammar.add_production(l_nt_idx, vec![nt(r_nt_idx)], ());
+
+    // L -> id
+    grammar.add_production(l_nt_idx, vec![t(Grammar7Token::Id)], ());
+
+    // R -> L
+    grammar.add_production(r_nt_idx, vec![nt(l_nt_idx)], ());
+
+    grammar
+}
