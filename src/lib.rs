@@ -10,6 +10,7 @@ mod follow;
 mod grammar;
 mod lower;
 mod lr0;
+mod lr1;
 mod parse_table;
 mod terminal;
 
