@@ -83,7 +83,33 @@ impl TerminalReprArena {
         &self.arena[idx.0].name
     }
 
-    pub fn len_terminals(&self) -> usize {
+    pub fn n_terminals(&self) -> usize {
         self.arena.len()
+    }
+
+    pub fn terminal_indices(&self) -> impl Iterator<Item = TerminalReprIdx> {
+        TerminalIndicesIter {
+            current: 0,
+            max: self.n_terminals(),
+        }
+    }
+}
+
+struct TerminalIndicesIter {
+    current: usize,
+    max: usize,
+}
+
+impl Iterator for TerminalIndicesIter {
+    type Item = TerminalReprIdx;
+
+    fn next(&mut self) -> Option<Self::Item> {
+        let current = self.current;
+        if current == self.max {
+            None
+        } else {
+            self.current += 1;
+            Some(TerminalReprIdx(current))
+        }
     }
 }

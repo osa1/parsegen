@@ -1,6 +1,6 @@
 use crate::first::{FirstSet, FirstSetDisplay, FirstTable};
 use crate::grammar::{Grammar, NonTerminalIdx, Production, ProductionIdx, SymbolKind};
-use crate::lr_common::{LRAction, LRTable, LRTableBuilder, StateIdx};
+use crate::lr_common::{LRTable, LRTableBuilder, StateIdx};
 
 use std::collections::BTreeSet;
 use std::hash::Hash;
@@ -235,7 +235,7 @@ impl<T: Clone> LR1State<T> {
 }
 
 #[derive(Debug)]
-struct LR1Automaton<T: Clone> {
+pub struct LR1Automaton<T: Clone> {
     // Indexed by `StateIdx`
     states: Vec<LR1State<T>>,
 }
@@ -279,7 +279,7 @@ impl<T: Clone> Default for LR1Automaton<T> {
     }
 }
 
-fn compute_lr1_automaton<T: Ord + Clone + Hash + fmt::Debug, A>(
+pub fn generate_lr1_automaton<T: Ord + Clone + Hash + fmt::Debug, A>(
     grammar: &Grammar<T, A>,
     first_table: &FirstTable<T>,
 ) -> LR1Automaton<T> {
@@ -388,7 +388,7 @@ fn compute_lr1_automaton<T: Ord + Clone + Hash + fmt::Debug, A>(
     automaton
 }
 
-fn build_lr1_table<T: Clone + Eq + Hash, A>(
+pub fn build_lr1_table<T: Clone + Eq + Hash, A>(
     grammar: &Grammar<T, A>,
     automaton: &LR1Automaton<T>,
 ) -> LRTable<T> {
@@ -557,7 +557,7 @@ fn grammar8_lr1_states() {
 
     let grammar = grammar8();
     let first_table = generate_first_table(&grammar);
-    let lr1_automaton = compute_lr1_automaton(&grammar, &first_table);
+    let lr1_automaton = generate_lr1_automaton(&grammar, &first_table);
 
     println!(
         "{}",
@@ -657,7 +657,7 @@ fn simulate1() {
 
     let grammar = grammar6();
     let first = generate_first_table(&grammar);
-    let lr_automaton = compute_lr1_automaton(&grammar, &first);
+    let lr_automaton = generate_lr1_automaton(&grammar, &first);
 
     println!(
         "{}",

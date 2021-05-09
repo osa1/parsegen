@@ -11,6 +11,7 @@ mod grammar;
 mod lower;
 mod lr0;
 mod lr1;
+mod lr_codegen;
 mod lr_common;
 mod parse_table;
 mod terminal;

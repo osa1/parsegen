@@ -55,7 +55,7 @@ pub fn generate_ll1_parser(
             (TokenStream::new(), vec![])
         } else {
             (
-                generate_parse_fn(token_type, token_lifetimes, terminal_arena.len_terminals()),
+                generate_parse_fn(token_type, token_lifetimes, terminal_arena.n_terminals()),
                 // For public non-terminals, generate a type with a `parse` method that calls our
                 // top-level parse function
                 generate_pub_non_terminal_types(&grammar, token_type, token_lifetimes),
@@ -383,7 +383,7 @@ fn generate_parse_table_code(
     terminals: &TerminalReprArena,
 ) -> TokenStream {
     let n_non_terminals = grammar.non_terminals.len();
-    let n_terminals = terminals.len_terminals();
+    let n_terminals = terminals.n_terminals();
 
     // +1 for EOF
     let mut table: Vec<Vec<Option<u32>>> = vec![vec![None; n_terminals + 1]; n_non_terminals];

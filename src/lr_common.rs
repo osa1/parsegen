@@ -95,6 +95,10 @@ impl<T: Eq + Hash> LRTable<T> {
         self.goto.get(&(state, non_terminal)).cloned()
     }
 
+    pub fn get_action_table(&self) -> &FxHashMap<(StateIdx, Option<T>), LRAction> {
+        &self.action
+    }
+
     // For debugging
     pub fn actions(&self) -> impl Iterator<Item = (&(StateIdx, Option<T>), &LRAction)> {
         self.action.iter()
