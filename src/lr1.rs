@@ -391,8 +391,13 @@ pub fn generate_lr1_automaton<T: Ord + Clone + Hash + fmt::Debug, A>(
 pub fn build_lr1_table<T: Clone + Eq + Hash, A>(
     grammar: &Grammar<T, A>,
     automaton: &LR1Automaton<T>,
+    n_terminals: usize,
 ) -> LRTable<T> {
-    let mut table: LRTableBuilder<T> = Default::default();
+    let mut table: LRTableBuilder<T> = LRTableBuilder::new(
+        automaton.states.len(),
+        n_terminals,
+        grammar.non_terminals().len(),
+    );
 
     for (state_idx, state) in automaton.state_indices() {
         for item in state.items() {
@@ -667,7 +672,7 @@ fn simulate1() {
         }
     );
 
-    let lr1 = build_lr1_table(&grammar, &lr_automaton);
+    let lr1 = build_lr1_table(&grammar, &lr_automaton, 5);
 
     // println!(
     //     "{}",

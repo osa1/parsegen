@@ -215,8 +215,13 @@ fn build_slr_table<T: Eq + Hash + Copy, A>(
     grammar: &Grammar<T, A>,
     automaton: &LR0Automaton<T>,
     follow_table: &FollowTable<T>,
+    n_terminals: usize,
 ) -> LRTable<T> {
-    let mut table: LRTableBuilder<T> = Default::default();
+    let mut table: LRTableBuilder<T> = LRTableBuilder::new(
+        automaton.states.len(),
+        n_terminals,
+        grammar.non_terminals().len(),
+    );
 
     for (state_idx, LR0State { items, goto }) in automaton.state_indices() {
         for item in items {
@@ -679,7 +684,7 @@ fn simulate1() {
         }
     );
 
-    let slr = build_slr_table(&grammar, &lr_automaton, &follow);
+    let slr = build_slr_table(&grammar, &lr_automaton, &follow, 5);
 
     println!(
         "{}",

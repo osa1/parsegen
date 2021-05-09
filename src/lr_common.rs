@@ -28,32 +28,35 @@ pub enum LRAction {
 pub struct LRTable<T: Eq + Hash> {
     action: FxHashMap<(StateIdx, Option<T>), LRAction>,
     goto: FxHashMap<(StateIdx, NonTerminalIdx), StateIdx>,
+    n_states: usize,
+    n_terminals: usize,
+    n_non_terminals: usize,
 }
 
 pub struct LRTableBuilder<T: Eq + Hash> {
-    action: FxHashMap<(StateIdx, Option<T>), LRAction>,
-    goto: FxHashMap<(StateIdx, NonTerminalIdx), StateIdx>,
-}
-
-impl<T: Eq + Hash> Default for LRTableBuilder<T> {
-    fn default() -> Self {
-        Self {
-            action: Default::default(),
-            goto: Default::default(),
-        }
-    }
+    table: LRTable<T>,
 }
 
 impl<T: Eq + Hash> LRTableBuilder<T> {
-    pub fn build(self) -> LRTable<T> {
-        LRTable {
-            action: self.action,
-            goto: self.goto,
+    pub fn new(n_states: usize, n_terminals: usize, n_non_terminals: usize) -> Self {
+        Self {
+            table: LRTable {
+                action: Default::default(),
+                goto: Default::default(),
+                n_states,
+                n_terminals,
+                n_non_terminals,
+            },
         }
+    }
+
+    pub fn build(self) -> LRTable<T> {
+        self.table
     }
 
     pub fn add_shift(&mut self, state: StateIdx, token: T, next_state: StateIdx) {
         let old = self
+            .table
             .action
             .insert((state, Some(token)), LRAction::Shift(next_state));
         // In LR(1) we sometimes add shift to same state mutiple times, not sure why
@@ -67,7 +70,7 @@ impl<T: Eq + Hash> LRTableBuilder<T> {
         non_terminal_idx: NonTerminalIdx,
         production_idx: ProductionIdx,
     ) {
-        let old = self.action.insert(
+        let old = self.table.action.insert(
             (state, token),
             LRAction::Reduce(non_terminal_idx, production_idx),
         );
@@ -75,12 +78,12 @@ impl<T: Eq + Hash> LRTableBuilder<T> {
     }
 
     pub fn add_accept(&mut self, state: StateIdx) {
-        let old = self.action.insert((state, None), LRAction::Accept);
+        let old = self.table.action.insert((state, None), LRAction::Accept);
         // assert_eq!(old, None);
     }
 
     pub fn add_goto(&mut self, state: StateIdx, non_terminal_idx: NonTerminalIdx, next: StateIdx) {
-        let old = self.goto.insert((state, non_terminal_idx), next);
+        let old = self.table.goto.insert((state, non_terminal_idx), next);
         // same as add_shift..
         // assert_eq!(old, None, "trying to add {}", next.0);
     }
@@ -99,6 +102,10 @@ impl<T: Eq + Hash> LRTable<T> {
         &self.action
     }
 
+    pub fn get_goto_table(&self) -> &FxHashMap<(StateIdx, NonTerminalIdx), StateIdx> {
+        &self.goto
+    }
+
     // For debugging
     pub fn actions(&self) -> impl Iterator<Item = (&(StateIdx, Option<T>), &LRAction)> {
         self.action.iter()
@@ -107,6 +114,10 @@ impl<T: Eq + Hash> LRTable<T> {
     // For debugging
     pub fn gotos(&self) -> impl Iterator<Item = (&(StateIdx, NonTerminalIdx), &StateIdx)> {
         self.goto.iter()
+    }
+
+    pub fn n_states(&self) -> usize {
+        self.n_states
     }
 }
 
