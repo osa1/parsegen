@@ -164,6 +164,10 @@ impl<T, A> NonTerminal<T, A> {
     pub fn production_indices(&self) -> impl Iterator<Item = ProductionIdx> {
         (0..self.productions.len()).map(|i| ProductionIdx(i as u32))
     }
+
+    pub fn get_production(&self, production_idx: ProductionIdx) -> &Production<T, A> {
+        &self.productions[production_idx.0 as usize]
+    }
 }
 
 impl<T, A> Production<T, A> {

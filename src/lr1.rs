@@ -301,3 +301,109 @@ fn compute_lr1_states<T: Ord + Clone + Hash, A>(
 
     automaton
 }
+
+use std::fmt;
+
+struct LR1AutomatonDisplay<'a, 'b, T: Clone, A> {
+    automaton: &'a LR1Automaton<T>,
+    grammar: &'b Grammar<T, A>,
+}
+
+struct LR1ItemDisplay<'a, 'b, T: Clone, A> {
+    item: &'a LR1Item<T>,
+    grammar: &'b Grammar<T, A>,
+}
+
+struct SymbolKindDisplay<'a, 'b, T, A> {
+    symbol: &'a SymbolKind<T>,
+    grammar: &'b Grammar<T, A>,
+}
+
+impl<'a, 'b, T: Clone + fmt::Debug, A> fmt::Display for SymbolKindDisplay<'a, 'b, T, A> {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self.symbol {
+            SymbolKind::NonTerminal(nt) => {
+                let nt = self.grammar.get_non_terminal(*nt);
+                write!(f, "{}", nt.non_terminal)
+            }
+            SymbolKind::Terminal(t) => write!(f, "{:?}", t),
+        }
+    }
+}
+
+impl<'a, 'b, T: Clone + fmt::Debug, A> fmt::Display for LR1ItemDisplay<'a, 'b, T, A> {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        let non_terminal = self.grammar.get_non_terminal(self.item.non_terminal_idx);
+        let production = non_terminal.get_production(self.item.production_idx);
+
+        write!(f, "[{} -> ", non_terminal.non_terminal)?;
+
+        for (symbol_idx, symbol) in production.symbols().iter().enumerate() {
+            if symbol_idx == self.item.cursor {
+                write!(f, "|")?;
+            }
+            write!(
+                f,
+                "{}",
+                SymbolKindDisplay {
+                    symbol: &symbol.kind,
+                    grammar: self.grammar
+                }
+            )?;
+            if symbol_idx != production.symbols().len() - 1 {
+                write!(f, " ")?;
+            }
+        }
+
+        if self.item.cursor == production.symbols().len() {
+            write!(f, "|")?;
+        }
+
+        writeln!(f, ", {:?}]", self.item.lookahead)
+    }
+}
+
+impl<'a, 'b, T: Clone + fmt::Debug, A> fmt::Display for LR1AutomatonDisplay<'a, 'b, T, A> {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        for (state_idx, state) in self.automaton.state_indices() {
+            writeln!(f, "{}: {{", state_idx.0)?;
+
+            for item in &state.items {
+                writeln!(
+                    f,
+                    "  {}",
+                    LR1ItemDisplay {
+                        item,
+                        grammar: self.grammar
+                    }
+                )?;
+            }
+
+            for (symbol, next) in &state.goto {
+                writeln!(
+                    f,
+                    "GOTO {} -> {}",
+                    SymbolKindDisplay {
+                        symbol,
+                        grammar: self.grammar
+                    },
+                    next.0
+                )?;
+            }
+
+            writeln!(f, "}}")?;
+        }
+
+        Ok(())
+    }
+}
+
+#[test]
+fn grammar8_lr1_states() {
+    use crate::first::generate_first_table;
+    use crate::test_grammars::{grammar8, Grammar8Token};
+
+    let grammar = grammar8();
+    let first_table = generate_first_table(&grammar);
+    let lr1_automaton = compute_lr1_states(&grammar, &first_table);
+}

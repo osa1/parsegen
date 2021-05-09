@@ -267,3 +267,37 @@ pub fn grammar7() -> Grammar<Grammar7Token, ()> {
 
     grammar
 }
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
+pub enum Grammar8Token {
+    C,
+    D,
+}
+
+// Figure 4.55
+//
+// S0 -> S
+// S -> C C
+// C -> c C | d
+//
+pub fn grammar8() -> Grammar<Grammar8Token, ()> {
+    let mut grammar: Grammar<Grammar8Token, ()> = Grammar::new();
+
+    let s0_nt_idx = add_non_terminal(&mut grammar, "S0");
+    let s_nt_idx = add_non_terminal(&mut grammar, "S");
+    let c_nt_idx = add_non_terminal(&mut grammar, "C");
+
+    // S0 -> S
+    grammar.add_production(s0_nt_idx, vec![nt(s_nt_idx)], ());
+
+    // S -> C C
+    grammar.add_production(s_nt_idx, vec![nt(c_nt_idx), nt(c_nt_idx)], ());
+
+    // C -> c C
+    grammar.add_production(c_nt_idx, vec![t(Grammar8Token::C), nt(c_nt_idx)], ());
+
+    // C -> d
+    grammar.add_production(c_nt_idx, vec![t(Grammar8Token::D)], ());
+
+    grammar
+}
