@@ -1,4 +1,4 @@
-use crate::first::{FirstSet, FirstTable};
+use crate::first::{FirstSet, FirstSetDisplay, FirstTable};
 use crate::grammar::{Grammar, NonTerminalIdx, Production, ProductionIdx, SymbolKind};
 
 use std::collections::BTreeSet;
@@ -57,7 +57,7 @@ impl<T: Clone> LR1Item<T> {
     }
 }
 
-fn compute_lr1_closure<T: Ord + Eq + Hash + Clone, A>(
+fn compute_lr1_closure<T: Ord + Eq + Hash + Clone + std::fmt::Debug, A>(
     grammar: &Grammar<T, A>,
     first_table: &FirstTable<T>,
     items: &BTreeSet<LR1Item<T>>,
@@ -82,14 +82,22 @@ fn compute_lr1_closure<T: Ord + Eq + Hash + Clone, A>(
                     let mut first: FirstSet<T> = Default::default();
                     if item.cursor + 1 == production.symbols().len() {
                         // `B` is the last symbol in the production, so the first set is just `t`
-                        if let Some(lookahead) = &item.lookahead {
-                            first.add(lookahead.clone());
+                        match &item.lookahead {
+                            Some(lookahead) => first.add(lookahead.clone()),
+                            None => first.set_empty(),
                         }
                     } else {
                         // Otherwise scan through symbols after `B`. The process is the same as follow set
                         // computation
                         let mut end_allowed = true;
                         for symbol in &production.symbols()[item.cursor + 1..] {
+                            println!(
+                                "Checking symbol {}",
+                                SymbolKindDisplay {
+                                    symbol: &symbol.kind,
+                                    grammar
+                                }
+                            );
                             match &symbol.kind {
                                 SymbolKind::Terminal(t) => {
                                     end_allowed = false;
@@ -116,6 +124,13 @@ fn compute_lr1_closure<T: Ord + Eq + Hash + Clone, A>(
                     first
                 };
 
+                println!(
+                    "LR1 closure item = {}, next = {}, first = {}",
+                    LR1ItemDisplay { item, grammar },
+                    grammar.get_non_terminal(next).non_terminal,
+                    FirstSetDisplay { set: &first }
+                );
+
                 for (production_idx, _) in grammar.non_terminal_production_indices(next) {
                     for t in first.terminals() {
                         updated |= closure.insert(LR1Item {
@@ -141,7 +156,7 @@ fn compute_lr1_closure<T: Ord + Eq + Hash + Clone, A>(
     closure
 }
 
-fn compute_lr1_goto<T: Hash + Clone + Eq + Ord, A>(
+fn compute_lr1_goto<T: Hash + Clone + Eq + Ord + std::fmt::Debug, A>(
     state: &BTreeSet<LR1Item<T>>,
     symbol: &SymbolKind<T>,
     grammar: &Grammar<T, A>,
@@ -222,7 +237,7 @@ impl<T: Clone> Default for LR1Automaton<T> {
     }
 }
 
-fn compute_lr1_states<T: Ord + Clone + Hash, A>(
+fn compute_lr1_states<T: Ord + Clone + Hash + fmt::Debug, A>(
     grammar: &Grammar<T, A>,
     first_table: &FirstTable<T>,
 ) -> LR1Automaton<T> {
@@ -255,7 +270,6 @@ fn compute_lr1_states<T: Ord + Clone + Hash, A>(
     while updated {
         updated = false;
 
-        let mut state_indices_: FxHashMap<BTreeSet<LR1Item<T>>, StateIdx> = state_indices.clone();
         let mut new_state_idx: StateIdx = StateIdx(automaton.states.len());
         let mut new_states: Vec<LR1State<T>> = vec![];
         let mut new_gotos: FxHashMap<(StateIdx, SymbolKind<T>), StateIdx> = Default::default();
@@ -269,20 +283,36 @@ fn compute_lr1_states<T: Ord + Clone + Hash, A>(
             for item in state.items() {
                 if let Some(next_symbol) = item.next_symbol(grammar) {
                     let goto = compute_lr1_goto(&state.items, next_symbol, grammar, first_table);
+                    let new_state = LR1State {
+                        items: goto.clone(),
+                        goto: Default::default(),
+                    };
+                    println!(
+                        "next symbol = {}, goto = {}",
+                        SymbolKindDisplay {
+                            symbol: next_symbol,
+                            grammar: grammar
+                        },
+                        LR1StateDisplay {
+                            state: &new_state,
+                            grammar: grammar,
+                        },
+                    );
                     if !goto.is_empty() {
-                        match state_indices_.get(&goto) {
+                        match state_indices.get(&goto) {
                             Some(goto_idx) => {
-                                updated |= new_gotos
-                                    .insert((state_idx, next_symbol.clone()), *goto_idx)
-                                    .is_some();
+                                new_gotos.insert((state_idx, next_symbol.clone()), *goto_idx);
                             }
                             None => {
-                                updated = true;
-                                new_states.push(LR1State {
-                                    items: goto.clone(),
-                                    goto: Default::default(),
-                                });
-                                state_indices_.insert(goto.clone(), new_state_idx);
+                                println!(
+                                    "Adding new state {}",
+                                    LR1StateDisplay {
+                                        state: &new_state,
+                                        grammar
+                                    }
+                                );
+                                new_states.push(new_state);
+                                state_indices.insert(goto.clone(), new_state_idx);
                                 new_gotos.insert((state_idx, next_symbol.clone()), new_state_idx);
                                 new_state_idx = StateIdx(new_state_idx.0 + 1);
                             }
@@ -292,10 +322,23 @@ fn compute_lr1_states<T: Ord + Clone + Hash, A>(
             }
         }
 
+        if !new_states.is_empty() {
+            updated = true;
+        }
+
         automaton.states.extend(new_states.into_iter());
+
+        println!(
+            "{}",
+            LR1AutomatonDisplay {
+                automaton: &automaton,
+                grammar
+            }
+        );
+
         for ((state, symbol), next) in new_gotos.into_iter() {
             let old = automaton.states[state.as_usize()].goto.insert(symbol, next);
-            assert_eq!(old, None);
+            // assert_eq!(old, None, "trying to insert {}", next.0);
         }
     }
 
@@ -306,6 +349,11 @@ use std::fmt;
 
 struct LR1AutomatonDisplay<'a, 'b, T: Clone, A> {
     automaton: &'a LR1Automaton<T>,
+    grammar: &'b Grammar<T, A>,
+}
+
+struct LR1StateDisplay<'a, 'b, T: Clone, A> {
+    state: &'a LR1State<T>,
     grammar: &'b Grammar<T, A>,
 }
 
@@ -359,7 +407,36 @@ impl<'a, 'b, T: Clone + fmt::Debug, A> fmt::Display for LR1ItemDisplay<'a, 'b, T
             write!(f, "|")?;
         }
 
-        writeln!(f, ", {:?}]", self.item.lookahead)
+        write!(f, ", {:?}]", self.item.lookahead)
+    }
+}
+
+impl<'a, 'b, T: Clone + fmt::Debug, A> fmt::Display for LR1StateDisplay<'a, 'b, T, A> {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        for item in &self.state.items {
+            writeln!(
+                f,
+                "  {}",
+                LR1ItemDisplay {
+                    item,
+                    grammar: self.grammar
+                }
+            )?;
+        }
+
+        for (symbol, next) in &self.state.goto {
+            writeln!(
+                f,
+                "  GOTO {} -> {}",
+                SymbolKindDisplay {
+                    symbol,
+                    grammar: self.grammar
+                },
+                next.0
+            )?;
+        }
+
+        Ok(())
     }
 }
 
@@ -367,30 +444,14 @@ impl<'a, 'b, T: Clone + fmt::Debug, A> fmt::Display for LR1AutomatonDisplay<'a, 
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         for (state_idx, state) in self.automaton.state_indices() {
             writeln!(f, "{}: {{", state_idx.0)?;
-
-            for item in &state.items {
-                writeln!(
-                    f,
-                    "  {}",
-                    LR1ItemDisplay {
-                        item,
-                        grammar: self.grammar
-                    }
-                )?;
-            }
-
-            for (symbol, next) in &state.goto {
-                writeln!(
-                    f,
-                    "GOTO {} -> {}",
-                    SymbolKindDisplay {
-                        symbol,
-                        grammar: self.grammar
-                    },
-                    next.0
-                )?;
-            }
-
+            write!(
+                f,
+                "{}",
+                LR1StateDisplay {
+                    state,
+                    grammar: self.grammar
+                }
+            )?;
             writeln!(f, "}}")?;
         }
 
@@ -406,4 +467,12 @@ fn grammar8_lr1_states() {
     let grammar = grammar8();
     let first_table = generate_first_table(&grammar);
     let lr1_automaton = compute_lr1_states(&grammar, &first_table);
+
+    println!(
+        "{}",
+        LR1AutomatonDisplay {
+            automaton: &lr1_automaton,
+            grammar: &grammar
+        }
+    );
 }

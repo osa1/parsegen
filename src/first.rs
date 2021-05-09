@@ -21,6 +21,10 @@ impl<T: Eq + Hash> FirstSet<T> {
         self.terminals.insert(terminal);
     }
 
+    pub fn set_empty(&mut self) {
+        self.empty = true;
+    }
+
     pub fn terminals(&self) -> &FxHashSet<T> {
         &self.terminals
     }
@@ -107,4 +111,29 @@ pub fn generate_first_table<T: Eq + Hash + Copy, A>(grammar: &Grammar<T, A>) -> 
     }
 
     table
+}
+
+use std::fmt;
+
+pub struct FirstSetDisplay<'a, T: Eq + Hash + fmt::Debug> {
+    pub set: &'a FirstSet<T>,
+}
+
+impl<'a, T: Eq + Hash + fmt::Debug> fmt::Display for FirstSetDisplay<'a, T> {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "{{")?;
+        for (t_idx, t) in self.set.terminals.iter().enumerate() {
+            write!(f, "{:?}", t)?;
+            if t_idx != self.set.terminals.len() - 1 {
+                write!(f, ", ")?;
+            }
+        }
+        write!(f, "}}")?;
+
+        if self.set.empty {
+            write!(f, " (+ empty)")?;
+        }
+
+        Ok(())
+    }
 }
