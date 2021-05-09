@@ -268,10 +268,21 @@ pub fn grammar7() -> Grammar<Grammar7Token, ()> {
     grammar
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
+#[derive(Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub enum Grammar8Token {
     C,
     D,
+}
+
+// Custom Debug impl to print in lowercase, otherwise things get confusing as non-terminals in this
+// grammar have same names as terminals
+impl std::fmt::Debug for Grammar8Token {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> Result<(), std::fmt::Error> {
+        match self {
+            Grammar8Token::C => write!(f, "c"),
+            Grammar8Token::D => write!(f, "d"),
+        }
+    }
 }
 
 // Figure 4.55

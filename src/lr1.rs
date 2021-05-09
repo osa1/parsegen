@@ -68,7 +68,9 @@ fn compute_lr1_closure<T: Ord + Eq + Hash + Clone + std::fmt::Debug, A>(
     while updated {
         updated = false;
 
-        for item in items {
+        let mut new_items: BTreeSet<LR1Item<T>> = Default::default();
+
+        for item in &closure {
             if let Some(next) = item.next_non_terminal(grammar) {
                 // Need to find the `first` set of the item after `next`. So if the item is
                 //
@@ -133,24 +135,34 @@ fn compute_lr1_closure<T: Ord + Eq + Hash + Clone + std::fmt::Debug, A>(
 
                 for (production_idx, _) in grammar.non_terminal_production_indices(next) {
                     for t in first.terminals() {
-                        updated |= closure.insert(LR1Item {
+                        let item = LR1Item {
                             non_terminal_idx: next,
                             production_idx,
                             cursor: 0,
                             lookahead: Some(t.clone()),
-                        });
+                        };
+                        if !closure.contains(&item) && !new_items.contains(&item) {
+                            new_items.insert(item);
+                            updated = true;
+                        }
                     }
                     if first.has_empty() {
-                        updated |= closure.insert(LR1Item {
+                        let item = LR1Item {
                             non_terminal_idx: next,
                             production_idx,
                             cursor: 0,
                             lookahead: None,
-                        });
+                        };
+                        if !closure.contains(&item) && !new_items.contains(&item) {
+                            new_items.insert(item);
+                            updated = true;
+                        }
                     }
                 }
             }
         }
+
+        closure.extend(new_items.into_iter());
     }
 
     closure
