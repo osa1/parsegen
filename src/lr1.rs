@@ -1,5 +1,6 @@
 use crate::first::{FirstSet, FirstSetDisplay, FirstTable};
 use crate::grammar::{Grammar, NonTerminalIdx, Production, ProductionIdx, SymbolKind};
+use crate::lr0::{LRAction, StateIdx};
 
 use std::collections::BTreeSet;
 use std::hash::Hash;
@@ -16,6 +17,20 @@ struct LR1Item<T: Clone> {
 }
 
 impl<T: Clone> LR1Item<T> {
+    fn new(
+        non_terminal_idx: usize,
+        production_idx: usize,
+        cursor: usize,
+        lookahead: Option<T>,
+    ) -> Self {
+        Self {
+            non_terminal_idx: NonTerminalIdx::from_usize(non_terminal_idx),
+            production_idx: ProductionIdx::from_usize(production_idx),
+            cursor,
+            lookahead,
+        }
+    }
+
     fn next_symbol<'grammar, T1, A>(
         &self,
         grammar: &'grammar Grammar<T1, A>,
@@ -24,12 +39,23 @@ impl<T: Clone> LR1Item<T> {
         production.symbols().get(self.cursor).map(|s| &s.kind)
     }
 
+    /// Returns non-terminal expected by the item, if the next expected symbol is a non-terminal.
+    /// Otherwise returns `None`.
     fn next_non_terminal<'grammar, T1, A>(
         &self,
         grammar: &'grammar Grammar<T1, A>,
     ) -> Option<NonTerminalIdx> {
         match self.next_symbol(grammar) {
             Some(SymbolKind::NonTerminal(nt_idx)) => Some(*nt_idx),
+            _ => None,
+        }
+    }
+
+    /// Returns terminal expected by the item, if the next expected symbol is a terminal. Otherwise
+    /// returns `None`.
+    fn next_terminal<'grammar, A>(&self, grammar: &'grammar Grammar<T, A>) -> Option<&'grammar T> {
+        match self.next_symbol(grammar) {
+            Some(SymbolKind::Terminal(t)) => Some(t),
             _ => None,
         }
     }
@@ -54,6 +80,11 @@ impl<T: Clone> LR1Item<T> {
         } else {
             Some(self.advance())
         }
+    }
+
+    fn is_complete<T1, A>(&self, grammar: &Grammar<T1, A>) -> bool {
+        let production = self.get_production(grammar);
+        self.cursor == production.symbols().len()
     }
 }
 
@@ -187,15 +218,6 @@ fn compute_lr1_goto<T: Hash + Clone + Eq + Ord + std::fmt::Debug, A>(
     compute_lr1_closure(grammar, first, &goto)
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
-struct StateIdx(usize);
-
-impl StateIdx {
-    fn as_usize(&self) -> usize {
-        self.0
-    }
-}
-
 #[derive(Debug)]
 struct LR1State<T: Clone> {
     items: BTreeSet<LR1Item<T>>,
@@ -205,6 +227,10 @@ struct LR1State<T: Clone> {
 impl<T: Clone> LR1State<T> {
     fn items(&self) -> impl Iterator<Item = &LR1Item<T>> {
         self.items.iter()
+    }
+
+    fn gotos(&self) -> impl Iterator<Item = (&SymbolKind<T>, &StateIdx)> {
+        self.goto.iter()
     }
 }
 
@@ -241,6 +267,10 @@ impl<T: Clone> LR1Automaton<T> {
             idx: StateIdx(0),
         }
     }
+
+    fn get_state(&self, state_idx: StateIdx) -> &LR1State<T> {
+        &self.states[state_idx.0]
+    }
 }
 
 impl<T: Clone> Default for LR1Automaton<T> {
@@ -249,7 +279,7 @@ impl<T: Clone> Default for LR1Automaton<T> {
     }
 }
 
-fn compute_lr1_states<T: Ord + Clone + Hash + fmt::Debug, A>(
+fn compute_lr1_automaton<T: Ord + Clone + Hash + fmt::Debug, A>(
     grammar: &Grammar<T, A>,
     first_table: &FirstTable<T>,
 ) -> LR1Automaton<T> {
@@ -350,11 +380,168 @@ fn compute_lr1_states<T: Ord + Clone + Hash + fmt::Debug, A>(
 
         for ((state, symbol), next) in new_gotos.into_iter() {
             let old = automaton.states[state.as_usize()].goto.insert(symbol, next);
+            // TODO: I don't understand why this doesn't hold.. needs debugging.
             // assert_eq!(old, None, "trying to insert {}", next.0);
         }
     }
 
     automaton
+}
+
+struct LR1Table<T: Eq + Hash> {
+    action: FxHashMap<(StateIdx, Option<T>), LRAction>,
+    goto: FxHashMap<(StateIdx, NonTerminalIdx), StateIdx>,
+}
+
+impl<T: Eq + Hash> Default for LR1Table<T> {
+    fn default() -> Self {
+        LR1Table {
+            action: Default::default(),
+            goto: Default::default(),
+        }
+    }
+}
+
+impl<T: Eq + Hash> LR1Table<T> {
+    fn add_shift(&mut self, state: StateIdx, terminal: Option<T>, next_state: StateIdx) {
+        let old = self
+            .action
+            .insert((state, terminal), LRAction::Shift(next_state));
+        // TODO: We sometimes add same shifts multiple times?
+        // assert_eq!(old, None, "conflict with {}", next_state.0);
+    }
+
+    fn add_reduce(
+        &mut self,
+        state: StateIdx,
+        terminal: Option<T>,
+        non_terminal_idx: NonTerminalIdx,
+        production_idx: ProductionIdx,
+    ) {
+        let old = self.action.insert(
+            (state, terminal),
+            LRAction::Reduce(non_terminal_idx, production_idx),
+        );
+        assert_eq!(old, None, "conflict");
+    }
+
+    fn add_accept(&mut self, state: StateIdx) {
+        let old = self.action.insert((state, None), LRAction::Accept);
+        assert_eq!(old, None, "conflict");
+    }
+
+    fn add_goto(&mut self, state: StateIdx, non_terminal: NonTerminalIdx, next_state: StateIdx) {
+        self.goto.insert((state, non_terminal), next_state);
+    }
+
+    fn get_action(&self, state: StateIdx, non_terminal: Option<T>) -> Option<LRAction> {
+        self.action.get(&(state, non_terminal)).copied()
+    }
+
+    fn get_goto(&self, state: StateIdx, non_terminal: NonTerminalIdx) -> Option<StateIdx> {
+        self.goto.get(&(state, non_terminal)).cloned()
+    }
+}
+
+fn build_lr1_table<T: Clone + Eq + Hash, A>(
+    grammar: &Grammar<T, A>,
+    automaton: &LR1Automaton<T>,
+) -> LR1Table<T> {
+    let mut table: LR1Table<T> = Default::default();
+
+    for (state_idx, state) in automaton.state_indices() {
+        for item in state.items() {
+            // Rule 2.a
+            if let Some(next_terminal) = item.next_terminal(grammar) {
+                if let Some(next_state) =
+                    state.goto.get(&SymbolKind::Terminal(next_terminal.clone()))
+                {
+                    table.add_shift(state_idx, Some(next_terminal.clone()), *next_state);
+                }
+            }
+
+            // Rule 2.b
+            if item.is_complete(grammar) && item.non_terminal_idx != NonTerminalIdx(0) {
+                table.add_reduce(
+                    state_idx,
+                    item.lookahead.clone(),
+                    item.non_terminal_idx,
+                    item.production_idx,
+                );
+            }
+
+            // Rule 2.c
+            if item.non_terminal_idx == NonTerminalIdx(0)
+                && item.production_idx == ProductionIdx(0)
+                && item.cursor == 1
+                && item.lookahead.is_none()
+            {
+                table.add_accept(state_idx);
+            }
+
+            // Add gotos
+            for (symbol, next) in state.gotos() {
+                if let SymbolKind::NonTerminal(nt) = symbol {
+                    table.add_goto(state_idx, *nt, *next);
+                }
+            }
+        }
+    }
+
+    table
+}
+
+// TODO: The same as LR0 simulation
+fn simulate<T: Eq + Hash + Copy + fmt::Debug, A>(
+    table: &LR1Table<T>,
+    grammar: &Grammar<T, A>,
+    mut input: impl Iterator<Item = T>,
+) {
+    let mut stack: Vec<StateIdx> = vec![StateIdx(0)];
+
+    let mut a = input.next();
+
+    loop {
+        let s = *stack.last().unwrap();
+        match table.get_action(s, a) {
+            Some(action) => {
+                match action {
+                    LRAction::Shift(t) => {
+                        stack.push(t);
+                        a = input.next();
+                    }
+                    LRAction::Reduce(non_terminal_idx, terminal_idx) => {
+                        let production = grammar.get_production(non_terminal_idx, terminal_idx);
+                        let n_symbols = production.symbols().len();
+                        for _ in 0..n_symbols {
+                            stack.pop();
+                        }
+                        let s = *stack.last().unwrap();
+                        match table.get_goto(s, non_terminal_idx) {
+                            None => panic!("Stuck! (1)"),
+                            Some(next) => stack.push(next),
+                        }
+                        // TODO: semantic action
+                    }
+                    LRAction::Accept => {
+                        break;
+                    }
+                }
+            }
+            None => {
+                panic!(
+                    "Stuck! state = {:?}, stack = {:?}, token = {:?}",
+                    s, stack, a
+                );
+            }
+        }
+    }
+
+    println!(
+        "Parsing done. Stack = {:?}, input.next() = {:?}",
+        stack,
+        input.next()
+    );
 }
 
 use std::fmt;
@@ -478,7 +665,7 @@ fn grammar8_lr1_states() {
 
     let grammar = grammar8();
     let first_table = generate_first_table(&grammar);
-    let lr1_automaton = compute_lr1_states(&grammar, &first_table);
+    let lr1_automaton = compute_lr1_automaton(&grammar, &first_table);
 
     println!(
         "{}",
@@ -486,5 +673,148 @@ fn grammar8_lr1_states() {
             automaton: &lr1_automaton,
             grammar: &grammar
         }
+    );
+
+    let i0 = &lr1_automaton.states[0];
+    assert_eq!(
+        i0.items,
+        btreeset! {
+            LR1Item::new(0, 0, 0, None), // [S0 -> | S, EOF]
+            LR1Item::new(1, 0, 0, None), // [S -> | C C, EOF]
+            LR1Item::new(2, 0, 0, Some(Grammar8Token::D)), // [C -> . c C, d]
+            LR1Item::new(2, 0, 0, Some(Grammar8Token::C)), // [C -> . c C, c]
+            LR1Item::new(2, 1, 0, Some(Grammar8Token::C)), // [C -> . d, c]
+            LR1Item::new(2, 1, 0, Some(Grammar8Token::D)), // [C -> . d, c]
+        },
+    );
+
+    let i1 = &lr1_automaton.states[1];
+    assert_eq!(
+        i1.items,
+        btreeset! {
+            LR1Item::new(0, 0, 1, None), // [S0 -> S |, EOF]
+        },
+    );
+
+    let i2 = &lr1_automaton.states[2];
+    assert_eq!(
+        i2.items,
+        btreeset! {
+            LR1Item::new(1, 0, 1, None), // [S -> C | C, EOF]
+            LR1Item::new(2, 0, 0, None), // [C -> | c C, EOF]
+            LR1Item::new(2, 1, 0, None), // [C -> | d, EOF]
+        },
+    );
+
+    let i3 = &lr1_automaton.states[3];
+    assert_eq!(
+        i3.items,
+        btreeset! {
+            LR1Item::new(2, 0, 1, Some(Grammar8Token::C)), // [C -> c | C, c]
+            LR1Item::new(2, 0, 1, Some(Grammar8Token::D)), // [C -> c | C, d]
+            LR1Item::new(2, 0, 0, Some(Grammar8Token::C)), // [C -> | c C, c]
+            LR1Item::new(2, 0, 0, Some(Grammar8Token::D)), // [C -> | c C, d]
+            LR1Item::new(2, 1, 0, Some(Grammar8Token::C)), // [C -> | d, c]
+            LR1Item::new(2, 1, 0, Some(Grammar8Token::D)), // [C -> | d, d]
+        },
+    );
+
+    let i4 = &lr1_automaton.states[4];
+    assert_eq!(
+        i4.items,
+        btreeset! {
+            LR1Item::new(2, 1, 1, Some(Grammar8Token::C)), // [C -> d |, c]
+            LR1Item::new(2, 1, 1, Some(Grammar8Token::D)), // [C -> d |, c]
+        },
+    );
+
+    let i5 = &lr1_automaton.states[5];
+    assert_eq!(
+        i5.items,
+        btreeset! {
+            LR1Item::new(1, 0, 2, None), // [S -> C C |, EOF]
+            LR1Item::new(1, 0, 2, None), // [S -> C C |, EOF]
+        },
+    );
+
+    // ...
+
+    let i8 = &lr1_automaton.states[8];
+    assert_eq!(
+        i8.items,
+        btreeset! {
+            LR1Item::new(2, 0, 2, Some(Grammar8Token::C)), // [C -> c C |, c]
+            LR1Item::new(2, 0, 2, Some(Grammar8Token::D)), // [C -> c C |, d]
+        },
+    );
+
+    let i9 = &lr1_automaton.states[9];
+    assert_eq!(
+        i9.items,
+        btreeset! {
+            LR1Item::new(2, 0, 2, None), // [C -> c C |, EOF]
+            LR1Item::new(2, 0, 2, None), // [C -> c C |, EOF]
+        },
+    );
+}
+
+#[test]
+fn simulate1() {
+    use crate::first::generate_first_table;
+    use crate::test_grammars::{grammar6, Grammar6Token};
+
+    let grammar = grammar6();
+    let first = generate_first_table(&grammar);
+    let lr_automaton = compute_lr1_automaton(&grammar, &first);
+
+    println!(
+        "{}",
+        LR1AutomatonDisplay {
+            automaton: &lr_automaton,
+            grammar: &grammar
+        }
+    );
+
+    let lr1 = build_lr1_table(&grammar, &lr_automaton);
+
+    // println!(
+    //     "{}",
+    //     LR1TableDisplay {
+    //         table: &slr,
+    //         grammar: &grammar
+    //     }
+    // );
+
+    simulate(
+        &lr1,
+        &grammar,
+        vec![Grammar6Token::Id, Grammar6Token::Plus, Grammar6Token::Id].into_iter(),
+    );
+
+    simulate(
+        &lr1,
+        &grammar,
+        vec![
+            Grammar6Token::Id,
+            Grammar6Token::Plus,
+            Grammar6Token::Id,
+            Grammar6Token::Star,
+            Grammar6Token::Id,
+        ]
+        .into_iter(),
+    );
+    simulate(
+        &lr1,
+        &grammar,
+        vec![
+            Grammar6Token::LParen,
+            Grammar6Token::Id,
+            Grammar6Token::Plus,
+            Grammar6Token::Id,
+            Grammar6Token::RParen,
+            Grammar6Token::Star,
+            Grammar6Token::Id,
+        ]
+        .into_iter(),
     );
 }

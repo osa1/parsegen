@@ -112,7 +112,13 @@ fn compute_lr0_goto<T: Eq, A>(
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
-struct StateIdx(usize);
+pub struct StateIdx(pub usize);
+
+impl StateIdx {
+    pub fn as_usize(&self) -> usize {
+        self.0
+    }
+}
 
 #[derive(Debug)]
 struct LR0Automaton<T> {
@@ -214,7 +220,7 @@ fn symbols_eq<T: Eq>(ss1: &[Symbol<T>], ss2: &[SymbolKind<T>]) -> bool {
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-enum LRAction {
+pub enum LRAction {
     /// Shift current terminal, switch to given state
     Shift(StateIdx),
 
@@ -225,21 +231,21 @@ enum LRAction {
     Accept,
 }
 
-struct SLR1Table<T: Eq + Hash> {
+struct SLRTable<T: Eq + Hash> {
     action: FxHashMap<(StateIdx, Option<T>), LRAction>,
     goto: FxHashMap<(StateIdx, NonTerminalIdx), StateIdx>,
 }
 
-impl<T: Eq + Hash> Default for SLR1Table<T> {
+impl<T: Eq + Hash> Default for SLRTable<T> {
     fn default() -> Self {
-        SLR1Table {
+        SLRTable {
             action: Default::default(),
             goto: Default::default(),
         }
     }
 }
 
-impl<T: Eq + Hash> SLR1Table<T> {
+impl<T: Eq + Hash> SLRTable<T> {
     fn add_shift(&mut self, state: StateIdx, token: T, next_state: StateIdx) {
         let old = self
             .action
@@ -280,12 +286,12 @@ impl<T: Eq + Hash> SLR1Table<T> {
     }
 }
 
-fn build_slr1_table<T: Eq + Hash + Copy, A>(
+fn build_slr_table<T: Eq + Hash + Copy, A>(
     grammar: &Grammar<T, A>,
     automaton: &LR0Automaton<T>,
     follow_table: &FollowTable<T>,
-) -> SLR1Table<T> {
-    let mut table: SLR1Table<T> = Default::default();
+) -> SLRTable<T> {
+    let mut table: SLRTable<T> = Default::default();
 
     for (state_idx, LR0State { items, goto }) in automaton.state_indices() {
         for item in items {
@@ -338,7 +344,7 @@ fn build_slr1_table<T: Eq + Hash + Copy, A>(
 
 // Figure 3.36 in dragon book
 fn simulate<T: Eq + Hash + Copy + fmt::Debug, A>(
-    table: &SLR1Table<T>,
+    table: &SLRTable<T>,
     grammar: &Grammar<T, A>,
     mut input: impl Iterator<Item = T>,
 ) {
@@ -401,8 +407,8 @@ struct LR0AutomatonDisplay<'a, 'b, T, A> {
     grammar: &'b Grammar<T, A>,
 }
 
-struct SLR1TableDisplay<'a, 'b, T: Eq + Hash, A> {
-    table: &'a SLR1Table<T>,
+struct SLRTableDisplay<'a, 'b, T: Eq + Hash, A> {
+    table: &'a SLRTable<T>,
     grammar: &'b Grammar<T, A>,
 }
 
@@ -487,7 +493,7 @@ impl<'a, 'b, T: fmt::Debug, A> fmt::Display for LR0AutomatonDisplay<'a, 'b, T, A
     }
 }
 
-impl<'a, 'b, T: Eq + Hash + Clone + fmt::Debug, A> fmt::Display for SLR1TableDisplay<'a, 'b, T, A> {
+impl<'a, 'b, T: Eq + Hash + Clone + fmt::Debug, A> fmt::Display for SLRTableDisplay<'a, 'b, T, A> {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         let mut actions: FxHashMap<StateIdx, Vec<(Option<T>, LRAction)>> = Default::default();
         let mut gotos: FxHashMap<StateIdx, Vec<(NonTerminalIdx, StateIdx)>> = Default::default();
@@ -801,18 +807,18 @@ fn simulate1() {
         }
     );
 
-    let slr1 = build_slr1_table(&grammar, &lr_automaton, &follow);
+    let slr = build_slr_table(&grammar, &lr_automaton, &follow);
 
     println!(
         "{}",
-        SLR1TableDisplay {
-            table: &slr1,
+        SLRTableDisplay {
+            table: &slr,
             grammar: &grammar
         }
     );
 
     simulate(
-        &slr1,
+        &slr,
         &grammar,
         vec![Grammar6Token::Id, Grammar6Token::Plus, Grammar6Token::Id].into_iter(),
     );
