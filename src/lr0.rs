@@ -1,5 +1,6 @@
 use crate::follow::FollowTable;
 use crate::grammar::{Grammar, NonTerminalIdx, Production, ProductionIdx, Symbol, SymbolKind};
+use crate::lr_common::{LRAction, LRTable, LRTableBuilder, StateIdx};
 
 use std::collections::BTreeSet;
 use std::hash::Hash;
@@ -111,15 +112,6 @@ fn compute_lr0_goto<T: Eq, A>(
     compute_lr0_closure(grammar, &goto)
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
-pub struct StateIdx(pub usize);
-
-impl StateIdx {
-    pub fn as_usize(&self) -> usize {
-        self.0
-    }
-}
-
 #[derive(Debug)]
 struct LR0Automaton<T> {
     states: Vec<LR0State<T>>,
@@ -219,79 +211,12 @@ fn symbols_eq<T: Eq>(ss1: &[Symbol<T>], ss2: &[SymbolKind<T>]) -> bool {
     ss1.len() == ss2.len() && ss1.iter().zip(ss2).all(|(s1, s2)| s1.kind == *s2)
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum LRAction {
-    /// Shift current terminal, switch to given state
-    Shift(StateIdx),
-
-    /// Reduce using the given production
-    Reduce(NonTerminalIdx, ProductionIdx),
-
-    /// Accept the input
-    Accept,
-}
-
-struct SLRTable<T: Eq + Hash> {
-    action: FxHashMap<(StateIdx, Option<T>), LRAction>,
-    goto: FxHashMap<(StateIdx, NonTerminalIdx), StateIdx>,
-}
-
-impl<T: Eq + Hash> Default for SLRTable<T> {
-    fn default() -> Self {
-        SLRTable {
-            action: Default::default(),
-            goto: Default::default(),
-        }
-    }
-}
-
-impl<T: Eq + Hash> SLRTable<T> {
-    fn add_shift(&mut self, state: StateIdx, token: T, next_state: StateIdx) {
-        let old = self
-            .action
-            .insert((state, Some(token)), LRAction::Shift(next_state));
-        assert!(old.is_none());
-    }
-
-    fn add_reduce(
-        &mut self,
-        state: StateIdx,
-        token: Option<T>,
-        non_terminal_idx: NonTerminalIdx,
-        production_idx: ProductionIdx,
-    ) {
-        let old = self.action.insert(
-            (state, token),
-            LRAction::Reduce(non_terminal_idx, production_idx),
-        );
-        assert!(old.is_none());
-    }
-
-    fn add_accept(&mut self, state: StateIdx) {
-        let old = self.action.insert((state, None), LRAction::Accept);
-        // assert_eq!(old, None);
-    }
-
-    fn add_goto(&mut self, state: StateIdx, non_terminal_idx: NonTerminalIdx, next: StateIdx) {
-        let old = self.goto.insert((state, non_terminal_idx), next);
-        assert!(old.is_none());
-    }
-
-    fn get_action(&self, state: StateIdx, non_terminal: Option<T>) -> Option<LRAction> {
-        self.action.get(&(state, non_terminal)).copied()
-    }
-
-    fn get_goto(&self, state: StateIdx, non_terminal: NonTerminalIdx) -> Option<StateIdx> {
-        self.goto.get(&(state, non_terminal)).cloned()
-    }
-}
-
 fn build_slr_table<T: Eq + Hash + Copy, A>(
     grammar: &Grammar<T, A>,
     automaton: &LR0Automaton<T>,
     follow_table: &FollowTable<T>,
-) -> SLRTable<T> {
-    let mut table: SLRTable<T> = Default::default();
+) -> LRTable<T> {
+    let mut table: LRTableBuilder<T> = Default::default();
 
     for (state_idx, LR0State { items, goto }) in automaton.state_indices() {
         for item in items {
@@ -339,60 +264,7 @@ fn build_slr_table<T: Eq + Hash + Copy, A>(
         }
     }
 
-    table
-}
-
-// Figure 3.36 in dragon book
-fn simulate<T: Eq + Hash + Copy + fmt::Debug, A>(
-    table: &SLRTable<T>,
-    grammar: &Grammar<T, A>,
-    mut input: impl Iterator<Item = T>,
-) {
-    let mut stack: Vec<StateIdx> = vec![StateIdx(0)];
-
-    let mut a = input.next();
-
-    loop {
-        let s = *stack.last().unwrap();
-        match table.get_action(s, a) {
-            Some(action) => {
-                match action {
-                    LRAction::Shift(t) => {
-                        stack.push(t);
-                        a = input.next();
-                    }
-                    LRAction::Reduce(non_terminal_idx, terminal_idx) => {
-                        let production = grammar.get_production(non_terminal_idx, terminal_idx);
-                        let n_symbols = production.symbols().len();
-                        for _ in 0..n_symbols {
-                            stack.pop();
-                        }
-                        let s = *stack.last().unwrap();
-                        match table.get_goto(s, non_terminal_idx) {
-                            None => panic!("Stuck! (1)"),
-                            Some(next) => stack.push(next),
-                        }
-                        // TODO: semantic action
-                    }
-                    LRAction::Accept => {
-                        break;
-                    }
-                }
-            }
-            None => {
-                panic!(
-                    "Stuck! state = {:?}, stack = {:?}, token = {:?}",
-                    s, stack, a
-                );
-            }
-        }
-    }
-
-    println!(
-        "Parsing done. Stack = {:?}, input.next() = {:?}",
-        stack,
-        input.next()
-    );
+    table.build()
 }
 
 use std::fmt;
@@ -408,7 +280,7 @@ struct LR0AutomatonDisplay<'a, 'b, T, A> {
 }
 
 struct SLRTableDisplay<'a, 'b, T: Eq + Hash, A> {
-    table: &'a SLRTable<T>,
+    table: &'a LRTable<T>,
     grammar: &'b Grammar<T, A>,
 }
 
@@ -499,7 +371,7 @@ impl<'a, 'b, T: Eq + Hash + Clone + fmt::Debug, A> fmt::Display for SLRTableDisp
         let mut gotos: FxHashMap<StateIdx, Vec<(NonTerminalIdx, StateIdx)>> = Default::default();
         let mut states: BTreeSet<StateIdx> = Default::default();
 
-        for ((state, t), action) in self.table.action.iter() {
+        for ((state, t), action) in self.table.actions() {
             states.insert(*state);
             actions
                 .entry(*state)
@@ -507,7 +379,7 @@ impl<'a, 'b, T: Eq + Hash + Clone + fmt::Debug, A> fmt::Display for SLRTableDisp
                 .push((t.clone(), *action));
         }
 
-        for ((state, nt), next) in self.table.goto.iter() {
+        for ((state, nt), next) in self.table.gotos() {
             states.insert(*state);
             gotos.entry(*state).or_default().push((*nt, *next));
         }
@@ -817,7 +689,7 @@ fn simulate1() {
         }
     );
 
-    simulate(
+    crate::lr_common::simulate(
         &slr,
         &grammar,
         vec![Grammar6Token::Id, Grammar6Token::Plus, Grammar6Token::Id].into_iter(),
