@@ -35,7 +35,7 @@ impl ProductionIdx {
 /// Note that the grammar is "augmented" with an initial non-terminal with no productions. When you
 /// call `set_init` for setting the initial non-terminal we add a production to the original
 /// initial non-terminal to the `set_init` argument.
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct Grammar<T, A> {
     // Initial non-terminal
     pub init: Option<NonTerminalIdx>,
@@ -44,7 +44,7 @@ pub struct Grammar<T, A> {
     pub non_terminals: Vec<NonTerminal<T, A>>,
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct NonTerminal<T, A> {
     pub non_terminal: String,
     // Indexed by `ProductionIdx`
@@ -53,6 +53,7 @@ pub struct NonTerminal<T, A> {
     pub public: bool,
 }
 
+#[derive(Clone)]
 pub struct Production<T, A> {
     pub symbols: Vec<Symbol<T>>,
     pub action: A,
@@ -67,7 +68,7 @@ impl<T: std::fmt::Debug, A> std::fmt::Debug for Production<T, A> {
     }
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct Symbol<T> {
     pub binder: Option<ast::Name>,
     pub kind: SymbolKind<T>,

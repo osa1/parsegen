@@ -140,9 +140,11 @@ pub fn simulate<T: Eq + Hash + Copy + std::fmt::Debug, A>(
                         stack.push(t);
                         a = input.next();
                     }
-                    LRAction::Reduce(non_terminal_idx, terminal_idx) => {
-                        let production = grammar.get_production(non_terminal_idx, terminal_idx);
-                        let n_symbols = production.symbols().len();
+                    LRAction::Reduce(non_terminal_idx, production_idx) => {
+                        let n_symbols = grammar
+                            .get_production(non_terminal_idx, production_idx)
+                            .symbols()
+                            .len();
                         for _ in 0..n_symbols {
                             stack.pop();
                         }

@@ -22,13 +22,32 @@ pub fn generate_lr1_parser(
         terminals,
     );
 
+    let action_array_code = generate_action_array(
+        grammar,
+        &action_vec,
+        lr1_table.n_states(),
+        terminals.n_terminals(),
+    );
+
     let goto_vec = generate_goto_vec(
         lr1_table.get_goto_table(),
         lr1_table.n_states(),
         grammar.non_terminals.len(),
     );
 
-    todo!()
+    let goto_array_code =
+        generate_goto_array(&goto_vec, lr1_table.n_states(), grammar.non_terminals.len());
+
+    quote!(
+        enum LRAction {
+            Shift { next_state: usize },
+            Reduce { n_symbols: usize },
+            Accept,
+        }
+
+        #action_array_code
+        #goto_array_code
+    )
 }
 
 /// Generates array representation of the action table. Reminder: EOF = last terminal.
@@ -73,4 +92,84 @@ fn generate_goto_vec(
         state_to_non_terminal_to_state.push(non_terminal_to_state);
     }
     state_to_non_terminal_to_state
+}
+
+fn generate_action_array<A>(
+    grammar: &Grammar<TerminalReprIdx, A>,
+    table: &[Vec<Option<LRAction>>],
+    n_states: usize,
+    n_terminals: usize,
+) -> TokenStream {
+    assert_eq!(table.len(), n_states);
+
+    let mut state_array: Vec<TokenStream> = Vec::with_capacity(n_states);
+
+    for state in table {
+        // +1 for EOF
+        assert_eq!(state.len(), n_terminals + 1);
+        let mut terminal_array: Vec<TokenStream> = Vec::with_capacity(n_terminals + 1);
+        for action in state {
+            match action {
+                Some(action) => {
+                    let action_code = match action {
+                        LRAction::Shift(next_state) => {
+                            let next_state = next_state.as_usize();
+                            quote!(LRAction::Shift { next_state: #next_state })
+                        }
+                        LRAction::Reduce(non_terminal_idx, production_idx) => {
+                            let n_symbols = grammar
+                                .get_production(*non_terminal_idx, *production_idx)
+                                .symbols()
+                                .len();
+                            quote!(LRAction::Reduce { n_symbols: #n_symbols })
+                        }
+                        LRAction::Accept => quote!(LRAction::Accept),
+                    };
+                    terminal_array.push(quote!(Some(#action_code)));
+                }
+                None => terminal_array.push(quote!(None)),
+            }
+        }
+        state_array.push(quote!(
+            [#(#terminal_array),*]
+        ));
+    }
+
+    // +1 for EOF
+    let terminal_array_len = n_terminals + 1;
+    quote!(
+        let ACTION: [[Option<LRAction>; #terminal_array_len]; #n_states] = [
+            #(#state_array),*
+        ];
+    )
+}
+
+fn generate_goto_array(
+    table: &[Vec<Option<StateIdx>>],
+    n_states: usize,
+    n_non_terminals: usize,
+) -> TokenStream {
+    let mut state_array: Vec<TokenStream> = Vec::with_capacity(n_states);
+
+    for state in table {
+        let mut non_terminal_array: Vec<TokenStream> = Vec::with_capacity(n_non_terminals);
+        for next_state in state {
+            non_terminal_array.push(match next_state {
+                Some(next_state) => {
+                    let next_state = next_state.as_usize();
+                    quote!(Some(#next_state))
+                }
+                None => quote!(None),
+            });
+        }
+        state_array.push(quote!(
+            [#(#non_terminal_array),*]
+        ));
+    }
+
+    quote!(
+        let GOTO: [[Option<usize>; #n_non_terminals]; #n_states] = [
+            #(#state_array),*
+        ];
+    )
 }

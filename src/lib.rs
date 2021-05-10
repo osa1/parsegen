@@ -24,6 +24,7 @@ mod terminal;
 mod test_grammars;
 
 use proc_macro::TokenStream;
+use quote::quote;
 
 #[proc_macro]
 pub fn parser(input: TokenStream) -> TokenStream {
@@ -58,12 +59,19 @@ pub fn parser(input: TokenStream) -> TokenStream {
     // println!("Grammar:");
     // println!("{:#?}", grammar);
 
-    codegen::generate_ll1_parser(
-        grammar,
+    let ll1_parser = codegen::generate_ll1_parser(
+        grammar.clone(),
         &token_enum,
         token_kind_type_name,
         token_kind_type_decl,
         &terminal_repr_arena,
+    );
+
+    let lr1_parser = lr_codegen::generate_lr1_parser(&grammar, &terminal_repr_arena);
+
+    quote!(
+        #ll1_parser
+        #lr1_parser
     )
     .into()
 }

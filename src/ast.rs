@@ -112,7 +112,7 @@ pub enum Symbol {
     // TODO: more symbols here
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct Name {
     pub mutable: bool,
     pub name: syn::Ident,
