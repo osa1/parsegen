@@ -1,5 +1,6 @@
 //! Implements an arena for terminal representations
 
+use std::fmt;
 use std::iter::FromIterator;
 
 use fxhash::FxHashMap;
@@ -24,8 +25,14 @@ struct TerminalRepr {
     name: String,
 }
 
-#[derive(Debug, PartialEq, Eq, PartialOrd, Ord, Hash, Clone, Copy)]
+#[derive(PartialEq, Eq, PartialOrd, Ord, Hash, Clone, Copy)]
 pub struct TerminalReprIdx(usize);
+
+impl fmt::Debug for TerminalReprIdx {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "#t{}", self.0)
+    }
+}
 
 impl TerminalReprIdx {
     pub fn as_usize(self) -> usize {

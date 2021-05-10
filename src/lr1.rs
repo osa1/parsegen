@@ -124,13 +124,13 @@ fn compute_lr1_closure<T: Ord + Eq + Hash + Clone + std::fmt::Debug, A>(
                         // computation
                         let mut end_allowed = true;
                         for symbol in &production.symbols()[item.cursor + 1..] {
-                            println!(
-                                "Checking symbol {}",
-                                SymbolKindDisplay {
-                                    symbol: &symbol.kind,
-                                    grammar
-                                }
-                            );
+                            // println!(
+                            //     "Checking symbol {}",
+                            //     SymbolKindDisplay {
+                            //         symbol: &symbol.kind,
+                            //         grammar
+                            //     }
+                            // );
                             match &symbol.kind {
                                 SymbolKind::Terminal(t) => {
                                     end_allowed = false;
@@ -157,12 +157,12 @@ fn compute_lr1_closure<T: Ord + Eq + Hash + Clone + std::fmt::Debug, A>(
                     first
                 };
 
-                println!(
-                    "LR1 closure item = {}, next = {}, first = {}",
-                    LR1ItemDisplay { item, grammar },
-                    grammar.get_non_terminal(next).non_terminal,
-                    FirstSetDisplay { set: &first }
-                );
+                // println!(
+                //     "LR1 closure item = {}, next = {}, first = {}",
+                //     LR1ItemDisplay { item, grammar },
+                //     grammar.get_non_terminal(next).non_terminal,
+                //     FirstSetDisplay { set: &first }
+                // );
 
                 for (production_idx, _) in grammar.non_terminal_production_indices(next) {
                     for t in first.terminals() {
@@ -291,7 +291,7 @@ pub fn generate_lr1_automaton<T: Ord + Clone + Hash + fmt::Debug, A>(
     {
         let i0_items: BTreeSet<LR1Item<T>> = btreeset! {
             LR1Item {
-                non_terminal_idx: NonTerminalIdx(0),
+                non_terminal_idx: grammar.get_init(),
                 production_idx: ProductionIdx(0),
                 cursor: 0,
                 lookahead: None,
@@ -329,30 +329,30 @@ pub fn generate_lr1_automaton<T: Ord + Clone + Hash + fmt::Debug, A>(
                         items: goto.clone(),
                         goto: Default::default(),
                     };
-                    println!(
-                        "next symbol = {}, goto = {}",
-                        SymbolKindDisplay {
-                            symbol: next_symbol,
-                            grammar: grammar
-                        },
-                        LR1StateDisplay {
-                            state: &new_state,
-                            grammar: grammar,
-                        },
-                    );
+                    // println!(
+                    //     "next symbol = {}, goto = {}",
+                    //     SymbolKindDisplay {
+                    //         symbol: next_symbol,
+                    //         grammar: grammar
+                    //     },
+                    //     LR1StateDisplay {
+                    //         state: &new_state,
+                    //         grammar: grammar,
+                    //     },
+                    // );
                     if !goto.is_empty() {
                         match state_indices.get(&goto) {
                             Some(goto_idx) => {
                                 new_gotos.insert((state_idx, next_symbol.clone()), *goto_idx);
                             }
                             None => {
-                                println!(
-                                    "Adding new state {}",
-                                    LR1StateDisplay {
-                                        state: &new_state,
-                                        grammar
-                                    }
-                                );
+                                // println!(
+                                //     "Adding new state {}",
+                                //     LR1StateDisplay {
+                                //         state: &new_state,
+                                //         grammar
+                                //     }
+                                // );
                                 new_states.push(new_state);
                                 state_indices.insert(goto.clone(), new_state_idx);
                                 new_gotos.insert((state_idx, next_symbol.clone()), new_state_idx);
@@ -370,13 +370,13 @@ pub fn generate_lr1_automaton<T: Ord + Clone + Hash + fmt::Debug, A>(
 
         automaton.states.extend(new_states.into_iter());
 
-        println!(
-            "{}",
-            LR1AutomatonDisplay {
-                automaton: &automaton,
-                grammar
-            }
-        );
+        // println!(
+        //     "{}",
+        //     LR1AutomatonDisplay {
+        //         automaton: &automaton,
+        //         grammar
+        //     }
+        // );
 
         for ((state, symbol), next) in new_gotos.into_iter() {
             let old = automaton.states[state.as_usize()].goto.insert(symbol, next);
@@ -443,9 +443,9 @@ pub fn build_lr1_table<T: Clone + Eq + Hash, A>(
 
 use std::fmt;
 
-struct LR1AutomatonDisplay<'a, 'b, T: Clone, A> {
-    automaton: &'a LR1Automaton<T>,
-    grammar: &'b Grammar<T, A>,
+pub struct LR1AutomatonDisplay<'a, 'b, T: Clone, A> {
+    pub automaton: &'a LR1Automaton<T>,
+    pub grammar: &'b Grammar<T, A>,
 }
 
 struct LR1StateDisplay<'a, 'b, T: Clone, A> {

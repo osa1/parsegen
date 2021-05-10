@@ -31,10 +31,6 @@ impl ProductionIdx {
 }
 
 /// Grammar type parameterized over terminals and user actions.
-///
-/// Note that the grammar is "augmented" with an initial non-terminal with no productions. When you
-/// call `set_init` for setting the initial non-terminal we add a production to the original
-/// initial non-terminal to the `set_init` argument.
 #[derive(Debug, Clone)]
 pub struct Grammar<T, A> {
     // Initial non-terminal
@@ -89,6 +85,7 @@ impl<T, A> Grammar<T, A> {
     }
 
     pub fn set_init(&mut self, idx: NonTerminalIdx) {
+        // TODO: Check that the nt has one production
         assert_eq!(self.init, None);
         self.init = Some(idx);
     }

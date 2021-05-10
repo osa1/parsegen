@@ -23,6 +23,15 @@ pub fn generate_lr1_parser(
 
     let first_table = generate_first_table(grammar);
     let lr1_automaton = generate_lr1_automaton(&grammar, &first_table);
+
+    println!(
+        "{}",
+        crate::lr1::LR1AutomatonDisplay {
+            automaton: &lr1_automaton,
+            grammar: &grammar
+        }
+    );
+
     let lr1_table = build_lr1_table(grammar, &lr1_automaton, n_terminals);
 
     let action_vec = action_table_vec(

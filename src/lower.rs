@@ -5,6 +5,7 @@ use crate::terminal::{TerminalReprArena, TerminalReprIdx};
 use fxhash::FxHashMap;
 
 pub fn lower(
+    entry: &str,
     non_terminals: Vec<ast::NonTerminal>,
     arena: &TerminalReprArena,
 ) -> Grammar<TerminalReprIdx, syn::Expr> {
@@ -19,6 +20,9 @@ pub fn lower(
             nt.type_decl.clone(),
             nt.visibility.is_pub(),
         );
+        if entry == nt_name {
+            grammar.set_init(nt_idx);
+        }
         nt_indices.insert(nt_name, nt_idx);
     }
 
