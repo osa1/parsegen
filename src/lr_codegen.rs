@@ -1,8 +1,11 @@
+use crate::ast::TokenEnum;
 use crate::first::{generate_first_table, FirstTable};
 use crate::grammar::{Grammar, NonTerminalIdx};
 use crate::lr1::{build_lr1_table, generate_lr1_automaton};
 use crate::lr_common::{LRAction, LRTable, StateIdx};
 use crate::terminal::{TerminalReprArena, TerminalReprIdx};
+
+use std::convert::TryFrom;
 
 use fxhash::FxHashMap;
 use proc_macro2::{Span, TokenStream};
@@ -10,11 +13,17 @@ use quote::quote;
 
 pub fn generate_lr1_parser(
     grammar: &Grammar<TerminalReprIdx, syn::Expr>,
+    tokens: &TokenEnum,
     terminals: &TerminalReprArena,
+    token_kind_type_name: &syn::Ident,
+    token_kind_type_decl: &TokenStream,
 ) -> TokenStream {
+    let n_terminals = terminals.n_terminals();
+    let token_type = &tokens.type_name;
+
     let first_table = generate_first_table(grammar);
     let lr1_automaton = generate_lr1_automaton(&grammar, &first_table);
-    let lr1_table = build_lr1_table(grammar, &lr1_automaton, terminals.n_terminals());
+    let lr1_table = build_lr1_table(grammar, &lr1_automaton, n_terminals);
 
     let action_vec = action_table_vec(
         lr1_table.get_action_table(),
@@ -22,12 +31,8 @@ pub fn generate_lr1_parser(
         terminals,
     );
 
-    let action_array_code = generate_action_array(
-        grammar,
-        &action_vec,
-        lr1_table.n_states(),
-        terminals.n_terminals(),
-    );
+    let action_array_code =
+        generate_action_array(grammar, &action_vec, lr1_table.n_states(), n_terminals);
 
     let goto_vec = generate_goto_vec(
         lr1_table.get_goto_table(),
@@ -38,15 +43,69 @@ pub fn generate_lr1_parser(
     let goto_array_code =
         generate_goto_array(&goto_vec, lr1_table.n_states(), grammar.non_terminals.len());
 
+    let (_token_kind_fn_name, token_kind_fn_decl) =
+        crate::codegen::token_kind_fn(token_kind_type_name, tokens);
+
     quote!(
+        #[derive(Clone, Copy)]
         enum LRAction {
-            Shift { next_state: usize },
-            Reduce { n_symbols: usize },
+            Shift { next_state: u32 },
+            Reduce { non_terminal_idx: u16, n_symbols: u16 },
             Accept,
         }
 
+        // static ACTION: [[Option<LRAction>; ...]; ...]
         #action_array_code
+
+        // static GOTO: [[Option<u32>; ...]; ...]
         #goto_array_code
+
+        #[derive(Debug, Clone, PartialEq, Eq)]
+        pub enum ParseError_<E> {
+            Other(E),
+        }
+
+        // enum TokenKind { ... }
+        #token_kind_type_decl
+
+        // fn token_kind(token: &Token) -> TokenKind { ... }
+        #token_kind_fn_decl
+
+        pub fn recognize<E: Clone>(
+            mut input: impl Iterator<Item=Result<#token_type, E>>
+        ) -> Result<(), ParseError_<E>>
+        {
+            let mut stack: Vec<u32> = vec![0];
+
+            let mut token = input.next();
+
+            loop {
+                let state = *stack.last().unwrap() as usize;
+                let terminal_idx = match &token {
+                    None => #n_terminals,
+                    Some(Err(err)) => return Err(ParseError_::Other(err.clone())),
+                    Some(Ok(token)) => token_kind(&token) as usize,
+                };
+                match ACTION[state][terminal_idx] {
+                    None => panic!("Stuck! (1) state={}, terminal={}", state, terminal_idx),
+                    Some(LRAction::Shift { next_state }) => {
+                        stack.push(next_state);
+                        token = input.next();
+                    }
+                    Some(LRAction::Reduce { non_terminal_idx, n_symbols }) => {
+                        for _ in 0 .. n_symbols {
+                            stack.pop().unwrap();
+                        }
+                        let state = *stack.last().unwrap() as usize;
+                        match GOTO[state][non_terminal_idx as usize] {
+                            None => panic!("Stuck! (2)"),
+                            Some(next_state) => stack.push(next_state),
+                        }
+                    }
+                    Some(LRAction::Accept) => return Ok(()),
+                }
+            }
+        }
     )
 }
 
@@ -113,15 +172,23 @@ fn generate_action_array<A>(
                 Some(action) => {
                     let action_code = match action {
                         LRAction::Shift(next_state) => {
-                            let next_state = next_state.as_usize();
+                            let next_state: u32 = u32::try_from(next_state.as_usize()).unwrap();
                             quote!(LRAction::Shift { next_state: #next_state })
                         }
                         LRAction::Reduce(non_terminal_idx, production_idx) => {
-                            let n_symbols = grammar
-                                .get_production(*non_terminal_idx, *production_idx)
-                                .symbols()
-                                .len();
-                            quote!(LRAction::Reduce { n_symbols: #n_symbols })
+                            let n_symbols: u16 = u16::try_from(
+                                grammar
+                                    .get_production(*non_terminal_idx, *production_idx)
+                                    .symbols()
+                                    .len(),
+                            )
+                            .unwrap();
+                            let non_terminal_idx: u16 =
+                                u16::try_from(non_terminal_idx.as_usize()).unwrap();
+                            quote!(LRAction::Reduce {
+                                non_terminal_idx: #non_terminal_idx,
+                                n_symbols: #n_symbols,
+                            })
                         }
                         LRAction::Accept => quote!(LRAction::Accept),
                     };
@@ -138,7 +205,7 @@ fn generate_action_array<A>(
     // +1 for EOF
     let terminal_array_len = n_terminals + 1;
     quote!(
-        let ACTION: [[Option<LRAction>; #terminal_array_len]; #n_states] = [
+        static ACTION: [[Option<LRAction>; #terminal_array_len]; #n_states] = [
             #(#state_array),*
         ];
     )
@@ -156,7 +223,7 @@ fn generate_goto_array(
         for next_state in state {
             non_terminal_array.push(match next_state {
                 Some(next_state) => {
-                    let next_state = next_state.as_usize();
+                    let next_state: u32 = u32::try_from(next_state.as_usize()).unwrap();
                     quote!(Some(#next_state))
                 }
                 None => quote!(None),
@@ -168,7 +235,7 @@ fn generate_goto_array(
     }
 
     quote!(
-        let GOTO: [[Option<usize>; #n_non_terminals]; #n_states] = [
+        static GOTO: [[Option<u32>; #n_non_terminals]; #n_states] = [
             #(#state_array),*
         ];
     )

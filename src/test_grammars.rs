@@ -312,3 +312,37 @@ pub fn grammar8() -> Grammar<Grammar8Token, ()> {
 
     grammar
 }
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
+pub enum Grammar9Token {
+    LParen,
+    RParen,
+}
+
+// S0 -> S
+// S -> ( S ) | (empty)
+pub fn grammar9() -> Grammar<Grammar9Token, ()> {
+    let mut grammar = Grammar::new();
+
+    let s0_nt_idx = add_non_terminal(&mut grammar, "S0");
+    let s_nt_idx = add_non_terminal(&mut grammar, "S");
+
+    // S0 -> S
+    grammar.add_production(s0_nt_idx, vec![nt(s_nt_idx)], ());
+
+    // S -> ( S )
+    grammar.add_production(
+        s_nt_idx,
+        vec![
+            t(Grammar9Token::LParen),
+            nt(s_nt_idx),
+            t(Grammar9Token::RParen),
+        ],
+        (),
+    );
+
+    // S -> (empty)
+    grammar.add_production(s_nt_idx, vec![], ());
+
+    grammar
+}

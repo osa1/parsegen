@@ -121,7 +121,6 @@ impl<T: Eq + Hash> LRTable<T> {
     }
 }
 
-// TODO: The same as LR0 simulation
 pub fn simulate<T: Eq + Hash + Copy + std::fmt::Debug, A>(
     table: &LRTable<T>,
     grammar: &Grammar<T, A>,

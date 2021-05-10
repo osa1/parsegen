@@ -716,3 +716,30 @@ fn simulate1() {
         .into_iter(),
     );
 }
+
+#[test]
+fn simulate2() {
+    use crate::first::generate_first_table;
+    use crate::test_grammars::{grammar9, Grammar9Token};
+
+    let grammar = grammar9();
+    let first = generate_first_table(&grammar);
+    let lr_automaton = generate_lr1_automaton(&grammar, &first);
+
+    println!(
+        "{}",
+        LR1AutomatonDisplay {
+            automaton: &lr_automaton,
+            grammar: &grammar
+        }
+    );
+
+    let lr1 = build_lr1_table(&grammar, &lr_automaton, 5);
+
+    crate::lr_common::simulate(&lr1, &grammar, vec![].into_iter());
+    crate::lr_common::simulate(
+        &lr1,
+        &grammar,
+        vec![Grammar9Token::LParen, Grammar9Token::RParen].into_iter(),
+    );
+}

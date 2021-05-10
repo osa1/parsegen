@@ -15,11 +15,11 @@ use quote::quote;
 pub fn generate_ll1_parser(
     grammar: Grammar<TerminalReprIdx, syn::Expr>,
     tokens: &TokenEnum,
-    token_kind_type_name: syn::Ident,
-    token_kind_type_decl: TokenStream,
+    token_kind_type_name: &syn::Ident,
+    token_kind_type_decl: &TokenStream,
     terminal_arena: &TerminalReprArena,
 ) -> TokenStream {
-    let (_token_kind_fn_name, token_kind_fn_decl) = token_kind_fn(&token_kind_type_name, tokens);
+    let (_token_kind_fn_name, token_kind_fn_decl) = token_kind_fn(token_kind_type_name, tokens);
 
     let (action_result_type_name, action_result_type_decl, non_terminal_action_variant_name) =
         action_result_type(&grammar, &tokens.conversions, &tokens.type_lifetimes);
@@ -484,7 +484,7 @@ fn generate_production_array(
 }
 
 /// Generates a `fn token_kind(& #token_type) -> #token_kind_type` that returns kind of a token.
-fn token_kind_fn(
+pub fn token_kind_fn(
     token_kind_type_name: &syn::Ident,
     tokens: &TokenEnum,
 ) -> (syn::Ident, TokenStream) {
