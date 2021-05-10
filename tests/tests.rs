@@ -1,7 +1,6 @@
 use lexgen::lexer;
 use parsegen::parser;
 
-/*
 #[test]
 fn balanced_parens() {
     #[derive(Debug, PartialEq, Eq)]
@@ -25,22 +24,30 @@ fn balanced_parens() {
             ")" => Token::RParen,
         }
 
-        pub Test: usize = {
+        pub Entry: usize = {
+            <test:Test> => test,
+        };
+
+        Test: usize = {
             "(" <t:Test> ")" => t + 1,
             => 0,
         };
     }
 
-    let mut lexer = Lexer::new("()");
-    assert_eq!(Test::parse(&mut lexer), Ok(1));
+    let lexer = Lexer::new("");
+    let mut iter = lexer.map(|r| r.map(|(_, t, _)| t));
+    assert_eq!(recognize(&mut iter), Ok(()));
 
-    let mut lexer = Lexer::new("((()))");
-    assert_eq!(Test::parse(&mut lexer), Ok(3));
+    let lexer = Lexer::new("()");
+    let mut iter = lexer.map(|r| r.map(|(_, t, _)| t));
+    assert_eq!(recognize(&mut iter), Ok(()));
 
-    let mut lexer = Lexer::new("((())");
-    assert!(Test::parse(&mut lexer).is_err());
+    let lexer = Lexer::new("(())");
+    let mut iter = lexer.map(|r| r.map(|(_, t, _)| t));
+    assert_eq!(recognize(&mut iter), Ok(()));
 }
 
+/*
 #[test]
 fn token_lifetimes() {
     #[derive(Debug, PartialEq, Eq)]
