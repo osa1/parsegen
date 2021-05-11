@@ -120,7 +120,7 @@ pub fn generate_lr1_parser(
 
 /// Generates array representation of the action table. Reminder: EOF = last terminal.
 fn action_table_vec(
-    action_table: &FxHashMap<(StateIdx, Option<TerminalReprIdx>), LRAction>,
+    action_table: &FxHashMap<StateIdx, FxHashMap<Option<TerminalReprIdx>, LRAction>>,
     n_states: usize,
     terminals: &TerminalReprArena,
 ) -> Vec<Vec<Option<LRAction>>> {
@@ -133,9 +133,19 @@ fn action_table_vec(
         // +1 for EOF
         let mut terminal_to_action: Vec<Option<LRAction>> = Vec::with_capacity(n_terminals + 1);
         for terminal in terminals.terminal_indices() {
-            terminal_to_action.push(action_table.get(&(state_idx, Some(terminal))).copied());
+            terminal_to_action.push(
+                action_table
+                    .get(&state_idx)
+                    .and_then(|action| action.get(&Some(terminal)))
+                    .copied(),
+            );
         }
-        terminal_to_action.push(action_table.get(&(state_idx, None)).copied());
+        terminal_to_action.push(
+            action_table
+                .get(&state_idx)
+                .and_then(|action| action.get(&None))
+                .copied(),
+        );
         state_to_terminal_to_action.push(terminal_to_action);
     }
 
@@ -144,7 +154,7 @@ fn action_table_vec(
 
 /// Generates array representation of the goto table.
 fn generate_goto_vec(
-    goto_table: &FxHashMap<(StateIdx, NonTerminalIdx), StateIdx>,
+    goto_table: &FxHashMap<StateIdx, FxHashMap<NonTerminalIdx, StateIdx>>,
     n_states: usize,
     n_non_terminals: usize,
 ) -> Vec<Vec<Option<StateIdx>>> {
@@ -155,7 +165,12 @@ fn generate_goto_vec(
         let mut non_terminal_to_state: Vec<Option<StateIdx>> = Vec::with_capacity(n_non_terminals);
         for non_terminal in 0..n_non_terminals {
             let non_terminal_idx = NonTerminalIdx::from_usize(non_terminal);
-            non_terminal_to_state.push(goto_table.get(&(state_idx, non_terminal_idx)).copied());
+            non_terminal_to_state.push(
+                goto_table
+                    .get(&state_idx)
+                    .and_then(|goto| goto.get(&non_terminal_idx))
+                    .copied(),
+            );
         }
         state_to_non_terminal_to_state.push(non_terminal_to_state);
     }

@@ -285,3 +285,39 @@ impl<T, A> Grammar<T, A> {
         }
     }
 }
+
+pub struct ProductionDisplay<'a, 'b, T, A> {
+    production: &'a Production<T, A>,
+    grammar: &'b Grammar<T, A>,
+}
+
+impl<'a, 'b, T, A> ProductionDisplay<'a, 'b, T, A> {
+    pub fn new(production: &'a Production<T, A>, grammar: &'b Grammar<T, A>) -> Self {
+        Self {
+            production,
+            grammar,
+        }
+    }
+}
+
+use std::fmt;
+
+impl<'a, 'b, T: fmt::Debug, A> fmt::Display for ProductionDisplay<'a, 'b, T, A> {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        for (symbol_idx, symbol) in self.production.symbols().iter().enumerate() {
+            match &symbol.kind {
+                SymbolKind::NonTerminal(nt) => {
+                    let nt = self.grammar.get_non_terminal(*nt);
+                    write!(f, "{}", nt.non_terminal)?;
+                }
+                SymbolKind::Terminal(t) => {
+                    write!(f, "{:?}", t)?;
+                }
+            }
+            if symbol_idx != self.production.symbols().len() - 1 {
+                write!(f, " ")?;
+            }
+        }
+        Ok(())
+    }
+}

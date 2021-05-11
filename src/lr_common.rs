@@ -26,8 +26,8 @@ pub enum LRAction {
 }
 
 pub struct LRTable<T: Eq + Hash> {
-    action: FxHashMap<(StateIdx, Option<T>), LRAction>,
-    goto: FxHashMap<(StateIdx, NonTerminalIdx), StateIdx>,
+    action: FxHashMap<StateIdx, FxHashMap<Option<T>, LRAction>>,
+    goto: FxHashMap<StateIdx, FxHashMap<NonTerminalIdx, StateIdx>>,
     n_states: usize,
     n_terminals: usize,
     n_non_terminals: usize,
@@ -58,7 +58,9 @@ impl<T: Eq + Hash> LRTableBuilder<T> {
         let old = self
             .table
             .action
-            .insert((state, Some(token)), LRAction::Shift(next_state));
+            .entry(state)
+            .or_default()
+            .insert(Some(token), LRAction::Shift(next_state));
         // In LR(1) we sometimes add shift to same state mutiple times, not sure why
         // assert_eq!(old, None, "trying to add {}", next_state.0);
     }
@@ -70,20 +72,32 @@ impl<T: Eq + Hash> LRTableBuilder<T> {
         non_terminal_idx: NonTerminalIdx,
         production_idx: ProductionIdx,
     ) {
-        let old = self.table.action.insert(
-            (state, token),
-            LRAction::Reduce(non_terminal_idx, production_idx),
-        );
+        let old = self
+            .table
+            .action
+            .entry(state)
+            .or_default()
+            .insert(token, LRAction::Reduce(non_terminal_idx, production_idx));
         assert!(old.is_none());
     }
 
     pub fn add_accept(&mut self, state: StateIdx) {
-        let old = self.table.action.insert((state, None), LRAction::Accept);
+        let old = self
+            .table
+            .action
+            .entry(state)
+            .or_default()
+            .insert(None, LRAction::Accept);
         // assert_eq!(old, None);
     }
 
     pub fn add_goto(&mut self, state: StateIdx, non_terminal_idx: NonTerminalIdx, next: StateIdx) {
-        let old = self.table.goto.insert((state, non_terminal_idx), next);
+        let old = self
+            .table
+            .goto
+            .entry(state)
+            .or_default()
+            .insert(non_terminal_idx, next);
         // same as add_shift..
         // assert_eq!(old, None, "trying to add {}", next.0);
     }
@@ -91,28 +105,34 @@ impl<T: Eq + Hash> LRTableBuilder<T> {
 
 impl<T: Eq + Hash> LRTable<T> {
     pub fn get_action(&self, state: StateIdx, non_terminal: Option<T>) -> Option<LRAction> {
-        self.action.get(&(state, non_terminal)).copied()
+        self.action
+            .get(&state)
+            .and_then(|action| action.get(&non_terminal))
+            .copied()
     }
 
     pub fn get_goto(&self, state: StateIdx, non_terminal: NonTerminalIdx) -> Option<StateIdx> {
-        self.goto.get(&(state, non_terminal)).cloned()
+        self.goto
+            .get(&state)
+            .and_then(|goto| goto.get(&non_terminal))
+            .copied()
     }
 
-    pub fn get_action_table(&self) -> &FxHashMap<(StateIdx, Option<T>), LRAction> {
+    pub fn get_action_table(&self) -> &FxHashMap<StateIdx, FxHashMap<Option<T>, LRAction>> {
         &self.action
     }
 
-    pub fn get_goto_table(&self) -> &FxHashMap<(StateIdx, NonTerminalIdx), StateIdx> {
+    pub fn get_goto_table(&self) -> &FxHashMap<StateIdx, FxHashMap<NonTerminalIdx, StateIdx>> {
         &self.goto
     }
 
     // For debugging
-    pub fn actions(&self) -> impl Iterator<Item = (&(StateIdx, Option<T>), &LRAction)> {
+    pub fn actions(&self) -> impl Iterator<Item = (&StateIdx, &FxHashMap<Option<T>, LRAction>)> {
         self.action.iter()
     }
 
     // For debugging
-    pub fn gotos(&self) -> impl Iterator<Item = (&(StateIdx, NonTerminalIdx), &StateIdx)> {
+    pub fn gotos(&self) -> impl Iterator<Item = (&StateIdx, &FxHashMap<NonTerminalIdx, StateIdx>)> {
         self.goto.iter()
     }
 
@@ -173,4 +193,86 @@ pub fn simulate<T: Eq + Hash + Copy + std::fmt::Debug, A>(
         stack,
         input.next()
     );
+}
+
+pub struct LRTableDisplay<'a, 'b, T: Hash + Eq, A> {
+    table: &'a LRTable<T>,
+    grammar: &'b Grammar<T, A>,
+}
+
+impl<'a, 'b, T: Hash + Eq, A> LRTableDisplay<'a, 'b, T, A> {
+    pub fn new(table: &'a LRTable<T>, grammar: &'b Grammar<T, A>) -> Self {
+        Self { table, grammar }
+    }
+}
+
+pub struct LRActionDisplay<'a, T, A> {
+    action: LRAction,
+    grammar: &'a Grammar<T, A>,
+}
+
+use crate::grammar::ProductionDisplay;
+
+use std::fmt;
+
+impl<'a, 'b, T: Hash + Eq + fmt::Debug, A> fmt::Display for LRTableDisplay<'a, 'b, T, A> {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        for state_idx in 0..self.table.n_states() {
+            writeln!(f, "{}: {{", state_idx)?;
+            let state_idx = StateIdx(state_idx);
+
+            let actions = self.table.action.get(&state_idx);
+
+            let gotos = self.table.goto.get(&state_idx);
+
+            if let Some(actions) = actions {
+                for (terminal, action) in actions {
+                    match terminal {
+                        Some(t) => write!(f, "  {:?} -> ", t)?,
+                        None => write!(f, "  EOF -> ")?,
+                    }
+                    writeln!(
+                        f,
+                        "{}",
+                        LRActionDisplay {
+                            action: *action,
+                            grammar: self.grammar
+                        }
+                    )?;
+                }
+            }
+
+            if let Some(gotos) = gotos {
+                for (non_terminal, next_state) in gotos {
+                    let nt = &self.grammar.get_non_terminal(*non_terminal).non_terminal;
+                    writeln!(f, "  {} -> {}", nt, next_state.0)?;
+                }
+            }
+
+            writeln!(f, "}}")?;
+        }
+
+        Ok(())
+    }
+}
+
+impl<'a, T: fmt::Debug, A> fmt::Display for LRActionDisplay<'a, T, A> {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self.action {
+            LRAction::Shift(next) => write!(f, "Shift {}", next.0),
+            LRAction::Reduce(nt, p) => {
+                let p_ = self.grammar.get_production(nt, p);
+                let nt_ = self.grammar.get_non_terminal(nt);
+                write!(
+                    f,
+                    "Reduce ({} -> {}) (nt_idx={}, p_idx={})",
+                    nt_.non_terminal,
+                    ProductionDisplay::new(p_, self.grammar),
+                    nt.0,
+                    p.0,
+                )
+            }
+            LRAction::Accept => write!(f, "Accept"),
+        }
+    }
 }

@@ -441,6 +441,9 @@ pub fn build_lr1_table<T: Clone + Eq + Hash, A>(
     table.build()
 }
 
+#[cfg(test)]
+use crate::lr_common::LRTableDisplay;
+
 use std::fmt;
 
 pub struct LR1AutomatonDisplay<'a, 'b, T: Clone, A> {
@@ -726,15 +729,17 @@ fn simulate2() {
     let first = generate_first_table(&grammar);
     let lr_automaton = generate_lr1_automaton(&grammar, &first);
 
-    println!(
-        "{}",
-        LR1AutomatonDisplay {
-            automaton: &lr_automaton,
-            grammar: &grammar
-        }
-    );
+    // println!(
+    //     "{}",
+    //     LR1AutomatonDisplay {
+    //         automaton: &lr_automaton,
+    //         grammar: &grammar
+    //     }
+    // );
 
     let lr1 = build_lr1_table(&grammar, &lr_automaton, 5);
+
+    println!("{}", LRTableDisplay::new(&lr1, &grammar),);
 
     crate::lr_common::simulate(&lr1, &grammar, vec![].into_iter());
     crate::lr_common::simulate(

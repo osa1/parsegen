@@ -272,6 +272,9 @@ fn build_slr_table<T: Eq + Hash + Copy, A>(
     table.build()
 }
 
+#[cfg(test)]
+use crate::lr_common::LRTableDisplay;
+
 use std::fmt;
 
 struct ItemDisplay<'a, T, A> {
@@ -281,21 +284,6 @@ struct ItemDisplay<'a, T, A> {
 
 struct LR0AutomatonDisplay<'a, 'b, T, A> {
     automaton: &'a LR0Automaton<T>,
-    grammar: &'b Grammar<T, A>,
-}
-
-struct SLRTableDisplay<'a, 'b, T: Eq + Hash, A> {
-    table: &'a LRTable<T>,
-    grammar: &'b Grammar<T, A>,
-}
-
-struct LRActionDisplay<'a, T, A> {
-    action: LRAction,
-    grammar: &'a Grammar<T, A>,
-}
-
-struct ProductionDisplay<'a, 'b, T, A> {
-    production: &'a Production<T, A>,
     grammar: &'b Grammar<T, A>,
 }
 
@@ -365,95 +353,6 @@ impl<'a, 'b, T: fmt::Debug, A> fmt::Display for LR0AutomatonDisplay<'a, 'b, T, A
             }
 
             writeln!(f, "}}")?;
-        }
-        Ok(())
-    }
-}
-
-impl<'a, 'b, T: Eq + Hash + Clone + fmt::Debug, A> fmt::Display for SLRTableDisplay<'a, 'b, T, A> {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        let mut actions: FxHashMap<StateIdx, Vec<(Option<T>, LRAction)>> = Default::default();
-        let mut gotos: FxHashMap<StateIdx, Vec<(NonTerminalIdx, StateIdx)>> = Default::default();
-        let mut states: BTreeSet<StateIdx> = Default::default();
-
-        for ((state, t), action) in self.table.actions() {
-            states.insert(*state);
-            actions
-                .entry(*state)
-                .or_default()
-                .push((t.clone(), *action));
-        }
-
-        for ((state, nt), next) in self.table.gotos() {
-            states.insert(*state);
-            gotos.entry(*state).or_default().push((*nt, *next));
-        }
-
-        for state in states.iter() {
-            writeln!(f, "{}: {{", state.0)?;
-            if let Some(actions) = actions.get(state) {
-                for (token, action) in actions {
-                    writeln!(
-                        f,
-                        "  {:?} -> {}",
-                        token,
-                        LRActionDisplay {
-                            action: *action,
-                            grammar: self.grammar
-                        }
-                    )?;
-                }
-            }
-            if let Some(gotos) = gotos.get(state) {
-                for (nt, next) in gotos {
-                    let nt = &self.grammar.get_non_terminal(*nt).non_terminal;
-                    writeln!(f, "  GOTO {:?} -> {}", nt, next.0)?;
-                }
-            }
-            writeln!(f, "}}")?;
-        }
-
-        Ok(())
-    }
-}
-
-impl<'a, T: fmt::Debug, A> fmt::Display for LRActionDisplay<'a, T, A> {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        match self.action {
-            LRAction::Shift(next) => write!(f, "Shift {}", next.0),
-            LRAction::Reduce(nt, p) => {
-                let p = self.grammar.get_production(nt, p);
-                let nt = self.grammar.get_non_terminal(nt);
-                write!(
-                    f,
-                    "Reduce {} -> {}",
-                    nt.non_terminal,
-                    ProductionDisplay {
-                        production: p,
-                        grammar: self.grammar
-                    }
-                )
-            }
-            LRAction::Accept => write!(f, "Accept"),
-        }
-    }
-}
-
-impl<'a, 'b, T: fmt::Debug, A> fmt::Display for ProductionDisplay<'a, 'b, T, A> {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        for (symbol_idx, symbol) in self.production.symbols().iter().enumerate() {
-            match &symbol.kind {
-                SymbolKind::NonTerminal(nt) => {
-                    let nt = self.grammar.get_non_terminal(*nt);
-                    write!(f, "{}", nt.non_terminal)?;
-                }
-                SymbolKind::Terminal(t) => {
-                    write!(f, "{:?}", t)?;
-                }
-            }
-            if symbol_idx != self.production.symbols().len() - 1 {
-                write!(f, " ")?;
-            }
         }
         Ok(())
     }
@@ -686,13 +585,7 @@ fn simulate1() {
 
     let slr = build_slr_table(&grammar, &lr_automaton, &follow, 5);
 
-    println!(
-        "{}",
-        SLRTableDisplay {
-            table: &slr,
-            grammar: &grammar
-        }
-    );
+    println!("{}", LRTableDisplay::new(&slr, &grammar),);
 
     crate::lr_common::simulate(
         &slr,
