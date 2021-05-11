@@ -388,7 +388,7 @@ pub fn generate_lr1_automaton<T: Ord + Clone + Hash + fmt::Debug, A>(
     automaton
 }
 
-pub fn build_lr1_table<T: Clone + Eq + Hash, A>(
+pub fn build_lr1_table<T: Clone + Eq + Hash + fmt::Debug, A>(
     grammar: &Grammar<T, A>,
     automaton: &LR1Automaton<T>,
     n_terminals: usize,
@@ -737,7 +737,7 @@ fn simulate2() {
     //     }
     // );
 
-    let lr1 = build_lr1_table(&grammar, &lr_automaton, 5);
+    let lr1 = build_lr1_table(&grammar, &lr_automaton, 2);
 
     println!("{}", LRTableDisplay::new(&lr1, &grammar),);
 
@@ -746,5 +746,63 @@ fn simulate2() {
         &lr1,
         &grammar,
         vec![Grammar9Token::LParen, Grammar9Token::RParen].into_iter(),
+    );
+}
+
+#[test]
+fn simulate3() {
+    use crate::first::generate_first_table;
+    use crate::test_grammars::{grammar7, Grammar7Token};
+
+    let grammar = grammar7();
+    let first = generate_first_table(&grammar);
+    let lr_automaton = generate_lr1_automaton(&grammar, &first);
+    let lr1 = build_lr1_table(&grammar, &lr_automaton, 3);
+
+    println!("{}", LRTableDisplay::new(&lr1, &grammar),);
+
+    crate::lr_common::simulate(
+        &lr1,
+        &grammar,
+        vec![Grammar7Token::Star, Grammar7Token::Id].into_iter(),
+    );
+    crate::lr_common::simulate(
+        &lr1,
+        &grammar,
+        vec![Grammar7Token::Id, Grammar7Token::Eq, Grammar7Token::Id].into_iter(),
+    );
+    crate::lr_common::simulate(
+        &lr1,
+        &grammar,
+        vec![
+            Grammar7Token::Id,
+            Grammar7Token::Eq,
+            Grammar7Token::Star,
+            Grammar7Token::Id,
+        ]
+        .into_iter(),
+    );
+    crate::lr_common::simulate(
+        &lr1,
+        &grammar,
+        vec![
+            Grammar7Token::Star,
+            Grammar7Token::Id,
+            Grammar7Token::Eq,
+            Grammar7Token::Id,
+        ]
+        .into_iter(),
+    );
+    crate::lr_common::simulate(
+        &lr1,
+        &grammar,
+        vec![
+            Grammar7Token::Star,
+            Grammar7Token::Id,
+            Grammar7Token::Eq,
+            Grammar7Token::Star,
+            Grammar7Token::Id,
+        ]
+        .into_iter(),
     );
 }

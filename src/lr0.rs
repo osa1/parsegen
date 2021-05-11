@@ -211,7 +211,7 @@ fn symbols_eq<T: Eq>(ss1: &[Symbol<T>], ss2: &[SymbolKind<T>]) -> bool {
     ss1.len() == ss2.len() && ss1.iter().zip(ss2).all(|(s1, s2)| s1.kind == *s2)
 }
 
-fn build_slr_table<T: Eq + Hash + Copy, A>(
+fn build_slr_table<T: Eq + Hash + Copy + fmt::Debug, A>(
     grammar: &Grammar<T, A>,
     automaton: &LR0Automaton<T>,
     follow_table: &FollowTable<T>,

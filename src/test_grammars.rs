@@ -261,7 +261,7 @@ pub fn grammar7() -> Grammar<Grammar7Token, ()> {
     grammar.add_production(s_nt_idx, vec![nt(r_nt_idx)], ());
 
     // L -> * R
-    grammar.add_production(l_nt_idx, vec![nt(r_nt_idx)], ());
+    grammar.add_production(l_nt_idx, vec![t(Grammar7Token::Star), nt(r_nt_idx)], ());
 
     // L -> id
     grammar.add_production(l_nt_idx, vec![t(Grammar7Token::Id)], ());

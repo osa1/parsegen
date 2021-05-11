@@ -37,7 +37,7 @@ pub struct LRTableBuilder<T: Eq + Hash> {
     table: LRTable<T>,
 }
 
-impl<T: Eq + Hash> LRTableBuilder<T> {
+impl<T: Eq + Hash + fmt::Debug> LRTableBuilder<T> {
     pub fn new(n_states: usize, n_terminals: usize, n_non_terminals: usize) -> Self {
         Self {
             table: LRTable {
@@ -72,13 +72,30 @@ impl<T: Eq + Hash> LRTableBuilder<T> {
         non_terminal_idx: NonTerminalIdx,
         production_idx: ProductionIdx,
     ) {
-        let old = self
-            .table
-            .action
-            .entry(state)
-            .or_default()
-            .insert(token, LRAction::Reduce(non_terminal_idx, production_idx));
-        assert!(old.is_none());
+        let action = self.table.action.entry(state).or_default();
+
+        match action.get(&token) {
+            Some(LRAction::Shift(s)) => {
+                panic!(
+                    "({}, {:?}): Overriding Shift({}) with Reduce({}, {})",
+                    state.0, token, s.0, non_terminal_idx.0, production_idx.0
+                )
+            }
+            Some(LRAction::Accept) => {
+                panic!(
+                    "({}, {:?}): Overriding Accept action with Reduce({}, {})",
+                    state.0, token, non_terminal_idx.0, production_idx.0
+                );
+            }
+            Some(LRAction::Reduce(nt_, p_)) => {
+                panic!(
+                    "({}, {:?}): Overriding Reduce({}, {}) action with Reduce({}, {})",
+                    state.0, token, nt_.0, p_.0, non_terminal_idx.0, production_idx.0
+                );
+            }
+            None => {}
+        }
+        action.insert(token, LRAction::Reduce(non_terminal_idx, production_idx));
     }
 
     pub fn add_accept(&mut self, state: StateIdx) {
