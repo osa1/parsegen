@@ -3,7 +3,7 @@ use crate::codegen::{
     generate_semantic_action_table, semantic_action_result_type, token_value_fn, SemanticActionIdx,
 };
 use crate::first::generate_first_table;
-use crate::grammar::{Grammar, NonTerminalIdx};
+use crate::grammar::{Grammar, NonTerminalIdx, ProductionIdx};
 use crate::lr1::{build_lr1_table, generate_lr1_automaton};
 use crate::lr_common::{LRAction, StateIdx};
 use crate::terminal::{TerminalReprArena, TerminalReprIdx};
@@ -30,6 +30,10 @@ pub fn generate_lr1_parser(
         };
 
     let pub_non_terminal_id = syn::Ident::new(&pub_non_terminal_name, Span::call_site());
+    let pub_non_terminal_value_extract_method_id = syn::Ident::new(
+        &format!("non_terminal_{}", pub_non_terminal_name),
+        Span::call_site(),
+    );
 
     let n_terminals = terminals.n_terminals();
     let token_type = &tokens.type_name;
@@ -49,6 +53,13 @@ pub fn generate_lr1_parser(
         grammar,
         &non_terminal_action_variant_name,
         &tokens.type_lifetimes,
+    );
+
+    let pub_non_terminal_action_idx = usize::from(
+        grammar
+            .get_production(pub_non_terminal_idx, ProductionIdx(0))
+            .action
+            .as_u16(),
     );
 
     println!(
@@ -135,7 +146,7 @@ pub fn generate_lr1_parser(
         impl #pub_non_terminal_id {
             pub fn parse<E: Clone>(
                 mut input: impl Iterator<Item=Result<#token_type, E>>
-            ) -> Result<(), ParseError_<E>>
+            ) -> Result<#pub_non_terminal_return_type, ParseError_<E>>
             {
                 let mut state_stack: Vec<u32> = vec![0];
                 let mut value_stack: Vec<SemanticActionResult> = vec![];
@@ -169,9 +180,15 @@ pub fn generate_lr1_parser(
                                 Some(next_state) => state_stack.push(next_state),
                             }
                         }
-                        Some(LRAction::Accept) => return Ok(()),
+                        Some(LRAction::Accept) => break,
                     }
                 }
+
+                // TODO: We could call the function directly here, instead of going through the
+                // table
+                SEMANTIC_ACTIONS[#pub_non_terminal_action_idx](&mut value_stack);
+
+                Ok(value_stack.pop().unwrap().#pub_non_terminal_value_extract_method_id())
             }
         }
     )

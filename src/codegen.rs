@@ -334,7 +334,6 @@ pub fn generate_semantic_action_table(
                                         ),
                                     };
                                     pop_code.push(quote!(
-
                                         let #mut_ #name = value_stack.pop().unwrap().#extract_method()
                                     ));
                                 }
