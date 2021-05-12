@@ -79,7 +79,7 @@ pub fn parser(input: TokenStream) -> TokenStream {
     // );
 
     let lr1_parser = lr_codegen::generate_lr1_parser(
-        &grammar,
+        grammar,
         &token_enum,
         &terminal_repr_arena,
         &token_kind_type_name,

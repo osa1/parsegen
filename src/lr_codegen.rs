@@ -1,18 +1,19 @@
 use crate::ast::TokenEnum;
-use crate::first::{generate_first_table, FirstTable};
+use crate::codegen::{generate_semantic_action_table, semantic_action_result_type, token_value_fn};
+use crate::first::generate_first_table;
 use crate::grammar::{Grammar, NonTerminalIdx};
 use crate::lr1::{build_lr1_table, generate_lr1_automaton};
-use crate::lr_common::{LRAction, LRTable, StateIdx};
+use crate::lr_common::{LRAction, StateIdx};
 use crate::terminal::{TerminalReprArena, TerminalReprIdx};
 
 use std::convert::TryFrom;
 
 use fxhash::FxHashMap;
-use proc_macro2::{Span, TokenStream};
+use proc_macro2::TokenStream;
 use quote::quote;
 
 pub fn generate_lr1_parser(
-    grammar: &Grammar<TerminalReprIdx, syn::Expr>,
+    grammar: Grammar<TerminalReprIdx, syn::Expr>,
     tokens: &TokenEnum,
     terminals: &TerminalReprArena,
     token_kind_type_name: &syn::Ident,
@@ -21,7 +22,7 @@ pub fn generate_lr1_parser(
     let n_terminals = terminals.n_terminals();
     let token_type = &tokens.type_name;
 
-    let first_table = generate_first_table(grammar);
+    let first_table = generate_first_table(&grammar);
     let lr1_automaton = generate_lr1_automaton(&grammar, &first_table);
 
     println!(
@@ -32,7 +33,7 @@ pub fn generate_lr1_parser(
         }
     );
 
-    let lr1_table = build_lr1_table(grammar, &lr1_automaton, n_terminals);
+    let lr1_table = build_lr1_table(&grammar, &lr1_automaton, n_terminals);
 
     let action_vec = action_table_vec(
         lr1_table.get_action_table(),
@@ -41,7 +42,7 @@ pub fn generate_lr1_parser(
     );
 
     let action_array_code =
-        generate_action_array(grammar, &action_vec, lr1_table.n_states(), n_terminals);
+        generate_action_array(&grammar, &action_vec, lr1_table.n_states(), n_terminals);
 
     let goto_vec = generate_goto_vec(
         lr1_table.get_goto_table(),
@@ -54,6 +55,27 @@ pub fn generate_lr1_parser(
 
     let (_token_kind_fn_name, token_kind_fn_decl) =
         crate::codegen::token_kind_fn(token_kind_type_name, tokens);
+
+    let (
+        semantic_action_result_type_name,
+        semantic_action_result_type_decl,
+        non_terminal_action_variant_name,
+    ) = semantic_action_result_type(&grammar, &tokens.conversions, &tokens.type_lifetimes);
+
+    let (_token_value_fn_name, token_value_fn_decl) = token_value_fn(
+        &tokens.conversions,
+        &tokens.type_name,
+        &tokens.type_lifetimes,
+        &semantic_action_result_type_name,
+    );
+
+    // Generate semantic action table, replace semantic actions in the grammar with their indices
+    // in the table
+    let (semantic_action_table, grammar) = generate_semantic_action_table(
+        grammar,
+        &non_terminal_action_variant_name,
+        &tokens.type_lifetimes,
+    );
 
     quote!(
         #[derive(Clone, Copy)]
@@ -79,6 +101,16 @@ pub fn generate_lr1_parser(
 
         // fn token_kind(token: &Token) -> TokenKind { ... }
         #token_kind_fn_decl
+
+        // fn token_value(token: &Token) -> SemanticActionResult { ... }
+        #token_value_fn_decl
+
+        // enum SemanticActionResult { ... } + an impl for extracting fields
+        #semantic_action_result_type_decl
+
+        // static SEMANTIC_ACTIONS: [fn(&mut Vec<SemanticActionResult); ...] = [ ... ]
+        // + the functions
+        #(#semantic_action_table)*
 
         pub fn recognize<E: Clone>(
             mut input: impl Iterator<Item=Result<#token_type, E>>

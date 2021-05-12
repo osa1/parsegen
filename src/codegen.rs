@@ -21,14 +21,17 @@ pub fn generate_ll1_parser(
 ) -> TokenStream {
     let (_token_kind_fn_name, token_kind_fn_decl) = token_kind_fn(token_kind_type_name, tokens);
 
-    let (action_result_type_name, action_result_type_decl, non_terminal_action_variant_name) =
-        action_result_type(&grammar, &tokens.conversions, &tokens.type_lifetimes);
+    let (
+        semantic_action_result_type_name,
+        semantic_action_result_type_decl,
+        non_terminal_action_variant_name,
+    ) = semantic_action_result_type(&grammar, &tokens.conversions, &tokens.type_lifetimes);
 
     let (_token_value_fn_name, token_value_fn_decl) = token_value_fn(
         &tokens.conversions,
         &tokens.type_name,
         &tokens.type_lifetimes,
-        &action_result_type_name,
+        &semantic_action_result_type_name,
     );
 
     let first_table = generate_first_table(&grammar);
@@ -66,7 +69,7 @@ pub fn generate_ll1_parser(
     quote!(
         #token_kind_type_decl
         #token_kind_fn_decl
-        #action_result_type_decl
+        #semantic_action_result_type_decl
         #token_value_fn_decl
         #(#semantic_action_table)*
         #production_array
@@ -146,11 +149,11 @@ fn generate_parse_fn(
     quote!(
         fn parse<#(#token_lifetimes,)* E, R>(
             input: &mut dyn Iterator<Item=Result<(usize, #token_type<#(#token_lifetimes),*>, usize), E>>,
-            extract_nt_return_value: fn(ActionResult<#(#token_lifetimes),*>) -> R,
+            extract_nt_return_value: fn(SemanticActionResult<#(#token_lifetimes),*>) -> R,
         ) -> Result<R, ParseError<#token_type<#(#token_lifetimes),*>, E>>
         {
             let mut action_stack: Vec<Action> = vec![Action::MatchNonTerminal(0)];
-            let mut value_stack: Vec<ActionResult> = vec![];
+            let mut value_stack: Vec<SemanticActionResult> = vec![];
 
             'next_token: for (token_index, token) in input.enumerate() {
                 let token = match token {
@@ -178,7 +181,7 @@ fn generate_parse_fn(
                             continue 'next_token;
                         }
                         Action::RunSemanticAction(idx) => {
-                            (ACTIONS[idx])(&mut value_stack);
+                            (SEMANTIC_ACTIONS[idx])(&mut value_stack);
                         }
                     }
                 }
@@ -203,7 +206,7 @@ fn generate_parse_fn(
                         return Err(ParseError::UnexpectedEOF);
                     }
                     Action::RunSemanticAction(idx) => {
-                        (ACTIONS[idx])(&mut value_stack);
+                        (SEMANTIC_ACTIONS[idx])(&mut value_stack);
                     }
                 }
             }
@@ -247,7 +250,7 @@ fn generate_pub_non_terminal_types<T, A>(
                     input: &mut dyn Iterator<Item=Result<(usize, #token_type<#(#token_lifetimes),*>, usize), E>>
                 ) -> Result<#return_ty, ParseError<#token_type<#(#token_lifetimes),*>, E>>
                 {
-                    parse::<E, #return_ty>(input, ActionResult::#nt_method_name)
+                    parse::<E, #return_ty>(input, SemanticActionResult::#nt_method_name)
                 }
             }
         ));
@@ -258,7 +261,7 @@ fn generate_pub_non_terminal_types<T, A>(
 
 /// Generates semantic action functions, semantic action table (array of semantic action functions)
 /// and replaces semantic actions in the grammar with their indices in the array.
-fn generate_semantic_action_table(
+pub fn generate_semantic_action_table(
     grammar: Grammar<TerminalReprIdx, syn::Expr>,
     non_terminal_action_variant_name: &FxHashMap<String, syn::Ident>,
     token_lifetimes: &[syn::Lifetime],
@@ -336,9 +339,9 @@ fn generate_semantic_action_table(
                             non_terminal_action_variant_name.get(&non_terminal).unwrap();
 
                         decls.push(quote!(
-                            fn #fn_name<#(#token_lifetimes),*>(value_stack: &mut Vec<ActionResult<#(#token_lifetimes),*>>) {
+                            fn #fn_name<#(#token_lifetimes),*>(value_stack: &mut Vec<SemanticActionResult<#(#token_lifetimes),*>>) {
                                 #(#pop_code;)*
-                                value_stack.push(ActionResult::#non_terminal_variant(#action));
+                                value_stack.push(SemanticActionResult::#non_terminal_variant(#action));
                             }
                         ));
 
@@ -363,7 +366,9 @@ fn generate_semantic_action_table(
 
     let n_fns = fn_names.len();
     decls.push(quote!(
-        static ACTIONS: [fn(&mut Vec<ActionResult>); #n_fns] = [ #(#fn_names),* ];
+        static SEMANTIC_ACTIONS: [fn(&mut Vec<SemanticActionResult>); #n_fns] = [
+            #(#fn_names),*
+        ];
     ));
 
     (
@@ -526,7 +531,7 @@ pub fn token_kind_fn(
 
 /// Generates a `fn token_value(& #token_type) -> ActionResult` function that returns the value of
 /// a matched token.
-fn token_value_fn(
+pub fn token_value_fn(
     tokens: &[Conversion],
     user_token_type_name: &syn::Ident,
     user_token_type_lifetimes: &[syn::Lifetime],
@@ -608,12 +613,13 @@ fn pattern_ignore(pattern: &Pattern) -> TokenStream {
 
 /// Declares an `ActionResult` enum type with a variant for each non-terminal in the grammar and
 /// each token with value. Used in the value stack for terminals and non-terminals.
-fn action_result_type<T, A>(
+pub fn semantic_action_result_type<T, A>(
     grammar: &Grammar<T, A>,
     tokens: &[Conversion],
     token_lifetimes: &[syn::Lifetime],
 ) -> (syn::Ident, TokenStream, FxHashMap<String, syn::Ident>) {
-    let action_result_type_name = syn::Ident::new("ActionResult", Span::call_site());
+    let semantic_action_result_type_name =
+        syn::Ident::new("SemanticActionResult", Span::call_site());
 
     let mut variants: Vec<TokenStream> = vec![];
     let mut map: FxHashMap<String, syn::Ident> = Default::default();
@@ -672,16 +678,16 @@ fn action_result_type<T, A>(
     }
 
     let code = quote!(
-        enum #action_result_type_name<#(#token_lifetimes),*> {
+        enum #semantic_action_result_type_name<#(#token_lifetimes),*> {
             #(#variants,)*
         }
 
-        impl<#(#token_lifetimes),*> #action_result_type_name<#(#token_lifetimes),*> {
+        impl<#(#token_lifetimes),*> #semantic_action_result_type_name<#(#token_lifetimes),*> {
             #(#extraction_fns)*
         }
     );
 
-    (action_result_type_name, code, map)
+    (semantic_action_result_type_name, code, map)
 }
 
 fn pattern_types(pat: &Pattern) -> Vec<&syn::Type> {
