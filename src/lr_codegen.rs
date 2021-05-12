@@ -21,20 +21,6 @@ pub fn generate_lr1_parser(
     token_kind_type_name: &syn::Ident,
     token_kind_type_decl: &TokenStream,
 ) -> TokenStream {
-    // Find the `pub` non-terminal and its return type. We will create a type for this non-terminal
-    // with a parse method.
-    let (pub_non_terminal_idx, pub_non_terminal_name, pub_non_terminal_return_type) =
-        match find_pub_non_terminal(&grammar) {
-            None => return quote!(),
-            Some(non_terminal) => non_terminal,
-        };
-
-    let pub_non_terminal_id = syn::Ident::new(&pub_non_terminal_name, Span::call_site());
-    let pub_non_terminal_value_extract_method_id = syn::Ident::new(
-        &format!("non_terminal_{}", pub_non_terminal_name),
-        Span::call_site(),
-    );
-
     let n_terminals = terminals.n_terminals();
     let token_type = &tokens.type_name;
 
@@ -53,13 +39,6 @@ pub fn generate_lr1_parser(
         grammar,
         &non_terminal_action_variant_name,
         &tokens.type_lifetimes,
-    );
-
-    let pub_non_terminal_action_idx = usize::from(
-        grammar
-            .get_production(pub_non_terminal_idx, ProductionIdx(0))
-            .action
-            .as_u16(),
     );
 
     // println!(
@@ -104,6 +83,47 @@ pub fn generate_lr1_parser(
         &tokens.type_lifetimes,
         &semantic_action_result_type_name,
     );
+
+    // struct NonTerminal;
+    // impl NonTerminal { fn parse() { ... } }
+    let parser_structs: Vec<TokenStream> = nt_state_indices
+        .into_iter()
+        .map(|(non_terminal_idx, parser_state)| {
+            let parser_state = u32::try_from(parser_state.as_usize()).unwrap();
+            let non_terminal = grammar.get_non_terminal(non_terminal_idx);
+            let non_terminal_name_id =
+                syn::Ident::new(&non_terminal.non_terminal, Span::call_site());
+            let non_terminal_return_type = &non_terminal.return_ty;
+            let action_idx = usize::from(
+                grammar
+                    .get_production(non_terminal_idx, ProductionIdx(0))
+                    .action
+                    .as_u16(),
+            );
+            let extract_method_id = syn::Ident::new(
+                &format!("non_terminal_{}", non_terminal.non_terminal),
+                Span::call_site(),
+            );
+
+            quote!(
+                struct #non_terminal_name_id;
+
+                impl #non_terminal_name_id {
+                    pub fn parse<E: Clone>(
+                        mut input: impl Iterator<Item=Result<#token_type, E>>
+                    ) -> Result<#non_terminal_return_type, ParseError_<E>>
+                    {
+                        parse_generic(
+                            input,
+                            SemanticActionResult::#extract_method_id,
+                            #parser_state,
+                            #action_idx,
+                        )
+                    }
+                }
+            )
+        })
+        .collect();
 
     quote!(
         #[derive(Clone, Copy)]
@@ -191,42 +211,13 @@ pub fn generate_lr1_parser(
 
             // TODO: We could call the function directly here, instead of going through the
             // table
-            SEMANTIC_ACTIONS[#pub_non_terminal_action_idx](&mut value_stack);
+            SEMANTIC_ACTIONS[action_idx](&mut value_stack);
 
             Ok(extract_value(value_stack.pop().unwrap()))
         }
 
-        pub struct #pub_non_terminal_id;
-
-        impl #pub_non_terminal_id {
-            pub fn parse<E: Clone>(
-                mut input: impl Iterator<Item=Result<#token_type, E>>
-            ) -> Result<#pub_non_terminal_return_type, ParseError_<E>>
-            {
-                parse_generic(
-                    input,
-                    SemanticActionResult::#pub_non_terminal_value_extract_method_id,
-                    0, // TODO
-                    #pub_non_terminal_action_idx,
-                )
-            }
-        }
+        #(#parser_structs)*
     )
-}
-
-fn find_pub_non_terminal<T, A>(
-    grammar: &Grammar<T, A>,
-) -> Option<(NonTerminalIdx, String, syn::Type)> {
-    for (non_terminal_idx, non_terminal) in grammar.non_terminal_indices() {
-        if non_terminal.public {
-            return Some((
-                non_terminal_idx,
-                non_terminal.non_terminal.clone(),
-                non_terminal.return_ty.clone(),
-            ));
-        }
-    }
-    None
 }
 
 /// Generates array representation of the action table. Reminder: EOF = last terminal.
