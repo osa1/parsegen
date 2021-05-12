@@ -11,6 +11,7 @@ use fxhash::FxHashMap;
 use proc_macro2::{Span, TokenStream};
 use quote::quote;
 
+/*
 // Terminals in the grammar are the qualified enum variants (e.g. `TokenKind::T0`)
 pub fn generate_ll1_parser(
     grammar: Grammar<TerminalReprIdx, syn::Expr>,
@@ -94,6 +95,7 @@ pub fn generate_ll1_parser(
         #(#nt_types)*
     )
 }
+*/
 
 /// Generates an `enum #{token}Kind { T0, T1, ... }` type with a variant for each token described
 /// in the `enum Token { ... }`.
@@ -278,10 +280,7 @@ pub fn generate_semantic_action_table(
     Vec<TokenStream>,
     Grammar<TerminalReprIdx, SemanticActionIdx>,
 ) {
-    let Grammar {
-        init,
-        non_terminals,
-    } = grammar;
+    let Grammar { non_terminals } = grammar;
 
     // Action function declarations and the array
     let mut decls: Vec<TokenStream> = vec![];
@@ -382,13 +381,7 @@ pub fn generate_semantic_action_table(
         ];
     ));
 
-    (
-        decls,
-        Grammar {
-            init,
-            non_terminals,
-        },
-    )
+    (decls, Grammar { non_terminals })
 }
 
 /// Generates `PARSE_TABLE: [[usize]]` that maps (non_terminal_idx, terminal_idx) to

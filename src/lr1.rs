@@ -282,30 +282,41 @@ impl<T: Clone> Default for LR1Automaton<T> {
 pub fn generate_lr1_automaton<T: Ord + Clone + Hash + fmt::Debug, A>(
     grammar: &Grammar<T, A>,
     first_table: &FirstTable<T>,
-) -> LR1Automaton<T> {
+) -> (LR1Automaton<T>, FxHashMap<NonTerminalIdx, StateIdx>) {
     // Maps existing item sets to their state indices, to maintain sharing.
     let mut state_indices: FxHashMap<BTreeSet<LR1Item<T>>, StateIdx> = Default::default();
 
+    // Maps entry points to their state indices
+    let mut non_terminal_state_indices: FxHashMap<NonTerminalIdx, StateIdx> = Default::default();
+
     let mut automaton: LR1Automaton<T> = Default::default();
 
-    {
-        let i0_items: BTreeSet<LR1Item<T>> = btreeset! {
-            LR1Item {
-                non_terminal_idx: grammar.get_init(),
-                production_idx: ProductionIdx(0),
-                cursor: 0,
-                lookahead: None,
-            }
-        };
+    for (non_terminal_idx, non_terminal) in grammar.non_terminal_indices() {
+        if non_terminal.public {
+            assert_eq!(non_terminal.productions().len(), 1);
 
-        let i0_items = compute_lr1_closure(grammar, first_table, &i0_items);
+            let i0_items: BTreeSet<LR1Item<T>> = btreeset! {
+                LR1Item {
+                    non_terminal_idx,
+                    production_idx: ProductionIdx(0),
+                    cursor: 0,
+                    lookahead: None,
+                }
+            };
 
-        state_indices.insert(i0_items.clone(), StateIdx(0));
+            let i0_items = compute_lr1_closure(grammar, first_table, &i0_items);
 
-        automaton.states.push(LR1State {
-            items: i0_items,
-            goto: Default::default(),
-        });
+            let i0_state_idx: StateIdx = StateIdx(automaton.states.len());
+
+            state_indices.insert(i0_items.clone(), i0_state_idx);
+
+            automaton.states.push(LR1State {
+                items: i0_items,
+                goto: Default::default(),
+            });
+
+            non_terminal_state_indices.insert(non_terminal_idx, i0_state_idx);
+        }
     }
 
     let mut updated = true;
@@ -385,7 +396,7 @@ pub fn generate_lr1_automaton<T: Ord + Clone + Hash + fmt::Debug, A>(
         }
     }
 
-    automaton
+    (automaton, non_terminal_state_indices)
 }
 
 pub fn build_lr1_table<T: Clone + Eq + Hash + fmt::Debug, A: Clone>(
@@ -567,7 +578,7 @@ fn grammar8_lr1_states() {
 
     let grammar = grammar8();
     let first_table = generate_first_table(&grammar);
-    let lr1_automaton = generate_lr1_automaton(&grammar, &first_table);
+    let (lr1_automaton, _) = generate_lr1_automaton(&grammar, &first_table);
 
     println!(
         "{}",
@@ -667,7 +678,7 @@ fn simulate1() {
 
     let grammar = grammar6();
     let first = generate_first_table(&grammar);
-    let lr_automaton = generate_lr1_automaton(&grammar, &first);
+    let (lr_automaton, _) = generate_lr1_automaton(&grammar, &first);
 
     println!(
         "{}",
@@ -729,7 +740,7 @@ fn simulate2() {
 
     let grammar = grammar9();
     let first = generate_first_table(&grammar);
-    let lr_automaton = generate_lr1_automaton(&grammar, &first);
+    let (lr_automaton, _) = generate_lr1_automaton(&grammar, &first);
 
     // println!(
     //     "{}",
@@ -758,7 +769,7 @@ fn simulate3() {
 
     let grammar = grammar7();
     let first = generate_first_table(&grammar);
-    let lr_automaton = generate_lr1_automaton(&grammar, &first);
+    let (lr_automaton, _) = generate_lr1_automaton(&grammar, &first);
     let lr1 = build_lr1_table(&grammar, &lr_automaton, 3);
 
     println!("{}", LRTableDisplay::new(&lr1, &grammar),);

@@ -2,10 +2,12 @@ use crate::ast;
 use crate::grammar::{Grammar, NonTerminalIdx, Symbol, SymbolKind};
 use crate::terminal::{TerminalReprArena, TerminalReprIdx};
 
+use std::iter::FromIterator;
+
 use fxhash::FxHashMap;
+use proc_macro2::Span;
 
 pub fn lower(
-    entry: &str,
     non_terminals: Vec<ast::NonTerminal>,
     arena: &TerminalReprArena,
 ) -> Grammar<TerminalReprIdx, syn::Expr> {
@@ -14,16 +16,51 @@ pub fn lower(
     let mut nt_indices: FxHashMap<String, NonTerminalIdx> = Default::default();
 
     for nt in &non_terminals {
-        let nt_name = nt.name.to_string();
-        let nt_idx = grammar.add_non_terminal(
-            nt_name.clone(),
-            nt.type_decl.clone(),
-            nt.visibility.is_pub(),
-        );
-        if entry == nt_name {
-            grammar.set_init(nt_idx);
+        if nt.visibility.is_pub() {
+            // For a `pub` non-terminal:
+            //
+            // - Add a "1" suffix to the original non-terminal
+            //
+            // - Create a new non-terminal with the original name:
+            //
+            //       NonTerminal0: ... = { <x:NonTerminal1> => x }
+            //
+            //   This new terminal will be used as an entry point to the parser.
+            let nt1_name = nt.name.to_string() + "1";
+            let nt1_idx = grammar.add_non_terminal(nt1_name, nt.type_decl.clone(), false);
+            // Original name mapped to the new name with "1" suffix
+            nt_indices.insert(nt.name.to_string(), nt1_idx);
+
+            // Create the entry point
+            let nt_idx = grammar.add_non_terminal(nt.name.to_string(), nt.type_decl.clone(), true);
+            // Add the production here as we already defined non-terminal on the RHS
+            let binder_ident = syn::Ident::new("x", Span::call_site());
+            grammar.add_production(
+                nt_idx,
+                vec![Symbol {
+                    binder: Some(ast::Name {
+                        mutable: false,
+                        name: binder_ident.clone(),
+                    }),
+                    kind: SymbolKind::NonTerminal(nt1_idx),
+                }],
+                syn::Expr::Path(syn::ExprPath {
+                    attrs: vec![],
+                    qself: None,
+                    path: syn::Path {
+                        leading_colon: None,
+                        segments: syn::punctuated::Punctuated::from_iter(vec![syn::PathSegment {
+                            ident: binder_ident,
+                            arguments: syn::PathArguments::None,
+                        }]),
+                    },
+                }),
+            );
+        } else {
+            let nt_name = nt.name.to_string();
+            let nt_idx = grammar.add_non_terminal(nt_name.clone(), nt.type_decl.clone(), false);
+            nt_indices.insert(nt_name, nt_idx);
         }
-        nt_indices.insert(nt_name, nt_idx);
     }
 
     for ast::NonTerminal {

@@ -32,7 +32,6 @@ pub fn parser(input: TokenStream) -> TokenStream {
 
     let mut non_terminals: Vec<ast::NonTerminal> = vec![];
     let mut token_enum: Option<ast::TokenEnum> = None;
-    let mut entry: Option<String> = None;
 
     for item in parser.items {
         match item {
@@ -44,14 +43,6 @@ pub fn parser(input: TokenStream) -> TokenStream {
                 token_enum = Some(token_enum_);
             }
             ast::GrammarItem::NonTerminal(nt) => {
-                // TODO: For now first pub non-terminal is the entry
-                if nt.visibility.is_pub() && entry.is_none() {
-                    if nt.productions.len() != 1 {
-                        // TODO
-                        panic!("Entry non-terminal should have 1 production");
-                    }
-                    entry = Some(nt.name.to_string());
-                }
                 non_terminals.push(nt);
             }
         }
@@ -64,9 +55,7 @@ pub fn parser(input: TokenStream) -> TokenStream {
     let (token_kind_type_name, token_kind_type_decl, terminal_repr_arena) =
         codegen::token_kind_type(&token_enum);
 
-    let entry = entry.expect("Grammar needs to have one `pub` non-terminal");
-
-    let grammar = lower::lower(&entry, non_terminals, &terminal_repr_arena);
+    let grammar = lower::lower(non_terminals, &terminal_repr_arena);
     // println!("Grammar:");
     // println!("{:#?}", grammar);
 

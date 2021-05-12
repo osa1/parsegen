@@ -33,9 +33,6 @@ impl ProductionIdx {
 /// Grammar type parameterized over terminals and user actions.
 #[derive(Debug, Clone)]
 pub struct Grammar<T, A> {
-    // Initial non-terminal
-    pub init: Option<NonTerminalIdx>,
-
     // Indexed by `NonTerminalIdx`
     pub non_terminals: Vec<NonTerminal<T, A>>,
 }
@@ -79,19 +76,8 @@ pub enum SymbolKind<T> {
 impl<T, A> Grammar<T, A> {
     pub fn new() -> Self {
         Grammar {
-            init: None,
             non_terminals: vec![],
         }
-    }
-
-    pub fn set_init(&mut self, idx: NonTerminalIdx) {
-        // TODO: Check that the nt has one production
-        assert_eq!(self.init, None);
-        self.init = Some(idx);
-    }
-
-    pub fn get_init(&self) -> NonTerminalIdx {
-        self.init.unwrap()
     }
 
     pub fn add_non_terminal(

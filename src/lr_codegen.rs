@@ -39,7 +39,7 @@ pub fn generate_lr1_parser(
     let token_type = &tokens.type_name;
 
     let first_table = generate_first_table(&grammar);
-    let lr1_automaton = generate_lr1_automaton(&grammar, &first_table);
+    let (lr1_automaton, nt_state_indices) = generate_lr1_automaton(&grammar, &first_table);
 
     let (
         semantic_action_result_type_name,
@@ -62,15 +62,20 @@ pub fn generate_lr1_parser(
             .as_u16(),
     );
 
-    println!(
-        "{}",
-        crate::lr1::LR1AutomatonDisplay {
-            automaton: &lr1_automaton,
-            grammar: &grammar
-        }
-    );
+    // println!(
+    //     "{}",
+    //     crate::lr1::LR1AutomatonDisplay {
+    //         automaton: &lr1_automaton,
+    //         grammar: &grammar
+    //     }
+    // );
 
     let lr1_table = build_lr1_table(&grammar, &lr1_automaton, n_terminals);
+
+    println!(
+        "{}",
+        crate::lr_common::LRTableDisplay::new(&lr1_table, &grammar)
+    );
 
     let action_vec = action_table_vec(
         lr1_table.get_action_table(),
@@ -141,6 +146,56 @@ pub fn generate_lr1_parser(
         // + the functions
         #(#semantic_action_table)*
 
+        fn parse_generic<R, E: Clone>(
+            mut input: impl Iterator<Item=Result<#token_type, E>>,
+            extract_value: fn(SemanticActionResult) -> R,
+            init_state: u32,
+            action_idx: usize,
+        ) -> Result<R, ParseError_<E>>
+        {
+            let mut state_stack: Vec<u32> = vec![init_state];
+            let mut value_stack: Vec<SemanticActionResult> = vec![];
+
+            let mut token = input.next();
+
+            loop {
+                let state = *state_stack.last().unwrap() as usize;
+                let terminal_idx = match &token {
+                    None => #n_terminals,
+                    Some(Err(err)) => return Err(ParseError_::Other(err.clone())),
+                    Some(Ok(token)) => token_kind(&token) as usize,
+                };
+                match ACTION[state][terminal_idx] {
+                    None => panic!("Stuck! (1) state={}, terminal={}", state, terminal_idx),
+                    Some(LRAction::Shift { next_state }) => {
+                        state_stack.push(next_state);
+                        if let Some(Ok(token)) = &token {
+                            value_stack.push(token_value(token));
+                        }
+                        token = input.next();
+                    }
+                    Some(LRAction::Reduce { non_terminal_idx, n_symbols, semantic_action_idx }) => {
+                        (SEMANTIC_ACTIONS[semantic_action_idx as usize])(&mut value_stack);
+                        for _ in 0 .. n_symbols {
+                            state_stack.pop().unwrap();
+                        }
+                        let state = *state_stack.last().unwrap() as usize;
+                        match GOTO[state][non_terminal_idx as usize] {
+                            None => panic!("Stuck! (2)"),
+                            Some(next_state) => state_stack.push(next_state),
+                        }
+                    }
+                    Some(LRAction::Accept) => break,
+                }
+            }
+
+            // TODO: We could call the function directly here, instead of going through the
+            // table
+            SEMANTIC_ACTIONS[#pub_non_terminal_action_idx](&mut value_stack);
+
+            Ok(extract_value(value_stack.pop().unwrap()))
+        }
+
         pub struct #pub_non_terminal_id;
 
         impl #pub_non_terminal_id {
@@ -148,47 +203,12 @@ pub fn generate_lr1_parser(
                 mut input: impl Iterator<Item=Result<#token_type, E>>
             ) -> Result<#pub_non_terminal_return_type, ParseError_<E>>
             {
-                let mut state_stack: Vec<u32> = vec![0];
-                let mut value_stack: Vec<SemanticActionResult> = vec![];
-
-                let mut token = input.next();
-
-                loop {
-                    let state = *state_stack.last().unwrap() as usize;
-                    let terminal_idx = match &token {
-                        None => #n_terminals,
-                        Some(Err(err)) => return Err(ParseError_::Other(err.clone())),
-                        Some(Ok(token)) => token_kind(&token) as usize,
-                    };
-                    match ACTION[state][terminal_idx] {
-                        None => panic!("Stuck! (1) state={}, terminal={}", state, terminal_idx),
-                        Some(LRAction::Shift { next_state }) => {
-                            state_stack.push(next_state);
-                            if let Some(Ok(token)) = &token {
-                                value_stack.push(token_value(token));
-                            }
-                            token = input.next();
-                        }
-                        Some(LRAction::Reduce { non_terminal_idx, n_symbols, semantic_action_idx }) => {
-                            (SEMANTIC_ACTIONS[semantic_action_idx as usize])(&mut value_stack);
-                            for _ in 0 .. n_symbols {
-                                state_stack.pop().unwrap();
-                            }
-                            let state = *state_stack.last().unwrap() as usize;
-                            match GOTO[state][non_terminal_idx as usize] {
-                                None => panic!("Stuck! (2)"),
-                                Some(next_state) => state_stack.push(next_state),
-                            }
-                        }
-                        Some(LRAction::Accept) => break,
-                    }
-                }
-
-                // TODO: We could call the function directly here, instead of going through the
-                // table
-                SEMANTIC_ACTIONS[#pub_non_terminal_action_idx](&mut value_stack);
-
-                Ok(value_stack.pop().unwrap().#pub_non_terminal_value_extract_method_id())
+                parse_generic(
+                    input,
+                    SemanticActionResult::#pub_non_terminal_value_extract_method_id,
+                    0, // TODO
+                    #pub_non_terminal_action_idx,
+                )
             }
         }
     )
