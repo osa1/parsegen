@@ -11,7 +11,7 @@ use crate::terminal::{TerminalReprArena, TerminalReprIdx};
 use std::convert::TryFrom;
 
 use fxhash::FxHashMap;
-use proc_macro2::TokenStream;
+use proc_macro2::{Span, TokenStream};
 use quote::quote;
 
 pub fn generate_lr1_parser(
@@ -21,6 +21,16 @@ pub fn generate_lr1_parser(
     token_kind_type_name: &syn::Ident,
     token_kind_type_decl: &TokenStream,
 ) -> TokenStream {
+    // Find the `pub` non-terminal and its return type. We will create a type for this non-terminal
+    // with a parse method.
+    let (pub_non_terminal_idx, pub_non_terminal_name, pub_non_terminal_return_type) =
+        match find_pub_non_terminal(&grammar) {
+            None => return quote!(),
+            Some(non_terminal) => non_terminal,
+        };
+
+    let pub_non_terminal_id = syn::Ident::new(&pub_non_terminal_name, Span::call_site());
+
     let n_terminals = terminals.n_terminals();
     let token_type = &tokens.type_name;
 
@@ -120,42 +130,66 @@ pub fn generate_lr1_parser(
         // + the functions
         #(#semantic_action_table)*
 
-        pub fn recognize<E: Clone>(
-            mut input: impl Iterator<Item=Result<#token_type, E>>
-        ) -> Result<(), ParseError_<E>>
-        {
-            let mut stack: Vec<u32> = vec![0];
+        pub struct #pub_non_terminal_id;
 
-            let mut token = input.next();
+        impl #pub_non_terminal_id {
+            pub fn parse<E: Clone>(
+                mut input: impl Iterator<Item=Result<#token_type, E>>
+            ) -> Result<(), ParseError_<E>>
+            {
+                let mut state_stack: Vec<u32> = vec![0];
+                let mut value_stack: Vec<SemanticActionResult> = vec![];
 
-            loop {
-                let state = *stack.last().unwrap() as usize;
-                let terminal_idx = match &token {
-                    None => #n_terminals,
-                    Some(Err(err)) => return Err(ParseError_::Other(err.clone())),
-                    Some(Ok(token)) => token_kind(&token) as usize,
-                };
-                match ACTION[state][terminal_idx] {
-                    None => panic!("Stuck! (1) state={}, terminal={}", state, terminal_idx),
-                    Some(LRAction::Shift { next_state }) => {
-                        stack.push(next_state);
-                        token = input.next();
-                    }
-                    Some(LRAction::Reduce { non_terminal_idx, n_symbols, semantic_action_idx }) => {
-                        for _ in 0 .. n_symbols {
-                            stack.pop().unwrap();
+                let mut token = input.next();
+
+                loop {
+                    let state = *state_stack.last().unwrap() as usize;
+                    let terminal_idx = match &token {
+                        None => #n_terminals,
+                        Some(Err(err)) => return Err(ParseError_::Other(err.clone())),
+                        Some(Ok(token)) => token_kind(&token) as usize,
+                    };
+                    match ACTION[state][terminal_idx] {
+                        None => panic!("Stuck! (1) state={}, terminal={}", state, terminal_idx),
+                        Some(LRAction::Shift { next_state }) => {
+                            state_stack.push(next_state);
+                            if let Some(Ok(token)) = &token {
+                                value_stack.push(token_value(token));
+                            }
+                            token = input.next();
                         }
-                        let state = *stack.last().unwrap() as usize;
-                        match GOTO[state][non_terminal_idx as usize] {
-                            None => panic!("Stuck! (2)"),
-                            Some(next_state) => stack.push(next_state),
+                        Some(LRAction::Reduce { non_terminal_idx, n_symbols, semantic_action_idx }) => {
+                            (SEMANTIC_ACTIONS[semantic_action_idx as usize])(&mut value_stack);
+                            for _ in 0 .. n_symbols {
+                                state_stack.pop().unwrap();
+                            }
+                            let state = *state_stack.last().unwrap() as usize;
+                            match GOTO[state][non_terminal_idx as usize] {
+                                None => panic!("Stuck! (2)"),
+                                Some(next_state) => state_stack.push(next_state),
+                            }
                         }
+                        Some(LRAction::Accept) => return Ok(()),
                     }
-                    Some(LRAction::Accept) => return Ok(()),
                 }
             }
         }
     )
+}
+
+fn find_pub_non_terminal<T, A>(
+    grammar: &Grammar<T, A>,
+) -> Option<(NonTerminalIdx, String, syn::Type)> {
+    for (non_terminal_idx, non_terminal) in grammar.non_terminal_indices() {
+        if non_terminal.public {
+            return Some((
+                non_terminal_idx,
+                non_terminal.non_terminal.clone(),
+                non_terminal.return_ty.clone(),
+            ));
+        }
+    }
+    None
 }
 
 /// Generates array representation of the action table. Reminder: EOF = last terminal.

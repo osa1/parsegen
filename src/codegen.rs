@@ -1,7 +1,7 @@
 use crate::ast::{Conversion, FieldPattern, Name, Pattern, TokenEnum};
 use crate::first::generate_first_table;
 use crate::follow::generate_follow_table;
-use crate::grammar::{Grammar, NonTerminal, Production, Symbol, SymbolKind};
+use crate::grammar::{Grammar, NonTerminal, NonTerminalIdx, Production, Symbol, SymbolKind};
 use crate::parse_table::{generate_parse_table, ParseTable};
 use crate::terminal::{TerminalReprArena, TerminalReprIdx};
 

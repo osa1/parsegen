@@ -25,26 +25,32 @@ fn balanced_parens() {
         }
 
         pub Entry: usize = {
-            <test:Test> => test,
+            <test:Test> => {
+                println!("Running semantic action 0");
+                test
+            },
         };
 
         Test: usize = {
-            "(" <t:Test> ")" => t + 1,
+            "(" <t:Test> ")" => {
+                println!("Running semantic action 1");
+                t + 1
+            },
             => 0,
         };
     }
 
     let lexer = Lexer::new("");
     let mut iter = lexer.map(|r| r.map(|(_, t, _)| t));
-    assert_eq!(recognize(&mut iter), Ok(()));
+    assert_eq!(Entry::parse(&mut iter), Ok(()));
 
     let lexer = Lexer::new("()");
     let mut iter = lexer.map(|r| r.map(|(_, t, _)| t));
-    assert_eq!(recognize(&mut iter), Ok(()));
+    assert_eq!(Entry::parse(&mut iter), Ok(()));
 
     let lexer = Lexer::new("(())");
     let mut iter = lexer.map(|r| r.map(|(_, t, _)| t));
-    assert_eq!(recognize(&mut iter), Ok(()));
+    assert_eq!(Entry::parse(&mut iter), Ok(()));
 }
 
 /*
