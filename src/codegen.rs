@@ -259,13 +259,25 @@ fn generate_pub_non_terminal_types<T, A>(
     types
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
+pub struct SemanticActionIdx(u16);
+
+impl SemanticActionIdx {
+    pub fn as_u16(&self) -> u16 {
+        self.0
+    }
+}
+
 /// Generates semantic action functions, semantic action table (array of semantic action functions)
 /// and replaces semantic actions in the grammar with their indices in the array.
 pub fn generate_semantic_action_table(
     grammar: Grammar<TerminalReprIdx, syn::Expr>,
     non_terminal_action_variant_name: &FxHashMap<String, syn::Ident>,
     token_lifetimes: &[syn::Lifetime],
-) -> (Vec<TokenStream>, Grammar<TerminalReprIdx, usize>) {
+) -> (
+    Vec<TokenStream>,
+    Grammar<TerminalReprIdx, SemanticActionIdx>,
+) {
     let Grammar {
         init,
         non_terminals,
@@ -281,7 +293,7 @@ pub fn generate_semantic_action_table(
         .map(|nt| nt.non_terminal.clone())
         .collect();
 
-    let non_terminals: Vec<NonTerminal<TerminalReprIdx, usize>> = non_terminals
+    let non_terminals: Vec<NonTerminal<TerminalReprIdx, SemanticActionIdx>> = non_terminals
         .into_iter()
         .enumerate()
         .map(
@@ -294,7 +306,7 @@ pub fn generate_semantic_action_table(
                     public,
                 },
             )| {
-                let productions: Vec<Production<TerminalReprIdx, usize>> = productions
+                let productions: Vec<Production<TerminalReprIdx, SemanticActionIdx>> = productions
                     .into_iter()
                     .enumerate()
                     .map(|(p_i, Production { symbols, action })| {
@@ -349,7 +361,7 @@ pub fn generate_semantic_action_table(
 
                         Production {
                             symbols,
-                            action: fn_idx,
+                            action: SemanticActionIdx(u16::try_from(fn_idx).unwrap()),
                         }
                     })
                     .collect();
@@ -383,7 +395,7 @@ pub fn generate_semantic_action_table(
 /// Generates `PARSE_TABLE: [[usize]]` that maps (non_terminal_idx, terminal_idx) to
 /// production_idx.
 fn generate_parse_table_code(
-    grammar: &Grammar<TerminalReprIdx, usize>,
+    grammar: &Grammar<TerminalReprIdx, SemanticActionIdx>,
     parse_table: &ParseTable,
     terminals: &TerminalReprArena,
 ) -> TokenStream {
@@ -394,26 +406,22 @@ fn generate_parse_table_code(
     let mut table: Vec<Vec<Option<u32>>> = vec![vec![None; n_terminals + 1]; n_non_terminals];
 
     for ((non_terminal_idx, terminal_idx), production_idx) in &parse_table.table {
-        table[non_terminal_idx.as_usize()][terminal_idx.as_usize()] = Some(
-            u32::try_from(
-                grammar
-                    .get_production(*non_terminal_idx, *production_idx)
-                    .action,
-            )
-            .unwrap(),
-        );
+        table[non_terminal_idx.as_usize()][terminal_idx.as_usize()] = Some(u32::from(
+            grammar
+                .get_production(*non_terminal_idx, *production_idx)
+                .action
+                .as_u16(),
+        ));
     }
 
     for (non_terminal_idx, _) in grammar.non_terminal_indices() {
         if let Some(production_idx) = parse_table.get_end(non_terminal_idx) {
-            table[non_terminal_idx.as_usize()][n_terminals] = Some(
-                u32::try_from(
-                    grammar
-                        .get_production(non_terminal_idx, production_idx)
-                        .action,
-                )
-                .unwrap(),
-            );
+            table[non_terminal_idx.as_usize()][n_terminals] = Some(u32::from(
+                grammar
+                    .get_production(non_terminal_idx, production_idx)
+                    .action
+                    .as_u16(),
+            ));
         }
     }
 
@@ -441,7 +449,7 @@ fn generate_parse_table_code(
 ///
 // NB. Index of a production in the array == the production's action idx
 fn generate_production_array(
-    grammar: &Grammar<TerminalReprIdx, usize>,
+    grammar: &Grammar<TerminalReprIdx, SemanticActionIdx>,
     terminals: &TerminalReprArena,
 ) -> TokenStream {
     let mut action_array_names: Vec<TokenStream> = vec![];
@@ -451,12 +459,13 @@ fn generate_production_array(
     for (p_idx, (_, _, production)) in grammar.production_indices().enumerate() {
         // Just as a sanity check, production's action idx should be the index of the production in
         // the array
-        assert_eq!(production.action, n_prod);
+        assert_eq!(production.action, SemanticActionIdx(n_prod));
 
         let array_name = syn::Ident::new(&format!("PROD_{}", p_idx), Span::call_site());
         let action_idx = production.action;
+        let semantic_action_idx = production.action.as_u16();
         let mut array_elems: Vec<TokenStream> =
-            vec![quote!(Action::RunSemanticAction(#action_idx))];
+            vec![quote!(Action::RunSemanticAction(#semantic_action_idx))];
 
         for symbol in production.symbols.iter().rev() {
             match symbol.kind {

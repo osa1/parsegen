@@ -388,12 +388,12 @@ pub fn generate_lr1_automaton<T: Ord + Clone + Hash + fmt::Debug, A>(
     automaton
 }
 
-pub fn build_lr1_table<T: Clone + Eq + Hash + fmt::Debug, A>(
+pub fn build_lr1_table<T: Clone + Eq + Hash + fmt::Debug, A: Clone>(
     grammar: &Grammar<T, A>,
     automaton: &LR1Automaton<T>,
     n_terminals: usize,
-) -> LRTable<T> {
-    let mut table: LRTableBuilder<T> = LRTableBuilder::new(
+) -> LRTable<T, A> {
+    let mut table: LRTableBuilder<T, A> = LRTableBuilder::new(
         automaton.states.len(),
         n_terminals,
         grammar.non_terminals().len(),
@@ -412,11 +412,13 @@ pub fn build_lr1_table<T: Clone + Eq + Hash + fmt::Debug, A>(
 
             // Rule 2.b
             if item.is_complete(grammar) && item.non_terminal_idx != NonTerminalIdx(0) {
+                let production = grammar.get_production(item.non_terminal_idx, item.production_idx);
                 table.add_reduce(
                     state_idx,
                     item.lookahead.clone(),
                     item.non_terminal_idx,
                     item.production_idx,
+                    production.action.clone(),
                 );
             }
 

@@ -211,13 +211,13 @@ fn symbols_eq<T: Eq>(ss1: &[Symbol<T>], ss2: &[SymbolKind<T>]) -> bool {
     ss1.len() == ss2.len() && ss1.iter().zip(ss2).all(|(s1, s2)| s1.kind == *s2)
 }
 
-fn build_slr_table<T: Eq + Hash + Copy + fmt::Debug, A>(
+fn build_slr_table<T: Eq + Hash + Copy + fmt::Debug, A: Clone>(
     grammar: &Grammar<T, A>,
     automaton: &LR0Automaton<T>,
     follow_table: &FollowTable<T>,
     n_terminals: usize,
-) -> LRTable<T> {
-    let mut table: LRTableBuilder<T> = LRTableBuilder::new(
+) -> LRTable<T, A> {
+    let mut table: LRTableBuilder<T, A> = LRTableBuilder::new(
         automaton.states.len(),
         n_terminals,
         grammar.non_terminals().len(),
@@ -238,17 +238,26 @@ fn build_slr_table<T: Eq + Hash + Copy + fmt::Debug, A>(
             if item.is_cursor_at_end(grammar) {
                 let follow_set = follow_table.get_follow(item.non_terminal_idx);
 
+                let production = grammar.get_production(item.non_terminal_idx, item.production_idx);
+
                 for follow in follow_set.terminals() {
                     table.add_reduce(
                         state_idx,
                         Some(*follow),
                         item.non_terminal_idx,
                         item.production_idx,
+                        production.action.clone(),
                     );
                 }
 
                 if follow_set.has_end() {
-                    table.add_reduce(state_idx, None, item.non_terminal_idx, item.production_idx);
+                    table.add_reduce(
+                        state_idx,
+                        None,
+                        item.non_terminal_idx,
+                        item.production_idx,
+                        production.action.clone(),
+                    );
                 }
             }
 

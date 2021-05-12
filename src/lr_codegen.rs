@@ -1,5 +1,7 @@
 use crate::ast::TokenEnum;
-use crate::codegen::{generate_semantic_action_table, semantic_action_result_type, token_value_fn};
+use crate::codegen::{
+    generate_semantic_action_table, semantic_action_result_type, token_value_fn, SemanticActionIdx,
+};
 use crate::first::generate_first_table;
 use crate::grammar::{Grammar, NonTerminalIdx};
 use crate::lr1::{build_lr1_table, generate_lr1_automaton};
@@ -24,6 +26,20 @@ pub fn generate_lr1_parser(
 
     let first_table = generate_first_table(&grammar);
     let lr1_automaton = generate_lr1_automaton(&grammar, &first_table);
+
+    let (
+        semantic_action_result_type_name,
+        semantic_action_result_type_decl,
+        non_terminal_action_variant_name,
+    ) = semantic_action_result_type(&grammar, &tokens.conversions, &tokens.type_lifetimes);
+
+    // Generate semantic action table, replace semantic actions in the grammar with their indices
+    // in the table
+    let (semantic_action_table, grammar) = generate_semantic_action_table(
+        grammar,
+        &non_terminal_action_variant_name,
+        &tokens.type_lifetimes,
+    );
 
     println!(
         "{}",
@@ -56,12 +72,6 @@ pub fn generate_lr1_parser(
     let (_token_kind_fn_name, token_kind_fn_decl) =
         crate::codegen::token_kind_fn(token_kind_type_name, tokens);
 
-    let (
-        semantic_action_result_type_name,
-        semantic_action_result_type_decl,
-        non_terminal_action_variant_name,
-    ) = semantic_action_result_type(&grammar, &tokens.conversions, &tokens.type_lifetimes);
-
     let (_token_value_fn_name, token_value_fn_decl) = token_value_fn(
         &tokens.conversions,
         &tokens.type_name,
@@ -69,19 +79,17 @@ pub fn generate_lr1_parser(
         &semantic_action_result_type_name,
     );
 
-    // Generate semantic action table, replace semantic actions in the grammar with their indices
-    // in the table
-    let (semantic_action_table, grammar) = generate_semantic_action_table(
-        grammar,
-        &non_terminal_action_variant_name,
-        &tokens.type_lifetimes,
-    );
-
     quote!(
         #[derive(Clone, Copy)]
         enum LRAction {
-            Shift { next_state: u32 },
-            Reduce { non_terminal_idx: u16, n_symbols: u16 },
+            Shift {
+                next_state: u32,
+            },
+            Reduce {
+                non_terminal_idx: u16,
+                n_symbols: u16,
+                semantic_action_idx: u16,
+            },
             Accept,
         }
 
@@ -133,7 +141,7 @@ pub fn generate_lr1_parser(
                         stack.push(next_state);
                         token = input.next();
                     }
-                    Some(LRAction::Reduce { non_terminal_idx, n_symbols }) => {
+                    Some(LRAction::Reduce { non_terminal_idx, n_symbols, semantic_action_idx }) => {
                         for _ in 0 .. n_symbols {
                             stack.pop().unwrap();
                         }
@@ -151,19 +159,19 @@ pub fn generate_lr1_parser(
 }
 
 /// Generates array representation of the action table. Reminder: EOF = last terminal.
-fn action_table_vec(
-    action_table: &FxHashMap<StateIdx, FxHashMap<Option<TerminalReprIdx>, LRAction>>,
+fn action_table_vec<A: Copy>(
+    action_table: &FxHashMap<StateIdx, FxHashMap<Option<TerminalReprIdx>, LRAction<A>>>,
     n_states: usize,
     terminals: &TerminalReprArena,
-) -> Vec<Vec<Option<LRAction>>> {
+) -> Vec<Vec<Option<LRAction<A>>>> {
     let n_terminals = terminals.n_terminals();
 
-    let mut state_to_terminal_to_action: Vec<Vec<Option<LRAction>>> =
+    let mut state_to_terminal_to_action: Vec<Vec<Option<LRAction<A>>>> =
         Vec::with_capacity(n_terminals);
     for state in 0..n_states {
         let state_idx = StateIdx(state);
         // +1 for EOF
-        let mut terminal_to_action: Vec<Option<LRAction>> = Vec::with_capacity(n_terminals + 1);
+        let mut terminal_to_action: Vec<Option<LRAction<A>>> = Vec::with_capacity(n_terminals + 1);
         for terminal in terminals.terminal_indices() {
             terminal_to_action.push(
                 action_table
@@ -211,7 +219,7 @@ fn generate_goto_vec(
 
 fn generate_action_array<A>(
     grammar: &Grammar<TerminalReprIdx, A>,
-    table: &[Vec<Option<LRAction>>],
+    table: &[Vec<Option<LRAction<SemanticActionIdx>>>],
     n_states: usize,
     n_terminals: usize,
 ) -> TokenStream {
@@ -231,7 +239,7 @@ fn generate_action_array<A>(
                             let next_state: u32 = u32::try_from(next_state.as_usize()).unwrap();
                             quote!(LRAction::Shift { next_state: #next_state })
                         }
-                        LRAction::Reduce(non_terminal_idx, production_idx) => {
+                        LRAction::Reduce(non_terminal_idx, production_idx, semantic_action_idx) => {
                             let n_symbols: u16 = u16::try_from(
                                 grammar
                                     .get_production(*non_terminal_idx, *production_idx)
@@ -241,9 +249,11 @@ fn generate_action_array<A>(
                             .unwrap();
                             let non_terminal_idx: u16 =
                                 u16::try_from(non_terminal_idx.as_usize()).unwrap();
+                            let semantic_action_idx = semantic_action_idx.as_u16();
                             quote!(LRAction::Reduce {
                                 non_terminal_idx: #non_terminal_idx,
                                 n_symbols: #n_symbols,
+                                semantic_action_idx: #semantic_action_idx,
                             })
                         }
                         LRAction::Accept => quote!(LRAction::Accept),
