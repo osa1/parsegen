@@ -288,6 +288,36 @@ impl<'a, 'b, T, A> ProductionDisplay<'a, 'b, T, A> {
 
 use std::fmt;
 
+impl<T: fmt::Debug, A> fmt::Display for Grammar<T, A> {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        for (nt_idx, nt) in self.non_terminals.iter().enumerate() {
+            writeln!(
+                f,
+                "{}: {} {} = {{",
+                nt_idx,
+                if nt.public { "pub" } else { "" },
+                nt.non_terminal
+            )?;
+
+            for (p_idx, p) in nt.productions.iter().enumerate() {
+                writeln!(
+                    f,
+                    "  {}: {}",
+                    p_idx,
+                    ProductionDisplay {
+                        production: p,
+                        grammar: self
+                    }
+                )?;
+            }
+
+            writeln!(f, "}}")?;
+        }
+
+        Ok(())
+    }
+}
+
 impl<'a, 'b, T: fmt::Debug, A> fmt::Display for ProductionDisplay<'a, 'b, T, A> {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         for (symbol_idx, symbol) in self.production.symbols().iter().enumerate() {

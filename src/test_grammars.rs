@@ -368,8 +368,9 @@ pub enum Grammar9Token {
 pub fn grammar9() -> Grammar<Grammar9Token, ()> {
     let mut grammar = Grammar::new();
 
-    let s0_nt_idx = add_non_terminal(&mut grammar, "S0", true);
+    // NB: Deliberately inserted in reverse order. This breaks stuff.
     let s_nt_idx = add_non_terminal(&mut grammar, "S", false);
+    let s0_nt_idx = add_non_terminal(&mut grammar, "S0", true);
 
     // S0 -> S
     grammar.add_production(s0_nt_idx, vec![nt(s_nt_idx)], ());

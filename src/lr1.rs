@@ -315,6 +315,11 @@ pub fn generate_lr1_automaton<T: Ord + Clone + Hash + fmt::Debug, A>(
                 goto: Default::default(),
             });
 
+            println!(
+                "non-terminal {} state = {}",
+                non_terminal_idx.0, i0_state_idx.0
+            );
+
             non_terminal_state_indices.insert(non_terminal_idx, i0_state_idx);
         }
     }
