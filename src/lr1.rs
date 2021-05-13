@@ -395,7 +395,7 @@ pub fn generate_lr1_automaton<T: Ord + Clone + Hash + fmt::Debug, A>(
         // );
 
         for ((state, symbol), next) in new_gotos.into_iter() {
-            let old = automaton.states[state.as_usize()].goto.insert(symbol, next);
+            let _old = automaton.states[state.as_usize()].goto.insert(symbol, next);
             // TODO: I don't understand why this doesn't hold.. needs debugging.
             // assert_eq!(old, None, "trying to insert {}", next.0);
         }
@@ -426,8 +426,10 @@ pub fn build_lr1_table<T: Clone + Eq + Hash + fmt::Debug, A: Clone>(
                 }
             }
 
+            let non_terminal = grammar.get_non_terminal(item.non_terminal_idx);
+
             // Rule 2.b
-            if item.is_complete(grammar) && item.non_terminal_idx != NonTerminalIdx(0) {
+            if item.is_complete(grammar) && !non_terminal.public {
                 let production = grammar.get_production(item.non_terminal_idx, item.production_idx);
                 table.add_reduce(
                     state_idx,
@@ -439,11 +441,10 @@ pub fn build_lr1_table<T: Clone + Eq + Hash + fmt::Debug, A: Clone>(
             }
 
             // Rule 2.c
-            if item.non_terminal_idx == NonTerminalIdx(0)
-                && item.production_idx == ProductionIdx(0)
-                && item.cursor == 1
-                && item.lookahead.is_none()
-            {
+            if non_terminal.public && item.cursor == 1 && item.lookahead.is_none() {
+                // `pub` non-terminals are created in lowering, and should have one production to
+                // the original `pub` non-terminal
+                assert_eq!(non_terminal.productions().len(), 1);
                 table.add_accept(state_idx);
             }
 

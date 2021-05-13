@@ -55,7 +55,7 @@ impl<T: Eq + Hash + fmt::Debug, A> LRTableBuilder<T, A> {
     }
 
     pub fn add_shift(&mut self, state: StateIdx, token: T, next_state: StateIdx) {
-        let old = self
+        let _old = self
             .table
             .action
             .entry(state)
@@ -103,7 +103,7 @@ impl<T: Eq + Hash + fmt::Debug, A> LRTableBuilder<T, A> {
     }
 
     pub fn add_accept(&mut self, state: StateIdx) {
-        let old = self
+        let _old = self
             .table
             .action
             .entry(state)
@@ -113,7 +113,7 @@ impl<T: Eq + Hash + fmt::Debug, A> LRTableBuilder<T, A> {
     }
 
     pub fn add_goto(&mut self, state: StateIdx, non_terminal_idx: NonTerminalIdx, next: StateIdx) {
-        let old = self
+        let _old = self
             .table
             .goto
             .entry(state)
