@@ -5,7 +5,7 @@ use crate::lr_common::{LRTable, LRTableBuilder, StateIdx};
 use std::collections::BTreeSet;
 use std::hash::Hash;
 
-use fxhash::FxHashMap;
+use fxhash::{FxHashMap, FxHashSet};
 
 #[derive(Debug, PartialEq, Eq, PartialOrd, Ord, Hash, Clone)]
 struct LR1Item<T: Clone> {
@@ -93,13 +93,13 @@ fn compute_lr1_closure<T: Ord + Eq + Hash + Clone + std::fmt::Debug, A>(
     first_table: &FirstTable<T>,
     items: &BTreeSet<LR1Item<T>>,
 ) -> BTreeSet<LR1Item<T>> {
-    let mut closure: BTreeSet<LR1Item<T>> = items.clone();
+    let mut closure: FxHashSet<LR1Item<T>> = items.iter().cloned().collect();
 
     let mut updated = true;
     while updated {
         updated = false;
 
-        let mut new_items: BTreeSet<LR1Item<T>> = Default::default();
+        let mut new_items: FxHashSet<LR1Item<T>> = Default::default();
 
         for item in &closure {
             if let Some(next) = item.next_non_terminal(grammar) {
@@ -197,7 +197,7 @@ fn compute_lr1_closure<T: Ord + Eq + Hash + Clone + std::fmt::Debug, A>(
         closure.extend(new_items.into_iter());
     }
 
-    closure
+    closure.into_iter().collect()
 }
 
 fn compute_lr1_goto<T: Hash + Clone + Eq + Ord + std::fmt::Debug, A>(
