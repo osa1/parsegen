@@ -3,7 +3,7 @@
 #[macro_use]
 mod maplit;
 
-mod ast;
+pub mod ast;
 mod codegen;
 mod first;
 mod follow;
@@ -23,13 +23,10 @@ mod terminal;
 #[cfg(test)]
 mod test_grammars;
 
-use proc_macro::TokenStream;
+use proc_macro2::TokenStream;
 use quote::quote;
 
-#[proc_macro]
-pub fn parser(input: TokenStream) -> TokenStream {
-    let parser = syn::parse_macro_input!(input as ast::Parser);
-
+pub fn parser(parser: ast::Parser) -> TokenStream {
     let mut non_terminals: Vec<ast::NonTerminal> = vec![];
     let mut token_enum: Option<ast::TokenEnum> = None;
 
