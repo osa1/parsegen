@@ -13,8 +13,8 @@ fn balanced_parens() {
         Lexer -> Token;
 
         rule Init {
-            "(" => |lexer| lexer.return_(Token::LParen),
-            ")" => |lexer| lexer.return_(Token::RParen),
+            "(" = Token::LParen,
+            ")" = Token::RParen,
         }
     }
 
@@ -156,4 +156,80 @@ fn bug_2() {
             => todo!(),
         };
     }
+}
+
+#[test]
+fn test_grammar_5() {
+    #[derive(Debug)]
+    enum Token {
+        Plus,
+        Star,
+        Int(u64),
+        LParen,
+        RParen,
+    }
+
+    lexer! {
+        Lexer -> Token;
+
+        rule Init {
+            "(" = Token::LParen,
+            ")" = Token::RParen,
+            "+" = Token::Plus,
+            "*" = Token::Star,
+            ['0'-'9']+ => |lexer| {
+                let match_ = lexer.match_();
+                lexer.return_(Token::Int(str::parse::<u64>(match_).unwrap()))
+            },
+        }
+    }
+
+    parser! {
+        enum Token {
+            "(" => Token::LParen,
+            ")" => Token::RParen,
+            "+" => Token::Plus,
+            "*" => Token::Star,
+            "int" => Token::Int(<u64>),
+        }
+
+        pub E: () = {
+            T E1 => (),
+        };
+
+        E1: () = {
+            "+" T E1 => (),
+            => (),
+        };
+
+        T: () = {
+            F T1 => (),
+        };
+
+        T1: () = {
+            "*" F T1 => (),
+            => (),
+        };
+
+        F: () = {
+            "(" E ")" => (),
+            "int" => (),
+        };
+    }
+
+    let lexer = Lexer::new("1");
+    let mut iter = lexer.map(|r| r.map(|(_, t, _)| t));
+    assert_eq!(E::parse(&mut iter), Ok(()));
+
+    let lexer = Lexer::new("1 + 2");
+    let mut iter = lexer.map(|r| r.map(|(_, t, _)| t));
+    assert_eq!(E::parse(&mut iter), Ok(()));
+
+    let lexer = Lexer::new("1 + 2 * 3");
+    let mut iter = lexer.map(|r| r.map(|(_, t, _)| t));
+    assert_eq!(E::parse(&mut iter), Ok(()));
+
+    let lexer = Lexer::new("4 * 1 * 5 + 2 * 3");
+    let mut iter = lexer.map(|r| r.map(|(_, t, _)| t));
+    assert_eq!(E::parse(&mut iter), Ok(()));
 }
