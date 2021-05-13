@@ -47,7 +47,6 @@ fn balanced_parens() {
     assert_eq!(Entry::parse(&mut iter), Ok(2));
 }
 
-/*
 #[test]
 fn token_lifetimes() {
     #[derive(Debug, PartialEq, Eq)]
@@ -79,8 +78,9 @@ fn token_lifetimes() {
             };
         }
 
-        let mut lexer = Lexer::new("abc");
-        assert_eq!(Test::parse(&mut lexer), Ok("abc"));
+        let lexer = Lexer::new("abc");
+        let mut iter = lexer.map(|r| r.map(|(_, t, _)| t));
+        assert_eq!(Test::parse(&mut iter), Ok("abc"));
     }
 
     {
@@ -96,8 +96,9 @@ fn token_lifetimes() {
             };
         }
 
-        let mut lexer = Lexer::new("a b c");
-        assert_eq!(Test::parse(&mut lexer), Ok("abc".to_owned()));
+        let lexer = Lexer::new("a b c");
+        let mut iter = lexer.map(|r| r.map(|(_, t, _)| t));
+        assert_eq!(Test::parse(&mut iter), Ok("abc".to_owned()));
     }
 }
 
@@ -109,6 +110,7 @@ fn bug_1() {
     // TODO: Add this in macro expansion
     #![allow(unreachable_code)]
 
+    #[derive(Debug)]
     pub enum Token {
         A,
     }
@@ -136,6 +138,7 @@ fn bug_2() {
     // TODO: Add this in macro expansion
     #![allow(unreachable_code)]
 
+    #[derive(Debug)]
     pub enum Token {
         A,
     }
@@ -154,4 +157,3 @@ fn bug_2() {
         };
     }
 }
-*/

@@ -27,11 +27,13 @@ pub fn generate_lr1_parser(
     let first_table = generate_first_table(&grammar);
     let (lr1_automaton, nt_state_indices) = generate_lr1_automaton(&grammar, &first_table);
 
+    let token_lifetimes = &tokens.type_lifetimes;
+
     let (
         semantic_action_result_type_name,
         semantic_action_result_type_decl,
         non_terminal_action_variant_name,
-    ) = semantic_action_result_type(&grammar, &tokens.conversions, &tokens.type_lifetimes);
+    ) = semantic_action_result_type(&grammar, &tokens.conversions, token_lifetimes);
 
     // Generate semantic action table, replace semantic actions in the grammar with their indices
     // in the table
@@ -112,8 +114,8 @@ pub fn generate_lr1_parser(
                 struct #non_terminal_name_id;
 
                 impl #non_terminal_name_id {
-                    pub fn parse<E: Clone>(
-                        mut input: impl Iterator<Item=Result<#token_type, E>>
+                    pub fn parse<#(#token_lifetimes,)* E: Clone>(
+                        mut input: impl Iterator<Item=Result<#token_type<#(#token_lifetimes,)*>, E>>
                     ) -> Result<#non_terminal_return_type, ParseError_<E>>
                     {
                         parse_generic(
@@ -169,15 +171,15 @@ pub fn generate_lr1_parser(
         // + the functions
         #(#semantic_action_table)*
 
-        fn parse_generic<R, E: Clone>(
-            mut input: impl Iterator<Item=Result<#token_type, E>>,
-            extract_value: fn(SemanticActionResult) -> R,
+        fn parse_generic<#(#token_lifetimes,)* R, E: Clone>(
+            mut input: impl Iterator<Item=Result<#token_type<#(#token_lifetimes),*>, E>>,
+            extract_value: fn(SemanticActionResult<#(#token_lifetimes),*>) -> R,
             init_state: u32,
             action_idx: usize,
         ) -> Result<R, ParseError_<E>>
         {
             let mut state_stack: Vec<u32> = vec![init_state];
-            let mut value_stack: Vec<SemanticActionResult> = vec![];
+            let mut value_stack: Vec<SemanticActionResult<#(#token_lifetimes),*>> = vec![];
 
             let mut token = input.next();
 
