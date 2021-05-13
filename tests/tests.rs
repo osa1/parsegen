@@ -233,3 +233,76 @@ fn test_grammar_5() {
     let mut iter = lexer.map(|r| r.map(|(_, t, _)| t));
     assert_eq!(E::parse(&mut iter), Ok(()));
 }
+
+#[test]
+fn test_grammar_6() {
+    // TODO: Token and lexer duplicated from prev test
+    #[derive(Debug)]
+    enum Token {
+        Plus,
+        Star,
+        Int(u64),
+        LParen,
+        RParen,
+    }
+
+    lexer! {
+        Lexer -> Token;
+
+        rule Init {
+            "(" = Token::LParen,
+            ")" = Token::RParen,
+            "+" = Token::Plus,
+            "*" = Token::Star,
+            ['0'-'9']+ => |lexer| {
+                let match_ = lexer.match_();
+                lexer.return_(Token::Int(str::parse::<u64>(match_).unwrap()))
+            },
+        }
+    }
+
+    parser! {
+        enum Token {
+            "(" => Token::LParen,
+            ")" => Token::RParen,
+            "+" => Token::Plus,
+            "*" => Token::Star,
+            "int" => Token::Int(<u64>),
+        }
+
+        pub E: u64 = {
+            <e:E1> => e,
+        };
+
+        E1: u64 = {
+            <e:E1> "+" <t:T> => e + t,
+            <t:T> => t,
+        };
+
+        T: u64 = {
+            <t:T> "*" <f:F> => t * f,
+            <f:F> => f,
+        };
+
+        F: u64 = {
+            "(" <e:E> ")" => e,
+            <i:"int"> => i,
+        };
+    }
+
+    let lexer = Lexer::new("1");
+    let mut iter = lexer.map(|r| r.map(|(_, t, _)| t));
+    assert_eq!(E::parse(&mut iter), Ok(1));
+
+    let lexer = Lexer::new("1+2");
+    let mut iter = lexer.map(|r| r.map(|(_, t, _)| t));
+    assert_eq!(E::parse(&mut iter), Ok(3));
+
+    let lexer = Lexer::new("1+2*3");
+    let mut iter = lexer.map(|r| r.map(|(_, t, _)| t));
+    assert_eq!(E::parse(&mut iter), Ok(7));
+
+    let lexer = Lexer::new("4*1*5+2*3");
+    let mut iter = lexer.map(|r| r.map(|(_, t, _)| t));
+    assert_eq!(E::parse(&mut iter), Ok(26));
+}
