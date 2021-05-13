@@ -1,8 +1,6 @@
 use crate::ast::{Conversion, FieldPattern, Name, Pattern, TokenEnum};
-use crate::first::generate_first_table;
-use crate::follow::generate_follow_table;
-use crate::grammar::{Grammar, NonTerminal, NonTerminalIdx, Production, Symbol, SymbolKind};
-use crate::parse_table::{generate_parse_table, ParseTable};
+use crate::grammar::{Grammar, NonTerminal, Production, Symbol, SymbolKind};
+use crate::parse_table::ParseTable;
 use crate::terminal::{TerminalReprArena, TerminalReprIdx};
 
 use std::convert::TryFrom;
@@ -224,24 +222,27 @@ fn generate_parse_fn(
 
 fn generate_pub_non_terminal_types<T, A>(
     grammar: &Grammar<T, A>,
+    non_terminal_value_extraction_fns: &[syn::Ident],
     token_type: &syn::Ident,
     token_lifetimes: &[syn::Lifetime],
 ) -> Vec<TokenStream> {
     let mut types: Vec<TokenStream> = vec![];
 
-    for NonTerminal {
-        non_terminal,
-        return_ty,
-        public,
-        ..
-    } in grammar.non_terminals()
+    for (
+        nt_idx,
+        NonTerminal {
+            non_terminal,
+            return_ty,
+            public,
+            ..
+        },
+    ) in grammar.non_terminal_indices()
     {
         if !public {
             continue;
         }
 
-        let nt_method_name =
-            syn::Ident::new(&format!("non_terminal_{}", non_terminal), Span::call_site());
+        let nt_method_name = &non_terminal_value_extraction_fns[nt_idx.as_usize()];
         let non_terminal = syn::Ident::new(non_terminal, Span::call_site());
 
         types.push(quote!(
@@ -274,7 +275,7 @@ impl SemanticActionIdx {
 /// and replaces semantic actions in the grammar with their indices in the array.
 pub fn generate_semantic_action_table(
     grammar: Grammar<TerminalReprIdx, syn::Expr>,
-    non_terminal_action_variant_name: &FxHashMap<NonTerminalIdx, syn::Ident>,
+    non_terminal_action_variant_name: &[usize],
     token_lifetimes: &[syn::Lifetime],
 ) -> (
     Vec<TokenStream>,
@@ -285,12 +286,6 @@ pub fn generate_semantic_action_table(
     // Action function declarations and the array
     let mut decls: Vec<TokenStream> = vec![];
     let mut fn_names: Vec<syn::Ident> = vec![];
-
-    // HACK: Maps non-terminal indices to names, temporarily
-    let nt_names: Vec<String> = non_terminals
-        .iter()
-        .map(|nt| nt.non_terminal.clone())
-        .collect();
 
     let non_terminals: Vec<NonTerminal<TerminalReprIdx, SemanticActionIdx>> = non_terminals
         .into_iter()
@@ -324,9 +319,10 @@ pub fn generate_semantic_action_table(
                                 }) => {
                                     let mut_ = if *mutable { quote!(mut) } else { quote!() };
                                     let extract_method = match kind {
-                                        SymbolKind::NonTerminal(nt_idx) =>
-                                            syn::Ident::new(&format!("non_terminal_{}", nt_names[nt_idx.as_usize()]), Span::call_site())
-                                        ,
+                                        SymbolKind::NonTerminal(nt_idx) => syn::Ident::new(
+                                            &format!("non_terminal_{}", non_terminal_action_variant_name[nt_idx.as_usize()]),
+                                            Span::call_site()
+                                        ),
                                         SymbolKind::Terminal(terminal_idx) => syn::Ident::new(
                                             &format!("token_{}", terminal_idx.as_usize()),
                                             Span::call_site(),
@@ -345,11 +341,15 @@ pub fn generate_semantic_action_table(
                         );
                         let fn_idx = decls.len();
 
-                        let non_terminal_variant =
-                            non_terminal_action_variant_name.get(&NonTerminalIdx::from_usize(nt_i)).unwrap();
+                        let non_terminal_variant = syn::Ident::new(
+                            &format!("NonTerminal{}", non_terminal_action_variant_name[nt_i]),
+                            Span::call_site()
+                        );
 
                         decls.push(quote!(
-                            fn #fn_name<#(#token_lifetimes),*>(value_stack: &mut Vec<SemanticActionResult<#(#token_lifetimes),*>>) {
+                            fn #fn_name<#(#token_lifetimes),*>(
+                                value_stack: &mut Vec<SemanticActionResult<#(#token_lifetimes),*>>
+                            ) {
                                 #(#pop_code;)*
                                 value_stack.push(SemanticActionResult::#non_terminal_variant(#action));
                             }
@@ -454,7 +454,6 @@ fn generate_production_array(
         assert_eq!(production.action, SemanticActionIdx(n_prod));
 
         let array_name = syn::Ident::new(&format!("PROD_{}", p_idx), Span::call_site());
-        let action_idx = production.action;
         let semantic_action_idx = production.action.as_u16();
         let mut array_elems: Vec<TokenStream> =
             vec![quote!(Action::RunSemanticAction(#semantic_action_idx))];
@@ -614,21 +613,17 @@ fn pattern_ignore(pattern: &Pattern) -> TokenStream {
 
 /// Declares an `ActionResult` enum type with a variant for each non-terminal in the grammar and
 /// each token with value. Used in the value stack for terminals and non-terminals.
+///
+/// The `Vec` maps `NonTerminalIdx`s to their value extraction method names.
 pub fn semantic_action_result_type<T, A>(
     grammar: &Grammar<T, A>,
     tokens: &[Conversion],
     token_lifetimes: &[syn::Lifetime],
-) -> (
-    syn::Ident,
-    TokenStream,
-    FxHashMap<NonTerminalIdx, syn::Ident>,
-) {
+) -> (syn::Ident, TokenStream, Vec<usize>) {
     let semantic_action_result_type_name =
         syn::Ident::new("SemanticActionResult", Span::call_site());
 
     let mut variants: Vec<TokenStream> = vec![];
-    let mut non_terminal_action_variant_names: FxHashMap<NonTerminalIdx, syn::Ident> =
-        Default::default();
 
     // Inherent methods for extracting fields of variants
     let mut extraction_fns: Vec<TokenStream> = vec![];
@@ -658,35 +653,46 @@ pub fn semantic_action_result_type<T, A>(
         ));
     }
 
-    // Generate variants for non-terminals
-    for (
-        nt_i,
-        NonTerminal {
-            non_terminal,
-            return_ty: pattern_ty,
-            ..
-        },
-    ) in grammar.non_terminal_indices()
-    {
-        let variant_id =
-            syn::Ident::new(&format!("NonTerminal{}", non_terminal), Span::call_site());
-        variants.push(quote!(#variant_id(#pattern_ty)));
+    // Generate variants for non-terminals. Non-terminals with same type use the same enum variant.
+    let mut non_terminal_action_variant_names: Vec<usize> = vec![];
 
-        let method_id =
-            syn::Ident::new(&format!("non_terminal_{}", non_terminal), Span::call_site());
-        extraction_fns.push(quote!(
-            fn #method_id(self) -> #pattern_ty {
-                match self {
-                    Self::#variant_id(f) => f,
-                    _ => unreachable!(),
-                }
+    let mut non_terminal_ty_indices: FxHashMap<syn::Type, usize> = Default::default();
+    let mut i: usize = 0;
+
+    for non_terminal in grammar.non_terminals().iter() {
+        match non_terminal_ty_indices
+            .get(&non_terminal.return_ty)
+            .copied()
+        {
+            Some(i) => {
+                non_terminal_action_variant_names.push(i);
             }
-        ));
+            None => {
+                let variant_id = syn::Ident::new(&format!("NonTerminal{}", i), Span::call_site());
 
-        non_terminal_action_variant_names.insert(nt_i, variant_id);
+                let pattern_ty = &non_terminal.return_ty;
+                variants.push(quote!(#variant_id(#pattern_ty)));
+
+                let method_id = syn::Ident::new(&format!("non_terminal_{}", i), Span::call_site());
+                extraction_fns.push(quote!(
+                    fn #method_id(self) -> #pattern_ty {
+                        match self {
+                            Self::#variant_id(f) => f,
+                            _ => unreachable!("{:?}", self),
+                        }
+                    }
+                ));
+
+                non_terminal_action_variant_names.push(i);
+
+                non_terminal_ty_indices.insert(non_terminal.return_ty.clone(), i);
+                i += 1;
+            }
+        }
     }
 
     let code = quote!(
+        #[derive(Debug)]
         enum #semantic_action_result_type_name<#(#token_lifetimes),*> {
             #(#variants,)*
         }

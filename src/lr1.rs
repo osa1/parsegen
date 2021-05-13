@@ -1,4 +1,4 @@
-use crate::first::{FirstSet, FirstSetDisplay, FirstTable};
+use crate::first::{FirstSet, FirstTable};
 use crate::grammar::{Grammar, NonTerminalIdx, Production, ProductionIdx, SymbolKind};
 use crate::lr_common::{LRTable, LRTableBuilder, StateIdx};
 

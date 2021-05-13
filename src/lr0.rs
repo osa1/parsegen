@@ -1,6 +1,6 @@
 use crate::follow::FollowTable;
-use crate::grammar::{Grammar, NonTerminalIdx, Production, ProductionIdx, Symbol, SymbolKind};
-use crate::lr_common::{LRAction, LRTable, LRTableBuilder, StateIdx};
+use crate::grammar::{Grammar, NonTerminalIdx, ProductionIdx, Symbol, SymbolKind};
+use crate::lr_common::{LRTable, LRTableBuilder, StateIdx};
 
 use std::collections::BTreeSet;
 use std::hash::Hash;

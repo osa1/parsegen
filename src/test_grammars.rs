@@ -134,6 +134,9 @@ pub fn grammar4() -> Grammar<char, ()> {
     let b_nt_idx = add_non_terminal(&mut grammar, "B", false);
     let t_nt_idx = add_non_terminal(&mut grammar, "T", false);
 
+    // S0 -> S
+    grammar.add_production(s0_nt_idx, vec![nt(s_nt_idx)], ());
+
     // S -> ST
     grammar.add_production(s_nt_idx, vec![nt(s_nt_idx), nt(t_nt_idx)], ());
 

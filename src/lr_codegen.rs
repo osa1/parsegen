@@ -101,7 +101,10 @@ pub fn generate_lr1_parser(
                     .as_u16(),
             );
             let extract_method_id = syn::Ident::new(
-                &format!("non_terminal_{}", non_terminal.non_terminal),
+                &format!(
+                    "non_terminal_{}",
+                    non_terminal_action_variant_name[non_terminal_idx.as_usize()]
+                ),
                 Span::call_site(),
             );
 
