@@ -306,3 +306,53 @@ fn test_grammar_6() {
     let mut iter = lexer.map(|r| r.map(|(_, t, _)| t));
     assert_eq!(E::parse(&mut iter), Ok(26));
 }
+
+#[test]
+fn test_grammar_7() {
+    #[derive(Debug)]
+    enum Token {
+        Eq,
+        Star,
+        Id,
+    }
+
+    parser! {
+        enum Token {
+            "*" => Token::Star,
+            "=" => Token::Eq,
+            "n" => Token::Id,
+        }
+
+        pub S0: () = {
+            S => (),
+        };
+
+        S: () = {
+            L "=" R => (),
+            R => (),
+        };
+
+        L: () = {
+            "*" R => (),
+            "n" => (),
+        };
+
+        R: () = {
+            L => (),
+        };
+    }
+
+    use Token::*;
+    assert_eq!(
+        S0::parse(vec![Ok::<Token, ()>(Id), Ok(Eq), Ok(Id)].into_iter()),
+        Ok(())
+    );
+    assert_eq!(
+        S0::parse(vec![Ok::<Token, ()>(Id), Ok(Eq), Ok(Star), Ok(Id)].into_iter()),
+        Ok(())
+    );
+    assert_eq!(
+        S0::parse(vec![Ok::<Token, ()>(Star), Ok(Id), Ok(Eq), Ok(Id)].into_iter()),
+        Ok(())
+    );
+}
