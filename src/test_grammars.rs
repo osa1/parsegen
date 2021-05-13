@@ -94,6 +94,8 @@ pub fn grammar2() -> Grammar<char, ()> {
 // A -> Ba | Bb | Cab | Ad
 // B -> a
 // C -> a
+//
+// ambiguous: try "aab"
 pub fn grammar3() -> Grammar<char, ()> {
     let mut grammar: Grammar<char, ()> = Grammar::new();
 

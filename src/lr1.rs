@@ -149,8 +149,9 @@ fn compute_lr1_closure<T: Ord + Eq + Hash + Clone + std::fmt::Debug, A>(
                             }
                         }
                         if end_allowed {
-                            if let Some(lookahead) = &item.lookahead {
-                                first.add(lookahead.clone());
+                            match &item.lookahead {
+                                Some(lookahead) => first.add(lookahead.clone()),
+                                None => first.set_empty(),
                             }
                         }
                     }
@@ -824,4 +825,33 @@ fn simulate3() {
         ]
         .into_iter(),
     );
+}
+
+#[test]
+fn simulate4() {
+    use crate::first::generate_first_table;
+    use crate::test_grammars::grammar5;
+
+    let grammar = grammar5();
+
+    println!("{}", grammar);
+
+    let first = generate_first_table(&grammar);
+    let (lr_automaton, _) = generate_lr1_automaton(&grammar, &first);
+
+    println!(
+        "{}",
+        LR1AutomatonDisplay {
+            automaton: &lr_automaton,
+            grammar: &grammar
+        }
+    );
+
+    let lr1 = build_lr1_table(&grammar, &lr_automaton, 1);
+
+    println!("{}", LRTableDisplay::new(&lr1, &grammar),);
+
+    crate::lr_common::simulate(&lr1, &grammar, vec!['n'].into_iter());
+    crate::lr_common::simulate(&lr1, &grammar, vec!['n', '+', 'n'].into_iter());
+    crate::lr_common::simulate(&lr1, &grammar, vec!['n', '+', 'n', '*', 'n'].into_iter());
 }

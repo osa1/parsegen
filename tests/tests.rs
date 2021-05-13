@@ -221,15 +221,15 @@ fn test_grammar_5() {
     let mut iter = lexer.map(|r| r.map(|(_, t, _)| t));
     assert_eq!(E::parse(&mut iter), Ok(()));
 
-    let lexer = Lexer::new("1 + 2");
+    let lexer = Lexer::new("1+2");
     let mut iter = lexer.map(|r| r.map(|(_, t, _)| t));
     assert_eq!(E::parse(&mut iter), Ok(()));
 
-    let lexer = Lexer::new("1 + 2 * 3");
+    let lexer = Lexer::new("1+2*3");
     let mut iter = lexer.map(|r| r.map(|(_, t, _)| t));
     assert_eq!(E::parse(&mut iter), Ok(()));
 
-    let lexer = Lexer::new("4 * 1 * 5 + 2 * 3");
+    let lexer = Lexer::new("4*1*5+2*3");
     let mut iter = lexer.map(|r| r.map(|(_, t, _)| t));
     assert_eq!(E::parse(&mut iter), Ok(()));
 }
