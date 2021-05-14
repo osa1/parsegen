@@ -91,9 +91,9 @@ impl<T: Clone> LR1Item<T> {
 fn compute_lr1_closure<T: Ord + Eq + Hash + Clone + std::fmt::Debug, A>(
     grammar: &Grammar<T, A>,
     first_table: &FirstTable<T>,
-    items: &BTreeSet<LR1Item<T>>,
+    items: FxHashSet<LR1Item<T>>,
 ) -> BTreeSet<LR1Item<T>> {
-    let mut closure: FxHashSet<LR1Item<T>> = items.iter().cloned().collect();
+    let mut closure: FxHashSet<LR1Item<T>> = items;
 
     let mut updated = true;
     while updated {
@@ -206,7 +206,7 @@ fn compute_lr1_goto<T: Hash + Clone + Eq + Ord + std::fmt::Debug, A>(
     grammar: &Grammar<T, A>,
     first: &FirstTable<T>,
 ) -> BTreeSet<LR1Item<T>> {
-    let mut goto: BTreeSet<LR1Item<T>> = Default::default();
+    let mut goto: FxHashSet<LR1Item<T>> = Default::default();
 
     for item in state {
         if let Some(next_symbol) = item.next_symbol(grammar) {
@@ -216,7 +216,7 @@ fn compute_lr1_goto<T: Hash + Clone + Eq + Ord + std::fmt::Debug, A>(
         }
     }
 
-    compute_lr1_closure(grammar, first, &goto)
+    compute_lr1_closure(grammar, first, goto)
 }
 
 #[derive(Debug)]
@@ -296,7 +296,7 @@ pub fn generate_lr1_automaton<T: Ord + Clone + Hash + fmt::Debug, A>(
         if non_terminal.public {
             assert_eq!(non_terminal.productions().len(), 1);
 
-            let i0_items: BTreeSet<LR1Item<T>> = btreeset! {
+            let i0_items: FxHashSet<LR1Item<T>> = hashset! {
                 LR1Item {
                     non_terminal_idx,
                     production_idx: ProductionIdx(0),
@@ -305,7 +305,7 @@ pub fn generate_lr1_automaton<T: Ord + Clone + Hash + fmt::Debug, A>(
                 }
             };
 
-            let i0_items = compute_lr1_closure(grammar, first_table, &i0_items);
+            let i0_items = compute_lr1_closure(grammar, first_table, i0_items);
 
             let i0_state_idx: StateIdx = StateIdx(automaton.states.len());
 
@@ -371,7 +371,7 @@ pub fn generate_lr1_automaton<T: Ord + Clone + Hash + fmt::Debug, A>(
                                 //     }
                                 // );
                                 new_states.push(new_state);
-                                state_indices.insert(goto.clone(), new_state_idx);
+                                state_indices.insert(goto, new_state_idx);
                                 new_gotos.insert((state_idx, next_symbol.clone()), new_state_idx);
                                 new_state_idx = StateIdx(new_state_idx.0 + 1);
                             }
