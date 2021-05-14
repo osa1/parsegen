@@ -25,7 +25,9 @@ pub fn generate_lr1_parser(
     let token_type = &tokens.type_name;
 
     let first_table = generate_first_table(&grammar);
-    let (lr1_automaton, nt_state_indices) = generate_lr1_automaton(&grammar, &first_table);
+    let (lr1_automaton, nt_state_indices) = generate_lr1_automaton(&grammar, &first_table, || {
+        Box::new(terminals.terminal_indices())
+    });
 
     let token_lifetimes = &tokens.type_lifetimes;
 

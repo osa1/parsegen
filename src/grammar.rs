@@ -272,6 +272,17 @@ impl<T, A> Grammar<T, A> {
     }
 }
 
+pub struct SymbolKindDisplay<'a, 'b, T, A> {
+    symbol: &'a SymbolKind<T>,
+    grammar: &'b Grammar<T, A>,
+}
+
+impl<'a, 'b, T, A> SymbolKindDisplay<'a, 'b, T, A> {
+    pub fn new(symbol: &'a SymbolKind<T>, grammar: &'b Grammar<T, A>) -> Self {
+        Self { symbol, grammar }
+    }
+}
+
 pub struct ProductionDisplay<'a, 'b, T, A> {
     production: &'a Production<T, A>,
     grammar: &'b Grammar<T, A>,
@@ -335,5 +346,17 @@ impl<'a, 'b, T: fmt::Debug, A> fmt::Display for ProductionDisplay<'a, 'b, T, A> 
             }
         }
         Ok(())
+    }
+}
+
+impl<'a, 'b, T: Clone + fmt::Debug, A> fmt::Display for SymbolKindDisplay<'a, 'b, T, A> {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self.symbol {
+            SymbolKind::NonTerminal(nt) => {
+                let nt = self.grammar.get_non_terminal(*nt);
+                write!(f, "{}", nt.non_terminal)
+            }
+            SymbolKind::Terminal(t) => write!(f, "{:?}", t),
+        }
     }
 }

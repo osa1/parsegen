@@ -2,7 +2,6 @@ use crate::first::{FirstSet, FirstTable};
 use crate::grammar::{Grammar, NonTerminalIdx, Production, ProductionIdx, SymbolKind};
 use crate::lr_common::{LRTable, LRTableBuilder, StateIdx};
 
-use std::collections::hash_map::Entry;
 use std::collections::BTreeSet;
 use std::hash::Hash;
 
@@ -281,10 +280,15 @@ impl<T: Clone> Default for LR1Automaton<T> {
     }
 }
 
-pub fn generate_lr1_automaton<T: Ord + Clone + Hash + fmt::Debug, A>(
+pub fn generate_lr1_automaton<T, A, F>(
     grammar: &Grammar<T, A>,
     first_table: &FirstTable<T>,
-) -> (LR1Automaton<T>, FxHashMap<NonTerminalIdx, StateIdx>) {
+    terminal_iter: F,
+) -> (LR1Automaton<T>, FxHashMap<NonTerminalIdx, StateIdx>)
+where
+    T: Eq + Ord + Hash + Clone + fmt::Debug,
+    F: Fn() -> Box<dyn Iterator<Item = T>>,
+{
     // Maps existing item sets to their state indices, to maintain sharing.
     let mut state_indices: FxHashMap<BTreeSet<LR1Item<T>>, StateIdx> = Default::default();
 
@@ -317,11 +321,6 @@ pub fn generate_lr1_automaton<T: Ord + Clone + Hash + fmt::Debug, A>(
                 goto: Default::default(),
             });
 
-            println!(
-                "non-terminal {} state = {}",
-                non_terminal_idx.0, i0_state_idx.0
-            );
-
             non_terminal_state_indices.insert(non_terminal_idx, i0_state_idx);
         }
     }
@@ -330,47 +329,39 @@ pub fn generate_lr1_automaton<T: Ord + Clone + Hash + fmt::Debug, A>(
     while updated {
         updated = false;
 
-        let mut new_state_idx: StateIdx = StateIdx(automaton.states.len());
+        let mut next_state_idx: StateIdx = StateIdx(automaton.states.len());
+
+        // New states allocated in this iteration
         let mut new_states: Vec<LR1State<T>> = vec![];
-        let mut new_gotos: FxHashMap<(StateIdx, SymbolKind<T>), StateIdx> = Default::default();
+
+        // New GOTOs added in this iteration
+        let mut new_gotos: Vec<(StateIdx, SymbolKind<T>, StateIdx)> = Default::default();
 
         for (state_idx, state) in automaton.state_indices() {
-            // The book iterates all grammar symbols here for the GOTOs of the state, however that
-            // requires being able to iterate all terminals.. which I don't want to do. Instead
-            // what we do is we look at symbols at the right side of dots in the items, and compute
-            // GOTOs of those.
+            for symbol in grammar
+                .non_terminal_indices()
+                .map(|(nt, _)| SymbolKind::NonTerminal(nt))
+                .chain(terminal_iter().map(SymbolKind::Terminal))
+            {
+                let goto = compute_lr1_goto(&state.items, &symbol, grammar, first_table);
 
-            for item in state.items() {
-                if let Some(next_symbol) = item.next_symbol(grammar) {
-                    let goto = compute_lr1_goto(&state.items, next_symbol, grammar, first_table);
-                    let new_state = LR1State {
-                        items: goto.clone(),
-                        goto: Default::default(),
-                    };
-                    // println!(
-                    //     "next symbol = {}, goto = {}",
-                    //     SymbolKindDisplay {
-                    //         symbol: next_symbol,
-                    //         grammar: grammar
-                    //     },
-                    //     LR1StateDisplay {
-                    //         state: &new_state,
-                    //         grammar: grammar,
-                    //     },
-                    // );
-                    if !goto.is_empty() {
-                        match state_indices.entry(goto) {
-                            Entry::Occupied(entry) => {
-                                let goto_idx = *entry.get();
-                                new_gotos.insert((state_idx, next_symbol.clone()), goto_idx);
-                            }
-                            Entry::Vacant(entry) => {
-                                new_states.push(new_state);
-                                entry.insert(new_state_idx);
-                                new_gotos.insert((state_idx, next_symbol.clone()), new_state_idx);
-                                new_state_idx = StateIdx(new_state_idx.0 + 1);
-                            }
-                        }
+                if goto.is_empty() {
+                    continue;
+                }
+
+                match state_indices.get(&goto) {
+                    Some(goto_state_idx) => {
+                        new_gotos.push((state_idx, symbol, *goto_state_idx));
+                    }
+                    None => {
+                        let new_state = LR1State {
+                            items: goto.clone(),
+                            goto: Default::default(),
+                        };
+                        new_states.push(new_state);
+                        state_indices.insert(goto, next_state_idx);
+                        new_gotos.push((state_idx, symbol, next_state_idx));
+                        next_state_idx = StateIdx(next_state_idx.0 + 1);
                     }
                 }
             }
@@ -390,8 +381,9 @@ pub fn generate_lr1_automaton<T: Ord + Clone + Hash + fmt::Debug, A>(
         //     }
         // );
 
-        for ((state, symbol), next) in new_gotos.into_iter() {
-            let _old = automaton.states[state.as_usize()].goto.insert(symbol, next);
+        for (state, symbol, next) in new_gotos.into_iter() {
+            let old = automaton.states[state.as_usize()].goto.insert(symbol, next);
+            updated |= old.is_none();
             // TODO: I don't understand why this doesn't hold.. needs debugging.
             // assert_eq!(old, None, "trying to insert {}", next.0);
         }
@@ -476,23 +468,6 @@ struct LR1ItemDisplay<'a, 'b, T: Clone, A> {
     grammar: &'b Grammar<T, A>,
 }
 
-struct SymbolKindDisplay<'a, 'b, T, A> {
-    symbol: &'a SymbolKind<T>,
-    grammar: &'b Grammar<T, A>,
-}
-
-impl<'a, 'b, T: Clone + fmt::Debug, A> fmt::Display for SymbolKindDisplay<'a, 'b, T, A> {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        match self.symbol {
-            SymbolKind::NonTerminal(nt) => {
-                let nt = self.grammar.get_non_terminal(*nt);
-                write!(f, "{}", nt.non_terminal)
-            }
-            SymbolKind::Terminal(t) => write!(f, "{:?}", t),
-        }
-    }
-}
-
 impl<'a, 'b, T: Clone + fmt::Debug, A> fmt::Display for LR1ItemDisplay<'a, 'b, T, A> {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         let non_terminal = self.grammar.get_non_terminal(self.item.non_terminal_idx);
@@ -507,10 +482,7 @@ impl<'a, 'b, T: Clone + fmt::Debug, A> fmt::Display for LR1ItemDisplay<'a, 'b, T
             write!(
                 f,
                 "{}",
-                SymbolKindDisplay {
-                    symbol: &symbol.kind,
-                    grammar: self.grammar
-                }
+                crate::grammar::SymbolKindDisplay::new(&symbol.kind, self.grammar),
             )?;
             if symbol_idx != production.symbols().len() - 1 {
                 write!(f, " ")?;
@@ -542,10 +514,7 @@ impl<'a, 'b, T: Clone + fmt::Debug, A> fmt::Display for LR1StateDisplay<'a, 'b, 
             writeln!(
                 f,
                 "  GOTO {} -> {}",
-                SymbolKindDisplay {
-                    symbol,
-                    grammar: self.grammar
-                },
+                crate::grammar::SymbolKindDisplay::new(symbol, self.grammar),
                 next.0
             )?;
         }
@@ -580,7 +549,9 @@ fn grammar8_lr1_states() {
 
     let grammar = grammar8();
     let first_table = generate_first_table(&grammar);
-    let (lr1_automaton, _) = generate_lr1_automaton(&grammar, &first_table);
+    let (lr1_automaton, _) = generate_lr1_automaton(&grammar, &first_table, || {
+        Box::new(vec![Grammar8Token::C, Grammar8Token::D].into_iter())
+    });
 
     println!(
         "{}",
@@ -680,7 +651,18 @@ fn simulate1() {
 
     let grammar = grammar6();
     let first = generate_first_table(&grammar);
-    let (lr_automaton, _) = generate_lr1_automaton(&grammar, &first);
+    let (lr_automaton, _) = generate_lr1_automaton(&grammar, &first, || {
+        Box::new(
+            vec![
+                Grammar6Token::LParen,
+                Grammar6Token::RParen,
+                Grammar6Token::Plus,
+                Grammar6Token::Star,
+                Grammar6Token::Id,
+            ]
+            .into_iter(),
+        )
+    });
 
     println!(
         "{}",
@@ -742,7 +724,9 @@ fn simulate2() {
 
     let grammar = grammar9();
     let first = generate_first_table(&grammar);
-    let (lr_automaton, _) = generate_lr1_automaton(&grammar, &first);
+    let (lr_automaton, _) = generate_lr1_automaton(&grammar, &first, || {
+        Box::new(vec![Grammar9Token::LParen, Grammar9Token::RParen].into_iter())
+    });
 
     // println!(
     //     "{}",
@@ -771,7 +755,9 @@ fn simulate3() {
 
     let grammar = grammar7();
     let first = generate_first_table(&grammar);
-    let (lr_automaton, _) = generate_lr1_automaton(&grammar, &first);
+    let (lr_automaton, _) = generate_lr1_automaton(&grammar, &first, || {
+        Box::new(vec![Grammar7Token::Eq, Grammar7Token::Star, Grammar7Token::Id].into_iter())
+    });
     let lr1 = build_lr1_table(&grammar, &lr_automaton, 3);
 
     println!("{}", LRTableDisplay::new(&lr1, &grammar),);
@@ -832,7 +818,9 @@ fn simulate4() {
     println!("{}", grammar);
 
     let first = generate_first_table(&grammar);
-    let (lr_automaton, _) = generate_lr1_automaton(&grammar, &first);
+    let (lr_automaton, _) = generate_lr1_automaton(&grammar, &first, || {
+        Box::new(vec!['+', '*', '(', ')', 'n'].into_iter())
+    });
 
     println!(
         "{}",
