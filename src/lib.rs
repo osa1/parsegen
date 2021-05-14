@@ -53,8 +53,8 @@ pub fn parser(parser: ast::Parser) -> TokenStream {
         codegen::token_kind_type(&token_enum);
 
     let grammar = lower::lower(non_terminals, &terminal_repr_arena);
-    println!("Grammar:");
-    println!("{}", grammar);
+    // println!("Grammar:");
+    // println!("{}", grammar);
 
     // let ll1_parser = codegen::generate_ll1_parser(
     //     grammar.clone(),
