@@ -95,106 +95,96 @@ fn compute_lr1_closure<T: Ord + Eq + Hash + Clone + std::fmt::Debug, A>(
 ) -> BTreeSet<LR1Item<T>> {
     let mut closure: FxHashSet<LR1Item<T>> = items;
 
-    let mut updated = true;
-    while updated {
-        updated = false;
-
-        let mut new_items: FxHashSet<LR1Item<T>> = Default::default();
-
-        for item in &closure {
-            if let Some(next) = item.next_non_terminal(grammar) {
-                // Need to find the `first` set of the item after `next`. So if the item is
-                //
-                //     [ X -> ... . B x | t ]
-                //
-                // `next` is `B`. We need the first set of `x t`, where `x` is whatever's next after
-                // `B` (not a single terminal/non-terminal, but the whole rest of the production), and
-                // `t` is the item's lookahead token.
-                let first = {
-                    let production = item.get_production(grammar);
-                    let mut first: FirstSet<T> = Default::default();
-                    if item.cursor + 1 == production.symbols().len() {
-                        // `B` is the last symbol in the production, so the first set is just `t`
+    let mut work_list: Vec<LR1Item<T>> = closure.iter().cloned().collect();
+    while let Some(item) = work_list.pop() {
+        if let Some(next) = item.next_non_terminal(grammar) {
+            // Need to find the `first` set of the item after `next`. So if the item is
+            //
+            //     [ X -> ... . B x | t ]
+            //
+            // `next` is `B`. We need the first set of `x t`, where `x` is whatever's next after
+            // `B` (not a single terminal/non-terminal, but the whole rest of the production), and
+            // `t` is the item's lookahead token.
+            let first = {
+                let production = item.get_production(grammar);
+                let mut first: FirstSet<T> = Default::default();
+                if item.cursor + 1 == production.symbols().len() {
+                    // `B` is the last symbol in the production, so the first set is just `t`
+                    match &item.lookahead {
+                        Some(lookahead) => first.add(lookahead.clone()),
+                        None => first.set_empty(),
+                    }
+                } else {
+                    // Otherwise scan through symbols after `B`. The process is the same as follow set
+                    // computation
+                    let mut end_allowed = true;
+                    for symbol in &production.symbols()[item.cursor + 1..] {
+                        // println!(
+                        //     "Checking symbol {}",
+                        //     SymbolKindDisplay {
+                        //         symbol: &symbol.kind,
+                        //         grammar
+                        //     }
+                        // );
+                        match &symbol.kind {
+                            SymbolKind::Terminal(t) => {
+                                end_allowed = false;
+                                first.add(t.clone());
+                            }
+                            SymbolKind::NonTerminal(nt) => {
+                                let nt_first = first_table.get_first(*nt);
+                                for t in nt_first.terminals() {
+                                    first.add(t.clone());
+                                }
+                                if !nt_first.has_empty() {
+                                    end_allowed = false;
+                                    break;
+                                }
+                            }
+                        }
+                    }
+                    if end_allowed {
                         match &item.lookahead {
                             Some(lookahead) => first.add(lookahead.clone()),
                             None => first.set_empty(),
                         }
-                    } else {
-                        // Otherwise scan through symbols after `B`. The process is the same as follow set
-                        // computation
-                        let mut end_allowed = true;
-                        for symbol in &production.symbols()[item.cursor + 1..] {
-                            // println!(
-                            //     "Checking symbol {}",
-                            //     SymbolKindDisplay {
-                            //         symbol: &symbol.kind,
-                            //         grammar
-                            //     }
-                            // );
-                            match &symbol.kind {
-                                SymbolKind::Terminal(t) => {
-                                    end_allowed = false;
-                                    first.add(t.clone());
-                                }
-                                SymbolKind::NonTerminal(nt) => {
-                                    let nt_first = first_table.get_first(*nt);
-                                    for t in nt_first.terminals() {
-                                        first.add(t.clone());
-                                    }
-                                    if !nt_first.has_empty() {
-                                        end_allowed = false;
-                                        break;
-                                    }
-                                }
-                            }
-                        }
-                        if end_allowed {
-                            match &item.lookahead {
-                                Some(lookahead) => first.add(lookahead.clone()),
-                                None => first.set_empty(),
-                            }
-                        }
                     }
-                    first
-                };
+                }
+                first
+            };
 
-                // println!(
-                //     "LR1 closure item = {}, next = {}, first = {}",
-                //     LR1ItemDisplay { item, grammar },
-                //     grammar.get_non_terminal(next).non_terminal,
-                //     FirstSetDisplay { set: &first }
-                // );
+            // println!(
+            //     "LR1 closure item = {}, next = {}, first = {}",
+            //     LR1ItemDisplay { item, grammar },
+            //     grammar.get_non_terminal(next).non_terminal,
+            //     FirstSetDisplay { set: &first }
+            // );
 
-                for (production_idx, _) in grammar.non_terminal_production_indices(next) {
-                    for t in first.terminals() {
-                        let item = LR1Item {
-                            non_terminal_idx: next,
-                            production_idx,
-                            cursor: 0,
-                            lookahead: Some(t.clone()),
-                        };
-                        if !closure.contains(&item) && !new_items.contains(&item) {
-                            new_items.insert(item);
-                            updated = true;
-                        }
+            for (production_idx, _) in grammar.non_terminal_production_indices(next) {
+                for t in first.terminals() {
+                    let item = LR1Item {
+                        non_terminal_idx: next,
+                        production_idx,
+                        cursor: 0,
+                        lookahead: Some(t.clone()),
+                    };
+                    if closure.insert(item.clone()) {
+                        work_list.push(item);
                     }
-                    if first.has_empty() {
-                        let item = LR1Item {
-                            non_terminal_idx: next,
-                            production_idx,
-                            cursor: 0,
-                            lookahead: None,
-                        };
-                        if !closure.contains(&item) && !new_items.contains(&item) {
-                            new_items.insert(item);
-                            updated = true;
-                        }
+                }
+                if first.has_empty() {
+                    let item = LR1Item {
+                        non_terminal_idx: next,
+                        production_idx,
+                        cursor: 0,
+                        lookahead: None,
+                    };
+                    if closure.insert(item.clone()) {
+                        work_list.push(item);
                     }
                 }
             }
         }
-
-        closure.extend(new_items.into_iter());
     }
 
     closure.into_iter().collect()
