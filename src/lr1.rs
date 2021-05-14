@@ -2,6 +2,7 @@ use crate::first::{FirstSet, FirstTable};
 use crate::grammar::{Grammar, NonTerminalIdx, Production, ProductionIdx, SymbolKind};
 use crate::lr_common::{LRTable, LRTableBuilder, StateIdx};
 
+use std::collections::hash_map::Entry;
 use std::collections::BTreeSet;
 use std::hash::Hash;
 
@@ -358,20 +359,14 @@ pub fn generate_lr1_automaton<T: Ord + Clone + Hash + fmt::Debug, A>(
                     //     },
                     // );
                     if !goto.is_empty() {
-                        match state_indices.get(&goto) {
-                            Some(goto_idx) => {
-                                new_gotos.insert((state_idx, next_symbol.clone()), *goto_idx);
+                        match state_indices.entry(goto) {
+                            Entry::Occupied(entry) => {
+                                let goto_idx = *entry.get();
+                                new_gotos.insert((state_idx, next_symbol.clone()), goto_idx);
                             }
-                            None => {
-                                // println!(
-                                //     "Adding new state {}",
-                                //     LR1StateDisplay {
-                                //         state: &new_state,
-                                //         grammar
-                                //     }
-                                // );
+                            Entry::Vacant(entry) => {
                                 new_states.push(new_state);
-                                state_indices.insert(goto, new_state_idx);
+                                entry.insert(new_state_idx);
                                 new_gotos.insert((state_idx, next_symbol.clone()), new_state_idx);
                                 new_state_idx = StateIdx(new_state_idx.0 + 1);
                             }
