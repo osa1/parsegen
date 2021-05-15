@@ -1,25 +1,34 @@
 //! Implementation of "follow" sets
 
-use crate::bitset::{BitSet, FromBitIdx, ToBitIdx};
 use crate::first::FirstTable;
 use crate::grammar::{Grammar, NonTerminalIdx, SymbolKind};
 
+use std::hash::Hash;
+
+use fxhash::FxHashSet;
+
 /// Maps non-terminals fo their follow sets
 #[derive(Debug)]
-pub struct FollowTable<T: ToBitIdx>(Vec<FollowSet<T>>);
+pub struct FollowTable<T: Eq + Hash>(Vec<FollowSet<T>>);
 
 #[derive(Debug, Clone)]
-pub struct FollowSet<T: ToBitIdx> {
+pub struct FollowSet<T: Eq + Hash> {
     end: bool,
-    terminals: BitSet<T>,
+    terminals: FxHashSet<T>,
 }
 
-impl<T: ToBitIdx> FollowSet<T> {
-    pub fn new(n_terminals: usize) -> FollowSet<T> {
+impl<T: Eq + Hash> Default for FollowSet<T> {
+    fn default() -> Self {
         FollowSet {
             end: false,
-            terminals: BitSet::new(n_terminals),
+            terminals: Default::default(),
         }
+    }
+}
+
+impl<T: Eq + Hash> FollowSet<T> {
+    pub fn terminals(&self) -> &FxHashSet<T> {
+        &self.terminals
     }
 
     pub fn has_end(&self) -> bool {
@@ -27,24 +36,20 @@ impl<T: ToBitIdx> FollowSet<T> {
     }
 }
 
-impl<T: ToBitIdx + FromBitIdx> FollowSet<T> {
-    pub fn terminals<'a>(&'a self) -> impl Iterator<Item = T> + 'a {
-        self.terminals.elems()
-    }
-}
-
-impl<T: ToBitIdx> FollowTable<T> {
-    fn new(n_non_terminals: usize, n_terminals: usize) -> FollowTable<T> {
+impl<T: Eq + Hash> FollowTable<T> {
+    fn new(n_non_terminals: usize) -> FollowTable<T> {
         let mut sets = Vec::with_capacity(n_non_terminals);
         for _ in 0..n_non_terminals {
-            sets.push(FollowSet::new(n_terminals));
+            sets.push(FollowSet::default());
         }
         FollowTable(sets)
     }
 
     /// Returns whether the value is added
-    fn add_follow(&mut self, non_terminal_idx: NonTerminalIdx, terminal: &T) -> bool {
-        self.0[non_terminal_idx.as_usize()].terminals.set(terminal)
+    fn add_follow(&mut self, non_terminal_idx: NonTerminalIdx, terminal: T) -> bool {
+        self.0[non_terminal_idx.as_usize()]
+            .terminals
+            .insert(terminal)
     }
 
     /// Returns whether the value is changed
@@ -60,13 +65,12 @@ impl<T: ToBitIdx> FollowTable<T> {
     }
 }
 
-pub fn generate_follow_table<T: ToBitIdx + FromBitIdx + Clone + Eq, A>(
+pub fn generate_follow_table<T: Eq + Hash + Copy, A>(
     grammar: &Grammar<T, A>,
     first_table: &FirstTable<T>,
-    n_terminals: usize,
 ) -> FollowTable<T> {
     let n_non_terminals = grammar.non_terminals().len();
-    let mut table = FollowTable::new(grammar.non_terminals().len(), n_terminals);
+    let mut table = FollowTable::new(grammar.non_terminals().len());
 
     if n_non_terminals == 0 {
         return table;
@@ -96,7 +100,7 @@ pub fn generate_follow_table<T: ToBitIdx + FromBitIdx + Clone + Eq, A>(
                         match next_symbol_ {
                             SymbolKind::Terminal(next_terminal) => {
                                 updated |=
-                                    table.add_follow(non_terminal_idx, &next_terminal);
+                                    table.add_follow(non_terminal_idx, next_terminal.clone());
                                 // There may be more of the non-terminal we're looking for in
                                 // the RHS, so continue
                                 current_symbol = symbol_iter.next();
@@ -104,8 +108,8 @@ pub fn generate_follow_table<T: ToBitIdx + FromBitIdx + Clone + Eq, A>(
                             }
                             SymbolKind::NonTerminal(next_non_terminal) => {
                                 let next_first_set = first_table.get_first(next_non_terminal);
-                                for next_first in next_first_set.terminals() {
-                                    updated |= table.add_follow(non_terminal_idx, &next_first);
+                                for next_first in next_first_set.terminals().iter() {
+                                    updated |= table.add_follow(non_terminal_idx, *next_first);
                                 }
                                 if next_first_set.has_empty() {
                                     next_symbol = symbol_iter.next();
@@ -127,8 +131,8 @@ pub fn generate_follow_table<T: ToBitIdx + FromBitIdx + Clone + Eq, A>(
                     if nt_follows.end {
                         updated |= table.set_end(non_terminal_idx);
                     }
-                    for follow in nt_follows.terminals() {
-                        updated |= table.add_follow(non_terminal_idx, &follow);
+                    for follow in nt_follows.terminals {
+                        updated |= table.add_follow(non_terminal_idx, follow);
                     }
                 }
             }

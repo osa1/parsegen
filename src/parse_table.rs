@@ -1,7 +1,7 @@
 use crate::first::FirstTable;
 use crate::follow::FollowTable;
 use crate::grammar::{Grammar, NonTerminalIdx, ProductionIdx, SymbolKind};
-use crate::terminal::{TerminalIdx, TerminalReprArena};
+use crate::terminal::{TerminalReprArena, TerminalReprIdx};
 
 use fxhash::FxHashMap;
 
@@ -12,7 +12,7 @@ pub struct ParseTable {
     // the table tells me which production to expect. If there isn't an entry for `(NT, c)` then we
     // have an error in the input. During building, if we try to add multiple productions to a
     // non-terminal, token pair, that means we have an ambiguous, or left-recursive grammar.
-    pub table: FxHashMap<(NonTerminalIdx, TerminalIdx), ProductionIdx>,
+    pub table: FxHashMap<(NonTerminalIdx, TerminalReprIdx), ProductionIdx>,
 
     // Same as `table`, but for `$`
     pub end: FxHashMap<NonTerminalIdx, ProductionIdx>,
@@ -21,10 +21,10 @@ pub struct ParseTable {
 impl ParseTable {
     fn add<A>(
         &mut self,
-        grammar: &Grammar<TerminalIdx, A>,
+        grammar: &Grammar<TerminalReprIdx, A>,
         terminals: &TerminalReprArena,
         non_terminal_idx: NonTerminalIdx,
-        token: TerminalIdx,
+        token: TerminalReprIdx,
         production_idx: ProductionIdx,
     ) {
         let old = self.table.insert((non_terminal_idx, token), production_idx);
@@ -48,7 +48,11 @@ impl ParseTable {
         assert_eq!(old, None);
     }
 
-    fn get(&self, non_terminal_idx: NonTerminalIdx, token: TerminalIdx) -> Option<ProductionIdx> {
+    fn get(
+        &self,
+        non_terminal_idx: NonTerminalIdx,
+        token: TerminalReprIdx,
+    ) -> Option<ProductionIdx> {
         self.table.get(&(non_terminal_idx, token)).copied()
     }
 
@@ -58,10 +62,10 @@ impl ParseTable {
 }
 
 pub fn generate_parse_table<A>(
-    grammar: &Grammar<TerminalIdx, A>,
+    grammar: &Grammar<TerminalReprIdx, A>,
     terminals: &TerminalReprArena,
-    first_table: &FirstTable<TerminalIdx>,
-    follow_table: &FollowTable<TerminalIdx>,
+    first_table: &FirstTable<TerminalReprIdx>,
+    follow_table: &FollowTable<TerminalReprIdx>,
 ) -> ParseTable {
     let mut table: ParseTable = Default::default();
 

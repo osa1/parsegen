@@ -1,4 +1,3 @@
-use crate::bitset::{FromBitIdx, ToBitIdx};
 use crate::grammar::{Grammar, NonTerminalIdx, Symbol, SymbolKind};
 
 fn nt<T>(idx: NonTerminalIdx) -> Symbol<T> {
@@ -162,54 +161,14 @@ pub fn grammar4() -> Grammar<char, ()> {
     grammar
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
-pub enum Grammar5Token {
-    Plus,
-    Star,
-    LParen,
-    RParen,
-    N,
-}
-
-impl Grammar5Token {
-    pub fn n_tokens() -> usize {
-        5
-    }
-}
-
-impl FromBitIdx for Grammar5Token {
-    fn from_bit_idx(idx: usize) -> Self {
-        match idx {
-            0 => Grammar5Token::Plus,
-            1 => Grammar5Token::Star,
-            2 => Grammar5Token::LParen,
-            3 => Grammar5Token::RParen,
-            4 => Grammar5Token::N,
-            _ => panic!(),
-        }
-    }
-}
-
-impl ToBitIdx for Grammar5Token {
-    fn to_bit_idx(&self) -> usize {
-        match self {
-            Grammar5Token::Plus => 0,
-            Grammar5Token::Star => 1,
-            Grammar5Token::LParen => 2,
-            Grammar5Token::RParen => 3,
-            Grammar5Token::N => 4,
-        }
-    }
-}
-
 // E0 -> E
 // E  -> T E'
 // E' -> + T E' | (empty)
 // T  -> F T'
 // T' -> * F T' | (empty)
 // F -> ( E ) | n
-pub fn grammar5() -> Grammar<Grammar5Token, ()> {
-    let mut grammar: Grammar<Grammar5Token, ()> = Grammar::new();
+pub fn grammar5() -> Grammar<char, ()> {
+    let mut grammar: Grammar<char, ()> = Grammar::new();
 
     let e0_nt_idx = add_non_terminal(&mut grammar, "E0", true);
     let e_nt_idx = add_non_terminal(&mut grammar, "E", false);
@@ -225,11 +184,7 @@ pub fn grammar5() -> Grammar<Grammar5Token, ()> {
     grammar.add_production(e_nt_idx, vec![nt(t_nt_idx), nt(e1_nt_idx)], ());
 
     // E' -> + T E'
-    grammar.add_production(
-        e1_nt_idx,
-        vec![t(Grammar5Token::Plus), nt(t_nt_idx), nt(e1_nt_idx)],
-        (),
-    );
+    grammar.add_production(e1_nt_idx, vec![t('+'), nt(t_nt_idx), nt(e1_nt_idx)], ());
 
     // E' -> (empty)
     grammar.add_production(e1_nt_idx, vec![], ());
@@ -238,28 +193,16 @@ pub fn grammar5() -> Grammar<Grammar5Token, ()> {
     grammar.add_production(t_nt_idx, vec![nt(f_nt_idx), nt(t1_nt_idx)], ());
 
     // T' -> * F T'
-    grammar.add_production(
-        t1_nt_idx,
-        vec![t(Grammar5Token::Star), nt(f_nt_idx), nt(t1_nt_idx)],
-        (),
-    );
+    grammar.add_production(t1_nt_idx, vec![t('*'), nt(f_nt_idx), nt(t1_nt_idx)], ());
 
     // T' -> (empty)
     grammar.add_production(t1_nt_idx, vec![], ());
 
     // F -> ( E )
-    grammar.add_production(
-        f_nt_idx,
-        vec![
-            t(Grammar5Token::LParen),
-            nt(e_nt_idx),
-            t(Grammar5Token::RParen),
-        ],
-        (),
-    );
+    grammar.add_production(f_nt_idx, vec![t('('), nt(e_nt_idx), t(')')], ());
 
     // F -> n
-    grammar.add_production(f_nt_idx, vec![t(Grammar5Token::N)], ());
+    grammar.add_production(f_nt_idx, vec![t('n')], ());
 
     grammar
 }
@@ -271,37 +214,6 @@ pub enum Grammar6Token {
     Plus,
     Star,
     Id,
-}
-
-impl Grammar6Token {
-    pub fn n_tokens() -> usize {
-        5
-    }
-}
-
-impl FromBitIdx for Grammar6Token {
-    fn from_bit_idx(idx: usize) -> Self {
-        match idx {
-            0 => Grammar6Token::LParen,
-            1 => Grammar6Token::RParen,
-            2 => Grammar6Token::Plus,
-            3 => Grammar6Token::Star,
-            4 => Grammar6Token::Id,
-            _ => panic!(),
-        }
-    }
-}
-
-impl ToBitIdx for Grammar6Token {
-    fn to_bit_idx(&self) -> usize {
-        match self {
-            Grammar6Token::LParen => 0,
-            Grammar6Token::RParen => 1,
-            Grammar6Token::Plus => 2,
-            Grammar6Token::Star => 3,
-            Grammar6Token::Id => 4,
-        }
-    }
 }
 
 // Figure 4.1 in dragon book. grammar5 is the left-factored version of this grammar.
@@ -365,33 +277,6 @@ pub enum Grammar7Token {
     Id,
 }
 
-impl Grammar7Token {
-    pub fn n_tokens() -> usize {
-        3
-    }
-}
-
-impl FromBitIdx for Grammar7Token {
-    fn from_bit_idx(idx: usize) -> Self {
-        match idx {
-            0 => Grammar7Token::Eq,
-            1 => Grammar7Token::Star,
-            2 => Grammar7Token::Id,
-            _ => panic!(),
-        }
-    }
-}
-
-impl ToBitIdx for Grammar7Token {
-    fn to_bit_idx(&self) -> usize {
-        match self {
-            Grammar7Token::Eq => 0,
-            Grammar7Token::Star => 1,
-            Grammar7Token::Id => 1,
-        }
-    }
-}
-
 // Figure 4.49 (assignment with lvalues)
 //
 // S0 -> S
@@ -439,31 +324,6 @@ pub enum Grammar8Token {
     D,
 }
 
-impl Grammar8Token {
-    pub fn n_tokens() -> usize {
-        2
-    }
-}
-
-impl FromBitIdx for Grammar8Token {
-    fn from_bit_idx(idx: usize) -> Self {
-        match idx {
-            0 => Grammar8Token::C,
-            1 => Grammar8Token::D,
-            _ => panic!(),
-        }
-    }
-}
-
-impl ToBitIdx for Grammar8Token {
-    fn to_bit_idx(&self) -> usize {
-        match self {
-            Grammar8Token::C => 0,
-            Grammar8Token::D => 1,
-        }
-    }
-}
-
 // Custom Debug impl to print in lowercase, otherwise things get confusing as non-terminals in this
 // grammar have same names as terminals
 impl std::fmt::Debug for Grammar8Token {
@@ -507,31 +367,6 @@ pub fn grammar8() -> Grammar<Grammar8Token, ()> {
 pub enum Grammar9Token {
     LParen,
     RParen,
-}
-
-impl Grammar9Token {
-    pub fn n_tokens() -> usize {
-        2
-    }
-}
-
-impl FromBitIdx for Grammar9Token {
-    fn from_bit_idx(idx: usize) -> Self {
-        match idx {
-            0 => Grammar9Token::LParen,
-            1 => Grammar9Token::RParen,
-            _ => panic!(),
-        }
-    }
-}
-
-impl ToBitIdx for Grammar9Token {
-    fn to_bit_idx(&self) -> usize {
-        match self {
-            Grammar9Token::LParen => 0,
-            Grammar9Token::RParen => 1,
-        }
-    }
 }
 
 // S0 -> S
