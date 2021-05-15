@@ -1,0 +1,211 @@
+    enum Token {
+        "(" => Token::LParen,
+        ")" => Token::RParen,
+        "bool" => Token::Bool(<bool>),
+        "not" => Token::Not,
+        "if" => Token::If,
+        "then" => Token::Then,
+        "else" => Token::Else,
+        "let" => Token::Let,
+        "rec" => Token::Rec,
+        "in" => Token::In,
+        "-" => Token::Minus,
+        "-." => Token::MinusDot,
+        "+" => Token::Plus,
+        "+." => Token::PlusDot,
+        "*." => Token::AstDot,
+        "/." => Token::SlashDot,
+        "=" => Token::Equal,
+        "<>" => Token::LessGreater,
+        "<=" => Token::LessEqual,
+        "<-" => Token::LessMinus,
+        "<" => Token::Less,
+        ">=" => Token::GreaterEqual,
+        ">" => Token::Greater,
+        "." => Token::Dot,
+        "," => Token::Comma,
+        ";" => Token::Semicolon,
+        "_" => Token::Underscore,
+        "Array.create" => Token::ArrayCreate,
+        "id" => Token::Id(<String>),
+        "int" => Token::Int(<i64>),
+        "float" => Token::Float(<f64>),
+    }
+
+    pub Expr_Semi: Expr = {
+        <expr1:Expr_Op0> ";" <expr2:Expr_Semi> =>
+            Expr::Let { bndr: "_".to_owned(), rhs: Box::new(expr1), body: Box::new(expr2) },
+
+        <expr:Expr_Op0> => expr,
+    };
+
+    Expr_Unop: Expr = {
+        "-" <expr:Expr_Op0> =>
+            Expr::Neg(Box::new(expr)),
+
+        <expr:Expr_Op0> =>
+            expr,
+    };
+
+    pub Expr_Op0: Expr = {
+        <left:Expr_Op1> "+" <right:Expr_Op1> =>
+            Expr::IntBinOp(Box::new(left), IntBinOp::Add, Box::new(right)),
+
+        <left:Expr_Op1> "-" <right:Expr_Op1> =>
+            Expr::IntBinOp(Box::new(left), IntBinOp::Sub, Box::new(right)),
+
+        <expr:Expr_Op1> => expr,
+
+    };
+
+    Expr_Op1: Expr = {
+        <left:Expr_Op2> "+." <right:Expr_Op2> =>
+            Expr::FloatBinOp(Box::new(left), FloatBinOp::Add, Box::new(right)),
+
+        <left:Expr_Op2> "-." <right:Expr_Op2> =>
+            Expr::FloatBinOp(Box::new(left), FloatBinOp::Sub, Box::new(right)),
+
+        <expr:Expr_Op2> => expr,
+    };
+
+    Expr_Op2: Expr = {
+        <left:Expr_> "*." <right:Expr_> =>
+            Expr::FloatBinOp(Box::new(left), FloatBinOp::Mul, Box::new(right)),
+
+        <left:Expr_> "/." <right:Expr_> =>
+            Expr::FloatBinOp(Box::new(left), FloatBinOp::Div, Box::new(right)),
+
+        <expr:Expr_> => expr,
+    };
+
+    pub Expr_: Expr = {
+        <fun:Expr_NoApp> <args:Expr_NoApp1> =>
+            Expr::App { fun: Box::new(fun), args },
+
+        <other:Expr_NoApp> =>
+            other,
+    };
+
+    Expr_NoApp1: Vec<Expr> = {
+        <expr0:Expr_NoApp> <mut exprs:Expr_NoApp0> => {
+            exprs.push(expr0);
+            exprs.reverse();
+            exprs
+        },
+    };
+
+    Expr_NoApp0: Vec<Expr> = {
+        => vec![],
+
+        <expr0:Expr_NoApp> <mut exprs:Expr_NoApp0> => {
+            exprs.push(expr0);
+            exprs
+        }
+    };
+
+    Expr_NoApp: Expr = {
+        "(" <expr:Expr_> ")" =>
+            expr,
+
+        "(" ")" =>
+            Expr::Unit,
+
+        <b:"bool"> =>
+            Expr::Bool(b),
+
+        <i:"int"> =>
+            Expr::Int(i),
+
+        <f:"float"> =>
+            Expr::Float(f),
+
+        "not" <e:Expr_> =>
+            Expr::Not(Box::new(e)),
+
+        <e1:Expr_NoApp> <cmp:Cmp_> <e2:Expr_> =>
+            Expr::Cmp(Box::new(e1), cmp, Box::new(e2)),
+
+        "if" <e1:Expr_> "then" <e2:Expr_> "else" <e3:Expr_> =>
+            Expr::If(Box::new(e1), Box::new(e2), Box::new(e3)),
+
+        "let" <bndr:"id"> "=" <rhs:Expr_> "in" <body:Expr_> =>
+            Expr::Let { bndr, rhs: Box::new(rhs), body: Box::new(body) },
+
+        <var:"id"> =>
+            Expr::Var(var),
+
+        "let" "rec" <bndr:"id"> <args:Vars> "=" <rhs:Expr_> "in" <body:Expr_> =>
+            Expr::LetRec { bndr, args, rhs: Box::new(rhs), body: Box::new(body) },
+
+        "(" <expr:Expr_> <mut exprs:CommaExprs> ")" => {
+            exprs.insert(0, expr); // TODO insert
+            Expr::Tuple(exprs)
+        },
+
+        "let" "(" <var:"id"> <mut vars:CommaVars> ")" "=" <e1:Expr_> "in" <e2:Expr_> => {
+            vars.insert(0, var); // TODO insert
+            Expr::LetTuple {
+                bndrs: vars,
+                rhs: Box::new(e1),
+                body: Box::new(e2),
+            }
+        },
+
+        "Array.create" <e1:Expr_> <e2:Expr_> =>
+            Expr::Array { len: Box::new(e1), elem: Box::new(e2) },
+
+        <e1:Expr_NoApp> "." "(" <e2:Expr_> ")" =>
+            Expr::Get(Box::new(e1), Box::new(e2)),
+
+        <e1:Expr_NoApp> "." "(" <e2:Expr_> ")" "<-" <e3:Expr_> =>
+            Expr::Put(Box::new(e1), Box::new(e2), Box::new(e3)),
+    };
+
+    Cmp_: Cmp = {
+        "=" => Cmp::Equal,
+        "<>" => Cmp::NotEqual,
+        "<" => Cmp::LessThan,
+        "<=" => Cmp::LessThanOrEqual,
+        ">" => Cmp::GreaterThan,
+        ">=" => Cmp::GreaterThanOrEqual,
+    };
+
+    Vars: Vec<String> = {
+        => vec![],
+        <var:"id"> <mut vars:Vars> => {
+            // FIXME: insert
+            vars.insert(0, var);
+            vars
+        },
+    };
+
+    Exprs: Vec<Expr> = {
+        <expr:Expr_> => vec![expr],
+        <expr:Expr_> <mut exprs:Exprs> => {
+            exprs.insert(0, expr);
+            exprs
+        },
+    };
+
+    // One or more `, <expr>`
+    CommaExprs: Vec<Expr> = {
+        "," <expr:Expr_> =>
+            vec![expr],
+
+        "," <expr:Expr_> <mut exprs:CommaExprs> => {
+            exprs.insert(0, expr); // TODO insert
+            exprs
+        },
+    };
+
+    // One or more `, <var>`
+    CommaVars: Vec<String> = {
+        "," <var:"id"> =>
+            vec![var],
+
+        "," <var:"id"> <mut vars:CommaVars> => {
+            vars.insert(0, var);
+            vars
+        },
+    };
+

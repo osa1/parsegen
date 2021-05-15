@@ -19,7 +19,12 @@ quote = "1.0"
 syn = { version = "1.0", features = ["full", "derive", "parsing", "extra-traits"] }
 
 [dev-dependencies]
+criterion = { version = "0.3.4", features = ["html_reports"] }
 lexgen = { path = "/home/omer/rust/lexgen" }
 
 [profile.release]
 debug = true
+
+[[bench]]
+name = "benchmarks"
+harness = false

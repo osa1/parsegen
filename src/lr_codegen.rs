@@ -58,10 +58,10 @@ pub fn generate_lr1_parser(
 
     let lr1_table = build_lr1_table(&grammar, &lr1_automaton, n_terminals);
 
-    println!(
-        "{}",
-        crate::lr_common::LRTableDisplay::new(&lr1_table, &grammar)
-    );
+    // println!(
+    //     "{}",
+    //     crate::lr_common::LRTableDisplay::new(&lr1_table, &grammar)
+    // );
 
     let action_vec = action_table_vec(
         lr1_table.get_action_table(),

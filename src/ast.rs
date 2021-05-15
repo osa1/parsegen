@@ -4,12 +4,12 @@ use syn::parse::{Parse, ParseBuffer};
 ////////////////////////////////////////////////////////////////////////////////
 
 /// The grammar AST (`parser! { ... }`)
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct Parser {
     pub items: Vec<GrammarItem>,
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub enum GrammarItem {
     /// `type X = Y;`, used to declare location and lexer error types
     TypeSynonym(TypeSynonym),
@@ -22,28 +22,28 @@ pub enum GrammarItem {
 }
 
 /// The `enum Token { ... }` declaration
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct TokenEnum {
     pub type_name: syn::Ident,
     pub type_lifetimes: Vec<syn::Lifetime>,
     pub conversions: Vec<Conversion>,
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct Conversion {
     pub span: Span,
     pub from: String,
     pub to: Pattern,
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct TypeSynonym {
     pub name: syn::Ident,
     pub ty: syn::Type,
 }
 
 /// A pattern used in token definitions
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub enum Pattern {
     // `X::Y(<pat1>,...,<patN>)`
     Enum(syn::Path, Vec<Pattern>),
@@ -63,7 +63,7 @@ pub enum Pattern {
     Choose(syn::Type),
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct FieldPattern {
     pub field_name: syn::Ident,
     pub pattern: Pattern,
@@ -81,7 +81,7 @@ impl Visibility {
     }
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct NonTerminal {
     pub visibility: Visibility,
     pub name: syn::Ident,
@@ -90,13 +90,13 @@ pub struct NonTerminal {
     pub productions: Vec<Production>,
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct Production {
     pub symbols: Vec<Symbol>,
     pub action: Action,
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub enum Symbol {
     /// A terminal, defined in the token enum
     Terminal(syn::LitStr),
@@ -118,20 +118,20 @@ pub struct Name {
     pub name: syn::Ident,
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct Repeat {
     pub op: RepeatOp,
     pub symbol: Symbol,
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub enum RepeatOp {
     Plus,
     Star,
     Question,
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub enum Action {
     User(syn::Expr),
     Fallible(syn::Expr),
