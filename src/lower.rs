@@ -1,6 +1,6 @@
 use crate::ast;
 use crate::grammar::{Grammar, NonTerminalIdx, Symbol, SymbolKind};
-use crate::terminal::{TerminalReprArena, TerminalReprIdx};
+use crate::terminal::{TerminalIdx, TerminalReprArena};
 
 use std::iter::FromIterator;
 
@@ -10,7 +10,7 @@ use proc_macro2::Span;
 pub fn lower(
     non_terminals: Vec<ast::NonTerminal>,
     arena: &TerminalReprArena,
-) -> Grammar<TerminalReprIdx, syn::Expr> {
+) -> Grammar<TerminalIdx, syn::Expr> {
     let mut grammar = Grammar::new();
 
     let mut nt_indices: FxHashMap<String, NonTerminalIdx> = Default::default();
@@ -68,7 +68,7 @@ pub fn lower(
     } in non_terminals
     {
         for prod in productions {
-            let mut symbols: Vec<Symbol<TerminalReprIdx>> = vec![];
+            let mut symbols: Vec<Symbol<TerminalIdx>> = vec![];
             for sym in prod.symbols {
                 add_symbol(arena, &nt_indices, &mut symbols, None, sym);
             }
@@ -89,7 +89,7 @@ pub fn lower(
 fn add_symbol(
     arena: &TerminalReprArena,
     nt_indices: &FxHashMap<String, NonTerminalIdx>,
-    symbols: &mut Vec<Symbol<TerminalReprIdx>>,
+    symbols: &mut Vec<Symbol<TerminalIdx>>,
     binder: Option<ast::Name>,
     symbol: ast::Symbol,
 ) {
