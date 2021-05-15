@@ -1,7 +1,7 @@
 use crate::ast::{Conversion, FieldPattern, Name, Pattern, TokenEnum};
 use crate::grammar::{Grammar, NonTerminal, Production, Symbol, SymbolKind};
-use crate::parse_table::ParseTable;
-use crate::terminal::{TerminalReprArena, TerminalReprIdx};
+// use crate::parse_table::ParseTable;
+use crate::terminal::{TerminalIdx, TerminalReprArena};
 
 use std::convert::TryFrom;
 
@@ -274,20 +274,17 @@ impl SemanticActionIdx {
 /// Generates semantic action functions, semantic action table (array of semantic action functions)
 /// and replaces semantic actions in the grammar with their indices in the array.
 pub fn generate_semantic_action_table(
-    grammar: Grammar<TerminalReprIdx, syn::Expr>,
+    grammar: Grammar<TerminalIdx, syn::Expr>,
     non_terminal_action_variant_name: &[usize],
     token_lifetimes: &[syn::Lifetime],
-) -> (
-    Vec<TokenStream>,
-    Grammar<TerminalReprIdx, SemanticActionIdx>,
-) {
+) -> (Vec<TokenStream>, Grammar<TerminalIdx, SemanticActionIdx>) {
     let Grammar { non_terminals } = grammar;
 
     // Action function declarations and the array
     let mut decls: Vec<TokenStream> = vec![];
     let mut fn_names: Vec<syn::Ident> = vec![];
 
-    let non_terminals: Vec<NonTerminal<TerminalReprIdx, SemanticActionIdx>> = non_terminals
+    let non_terminals: Vec<NonTerminal<TerminalIdx, SemanticActionIdx>> = non_terminals
         .into_iter()
         .enumerate()
         .map(
@@ -300,7 +297,7 @@ pub fn generate_semantic_action_table(
                     public,
                 },
             )| {
-                let productions: Vec<Production<TerminalReprIdx, SemanticActionIdx>> = productions
+                let productions: Vec<Production<TerminalIdx, SemanticActionIdx>> = productions
                     .into_iter()
                     .enumerate()
                     .map(|(p_i, Production { symbols, action })| {
@@ -384,10 +381,11 @@ pub fn generate_semantic_action_table(
     (decls, Grammar { non_terminals })
 }
 
+/*
 /// Generates `PARSE_TABLE: [[usize]]` that maps (non_terminal_idx, terminal_idx) to
 /// production_idx.
 fn generate_parse_table_code(
-    grammar: &Grammar<TerminalReprIdx, SemanticActionIdx>,
+    grammar: &Grammar<TerminalIdx, SemanticActionIdx>,
     parse_table: &ParseTable,
     terminals: &TerminalReprArena,
 ) -> TokenStream {
@@ -436,12 +434,13 @@ fn generate_parse_table_code(
         ];
     )
 }
+*/
 
 /// Generates a `PRODUCTIONS: [[Action]]` array, indexed by production index.
 ///
 // NB. Index of a production in the array == the production's action idx
 fn generate_production_array(
-    grammar: &Grammar<TerminalReprIdx, SemanticActionIdx>,
+    grammar: &Grammar<TerminalIdx, SemanticActionIdx>,
     terminals: &TerminalReprArena,
 ) -> TokenStream {
     let mut action_array_names: Vec<TokenStream> = vec![];

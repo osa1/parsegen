@@ -6,7 +6,7 @@ use crate::first::generate_first_table;
 use crate::grammar::{Grammar, NonTerminalIdx, ProductionIdx};
 use crate::lr1::{build_lr1_table, generate_lr1_automaton};
 use crate::lr_common::{LRAction, StateIdx};
-use crate::terminal::{TerminalReprArena, TerminalReprIdx};
+use crate::terminal::{TerminalIdx, TerminalReprArena};
 
 use std::convert::TryFrom;
 
@@ -15,7 +15,7 @@ use proc_macro2::{Span, TokenStream};
 use quote::quote;
 
 pub fn generate_lr1_parser(
-    grammar: Grammar<TerminalReprIdx, syn::Expr>,
+    grammar: Grammar<TerminalIdx, syn::Expr>,
     tokens: &TokenEnum,
     terminals: &TerminalReprArena,
     token_kind_type_name: &syn::Ident,
@@ -24,10 +24,13 @@ pub fn generate_lr1_parser(
     let n_terminals = terminals.n_terminals();
     let token_type = &tokens.type_name;
 
-    let first_table = generate_first_table(&grammar);
-    let (lr1_automaton, nt_state_indices) = generate_lr1_automaton(&grammar, &first_table, || {
-        Box::new(terminals.terminal_indices())
-    });
+    let first_table = generate_first_table(&grammar, n_terminals);
+    let (lr1_automaton, nt_state_indices) = generate_lr1_automaton(
+        &grammar,
+        &first_table,
+        || Box::new(terminals.terminal_indices()),
+        n_terminals,
+    );
 
     let token_lifetimes = &tokens.type_lifetimes;
 
@@ -229,7 +232,7 @@ pub fn generate_lr1_parser(
 
 /// Generates array representation of the action table. Reminder: EOF = last terminal.
 fn action_table_vec<A: Copy>(
-    action_table: &FxHashMap<StateIdx, FxHashMap<Option<TerminalReprIdx>, LRAction<A>>>,
+    action_table: &FxHashMap<StateIdx, FxHashMap<Option<TerminalIdx>, LRAction<A>>>,
     n_states: usize,
     terminals: &TerminalReprArena,
 ) -> Vec<Vec<Option<LRAction<A>>>> {
@@ -287,7 +290,7 @@ fn generate_goto_vec(
 }
 
 fn generate_action_array<A>(
-    grammar: &Grammar<TerminalReprIdx, A>,
+    grammar: &Grammar<TerminalIdx, A>,
     table: &[Vec<Option<LRAction<SemanticActionIdx>>>],
     n_states: usize,
     n_terminals: usize,

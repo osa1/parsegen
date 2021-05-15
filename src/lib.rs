@@ -4,6 +4,7 @@
 mod maplit;
 
 pub mod ast;
+mod bitset;
 mod codegen;
 mod first;
 mod follow;
@@ -13,7 +14,7 @@ mod lr0;
 mod lr1;
 mod lr_codegen;
 mod lr_common;
-mod parse_table;
+// mod parse_table;
 mod terminal;
 
 // mod earley;

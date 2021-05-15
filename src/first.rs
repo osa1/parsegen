@@ -1,62 +1,64 @@
 //! Implementation of "first" sets
 
+use crate::bitset::{BitSet, FromBitIdx, ToBitIdx};
 use crate::grammar::{Grammar, NonTerminalIdx, SymbolKind};
-
-use std::hash::Hash;
-
-use fxhash::FxHashSet;
 
 /// Maps non-terminals to their first sets
 #[derive(Debug)]
-pub struct FirstTable<T: Eq + Hash>(Vec<FirstSet<T>>);
+pub struct FirstTable<T: ToBitIdx>(Vec<FirstSet<T>>);
 
 #[derive(Debug, Clone)]
-pub struct FirstSet<T: Eq + Hash> {
+pub struct FirstSet<T: ToBitIdx> {
     empty: bool,
-    terminals: FxHashSet<T>,
+    terminals: BitSet<T>,
 }
 
-impl<T: Eq + Hash> FirstSet<T> {
-    pub fn add(&mut self, terminal: T) {
-        self.terminals.insert(terminal);
+impl<T: ToBitIdx> FirstSet<T> {
+    pub fn new(n_terminals: usize) -> Self {
+        FirstSet {
+            empty: false,
+            terminals: BitSet::new(n_terminals),
+        }
+    }
+
+    pub fn add(&mut self, terminal: &T) {
+        self.terminals.set(terminal);
     }
 
     pub fn set_empty(&mut self) {
         self.empty = true;
     }
 
-    pub fn terminals(&self) -> &FxHashSet<T> {
-        &self.terminals
-    }
-
     pub fn has_empty(&self) -> bool {
         self.empty
     }
-}
 
-impl<T: Eq + Hash> Default for FirstSet<T> {
-    fn default() -> Self {
-        FirstSet {
-            empty: false,
-            terminals: Default::default(),
-        }
+    pub fn n_terminals(&self) -> usize {
+        self.terminals.len()
     }
 }
 
-impl<T: Eq + Hash> FirstTable<T> {
-    fn new(n_non_terminals: usize) -> FirstTable<T> {
+impl<T: ToBitIdx + FromBitIdx> FirstSet<T> {
+    pub fn terminals<'a>(&'a self) -> impl Iterator<Item = T> + 'a {
+        self.terminals.elems()
+    }
+}
+
+impl<T: ToBitIdx> FirstTable<T> {
+    fn new(n_non_terminals: usize, n_terminals: usize) -> FirstTable<T> {
         let mut sets = Vec::with_capacity(n_non_terminals);
         for _ in 0..n_non_terminals {
-            sets.push(FirstSet::default());
+            sets.push(FirstSet {
+                empty: false,
+                terminals: BitSet::new(n_terminals),
+            });
         }
         FirstTable(sets)
     }
 
     /// Returns whether the value is added
-    fn add_first(&mut self, non_terminal_idx: NonTerminalIdx, terminal: T) -> bool {
-        self.0[non_terminal_idx.as_usize()]
-            .terminals
-            .insert(terminal)
+    fn add_first(&mut self, non_terminal_idx: NonTerminalIdx, terminal: &T) -> bool {
+        self.0[non_terminal_idx.as_usize()].terminals.set(terminal)
     }
 
     /// Returns whether the value is changed
@@ -72,8 +74,11 @@ impl<T: Eq + Hash> FirstTable<T> {
     }
 }
 
-pub fn generate_first_table<T: Eq + Hash + Copy, A>(grammar: &Grammar<T, A>) -> FirstTable<T> {
-    let mut table: FirstTable<T> = FirstTable::new(grammar.non_terminals().len());
+pub fn generate_first_table<T: ToBitIdx + FromBitIdx, A>(
+    grammar: &Grammar<T, A>,
+    n_terminals: usize,
+) -> FirstTable<T> {
+    let mut table: FirstTable<T> = FirstTable::new(grammar.non_terminals().len(), n_terminals);
 
     let mut updated = true;
     while updated {
@@ -92,8 +97,8 @@ pub fn generate_first_table<T: Eq + Hash + Copy, A>(grammar: &Grammar<T, A>) -> 
                                 continue;
                             }
                             // TODO: clone below to avoid borrowck issues
-                            for terminal in terminals.clone() {
-                                updated |= table.add_first(non_terminal_idx, terminal.clone());
+                            for terminal in terminals.clone().elems() {
+                                updated |= table.add_first(non_terminal_idx, &terminal);
                             }
                             continue 'production_loop;
                         }
@@ -115,16 +120,17 @@ pub fn generate_first_table<T: Eq + Hash + Copy, A>(grammar: &Grammar<T, A>) -> 
 
 use std::fmt;
 
-pub struct FirstSetDisplay<'a, T: Eq + Hash + fmt::Debug> {
+pub struct FirstSetDisplay<'a, T: ToBitIdx + fmt::Debug> {
     pub set: &'a FirstSet<T>,
 }
 
-impl<'a, T: Eq + Hash + fmt::Debug> fmt::Display for FirstSetDisplay<'a, T> {
+impl<'a, T: ToBitIdx + FromBitIdx + fmt::Debug> fmt::Display for FirstSetDisplay<'a, T> {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        let n_terminals = self.set.n_terminals();
         write!(f, "{{")?;
-        for (t_idx, t) in self.set.terminals.iter().enumerate() {
+        for (t_idx, t) in self.set.terminals().enumerate() {
             write!(f, "{:?}", t)?;
-            if t_idx != self.set.terminals.len() - 1 {
+            if t_idx != n_terminals - 1 {
                 write!(f, ", ")?;
             }
         }
