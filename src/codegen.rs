@@ -1,6 +1,6 @@
 use crate::ast::{Conversion, FieldPattern, Name, Pattern, TokenEnum};
 use crate::grammar::{Grammar, NonTerminal, Production, Symbol, SymbolKind};
-use crate::parse_table::ParseTable;
+// use crate::parse_table::ParseTable;
 use crate::terminal::{TerminalIdx, TerminalReprArena};
 
 use std::convert::TryFrom;
@@ -381,6 +381,7 @@ pub fn generate_semantic_action_table(
     (decls, Grammar { non_terminals })
 }
 
+/*
 /// Generates `PARSE_TABLE: [[usize]]` that maps (non_terminal_idx, terminal_idx) to
 /// production_idx.
 fn generate_parse_table_code(
@@ -433,6 +434,7 @@ fn generate_parse_table_code(
         ];
     )
 }
+*/
 
 /// Generates a `PRODUCTIONS: [[Action]]` array, indexed by production index.
 ///

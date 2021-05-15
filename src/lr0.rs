@@ -1,3 +1,4 @@
+use crate::bitset::{FromBitIdx, ToBitIdx};
 use crate::follow::FollowTable;
 use crate::grammar::{Grammar, NonTerminalIdx, ProductionIdx, Symbol, SymbolKind};
 use crate::lr_common::{LRTable, LRTableBuilder, StateIdx};
@@ -211,7 +212,7 @@ fn symbols_eq<T: Eq>(ss1: &[Symbol<T>], ss2: &[SymbolKind<T>]) -> bool {
     ss1.len() == ss2.len() && ss1.iter().zip(ss2).all(|(s1, s2)| s1.kind == *s2)
 }
 
-fn build_slr_table<T: Eq + Hash + Copy + fmt::Debug, A: Clone>(
+fn build_slr_table<T: ToBitIdx + FromBitIdx + Eq + Hash + Copy + fmt::Debug, A: Clone>(
     grammar: &Grammar<T, A>,
     automaton: &LR0Automaton<T>,
     follow_table: &FollowTable<T>,
@@ -243,7 +244,7 @@ fn build_slr_table<T: Eq + Hash + Copy + fmt::Debug, A: Clone>(
                 for follow in follow_set.terminals() {
                     table.add_reduce(
                         state_idx,
-                        Some(*follow),
+                        Some(follow),
                         item.non_terminal_idx,
                         item.production_idx,
                         production.action.clone(),
@@ -580,8 +581,8 @@ fn simulate1() {
     use crate::test_grammars::{grammar6, Grammar6Token};
 
     let grammar = grammar6();
-    let first = generate_first_table(&grammar);
-    let follow = generate_follow_table(&grammar, &first);
+    let first = generate_first_table(&grammar, Grammar6Token::n_tokens());
+    let follow = generate_follow_table(&grammar, &first, Grammar6Token::n_tokens());
     let lr_automaton = compute_lr0_automaton(&grammar);
 
     println!(

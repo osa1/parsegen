@@ -1,5 +1,7 @@
 //! Implements an arena for terminal representations
 
+use crate::bitset::{FromBitIdx, ToBitIdx};
+
 use std::fmt;
 use std::iter::FromIterator;
 
@@ -28,6 +30,24 @@ struct TerminalRepr {
 #[derive(PartialEq, Eq, PartialOrd, Ord, Hash, Clone, Copy)]
 pub struct TerminalIdx(usize);
 
+impl ToBitIdx for TerminalIdx {
+    fn to_bit_idx(&self) -> usize {
+        self.0
+    }
+}
+
+impl FromBitIdx for TerminalIdx {
+    fn from_bit_idx(idx: usize) -> Self {
+        TerminalIdx(idx)
+    }
+}
+
+impl Into<usize> for TerminalIdx {
+    fn into(self) -> usize {
+        self.0
+    }
+}
+
 impl fmt::Debug for TerminalIdx {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(f, "#t{}", self.0)
@@ -36,7 +56,7 @@ impl fmt::Debug for TerminalIdx {
 
 impl TerminalIdx {
     pub fn as_usize(self) -> usize {
-        self.0
+        self.into()
     }
 }
 

@@ -24,10 +24,13 @@ pub fn generate_lr1_parser(
     let n_terminals = terminals.n_terminals();
     let token_type = &tokens.type_name;
 
-    let first_table = generate_first_table(&grammar);
-    let (lr1_automaton, nt_state_indices) = generate_lr1_automaton(&grammar, &first_table, || {
-        Box::new(terminals.terminal_indices())
-    });
+    let first_table = generate_first_table(&grammar, n_terminals);
+    let (lr1_automaton, nt_state_indices) = generate_lr1_automaton(
+        &grammar,
+        &first_table,
+        || Box::new(terminals.terminal_indices()),
+        n_terminals,
+    );
 
     let token_lifetimes = &tokens.type_lifetimes;
 
