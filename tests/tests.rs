@@ -356,3 +356,89 @@ fn test_grammar_7() {
         Ok(())
     );
 }
+
+#[test]
+fn bug() {
+    #[derive(Debug)]
+    pub enum Token {
+        Id,
+        Minus,
+        LParen,
+        RParen,
+    }
+
+    #[derive(Debug, PartialEq, Eq)]
+    pub enum Expr {
+        Id,
+        Neg(Box<Expr>),
+        Sub(Box<Expr>, Box<Expr>),
+        App(Box<Expr>, Vec<Expr>),
+    }
+
+    parser! {
+        enum Token {
+            "n" => Token::Id,
+            "-" => Token::Minus,
+            "(" => Token::LParen,
+            ")" => Token::RParen,
+        }
+
+        pub Expr0: Expr = {
+            <expr:Expr1> =>
+                expr,
+
+            <expr1:Expr0> "-" <expr2:Expr1> =>
+                Expr::Sub(Box::new(expr1), Box::new(expr2)),
+        };
+
+        Expr1: Expr = {
+            <expr:Expr2> =>
+                expr,
+
+            <expr:Expr2> <exprs:Exprs2_1> =>
+                Expr::App(Box::new(expr), exprs),
+        };
+
+        // One or more exprs
+        Exprs2_1: Vec<Expr> = {
+            <expr:Expr2> <mut exprs:Exprs2_0> => {
+                exprs.push(expr);
+                exprs.reverse();
+                exprs
+            }
+        };
+
+        // Zero or more exprs
+        Exprs2_0: Vec<Expr> = {
+            => vec![],
+
+            <expr:Expr2> <mut exprs:Exprs2_0> => {
+                exprs.push(expr);
+                exprs
+            }
+        };
+
+        Expr2: Expr = {
+            <expr:Expr3> =>
+                expr,
+
+            "-" <expr:Expr1> =>
+                Expr::Neg(Box::new(expr)),
+        };
+
+        Expr3: Expr = {
+            "n" =>
+                Expr::Id,
+
+            "(" <expr:Expr0> ")" =>
+                expr,
+        };
+    }
+
+    use Token::*;
+
+    assert_eq!(
+        Expr0::parse(vec![Ok::<Token, ()>(Id), Ok(Minus), Ok(Id)].into_iter()),
+        Ok(Expr::Sub(Box::new(Expr::Id), Box::new(Expr::Id))),
+    );
+}
