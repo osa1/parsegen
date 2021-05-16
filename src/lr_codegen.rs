@@ -53,7 +53,7 @@ pub fn generate_lr1_parser(
     //     }
     // );
 
-    let lr1_table = build_lr1_table(&grammar, &lr1_automaton, n_terminals);
+    let lr1_table = build_lr1_table(&grammar, &lr1_automaton);
 
     // println!(
     //     "{}",

@@ -35,6 +35,7 @@ fn add_non_terminal<T>(
 // E -> E + E | n
 //
 // ambiguous
+#[allow(unused)]
 pub fn grammar1() -> Grammar<char, ()> {
     let mut grammar: Grammar<char, ()> = Grammar::new();
 
@@ -60,6 +61,7 @@ pub fn grammar1() -> Grammar<char, ()> {
 // E -> {empty}
 //
 // ambiguous
+#[allow(unused)]
 pub fn grammar2() -> Grammar<char, ()> {
     let mut grammar: Grammar<char, ()> = Grammar::new();
 
@@ -96,6 +98,7 @@ pub fn grammar2() -> Grammar<char, ()> {
 // C -> a
 //
 // ambiguous: try "aab"
+#[allow(unused)]
 pub fn grammar3() -> Grammar<char, ()> {
     let mut grammar: Grammar<char, ()> = Grammar::new();
 
@@ -132,6 +135,7 @@ pub fn grammar3() -> Grammar<char, ()> {
 // S -> ST | a
 // B -> (empty)
 // T -> aB | a
+#[allow(unused)]
 pub fn grammar4() -> Grammar<char, ()> {
     let mut grammar: Grammar<char, ()> = Grammar::new();
 
