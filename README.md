@@ -1,4 +1,4 @@
-# parsegen: An LR parser generator, implemented as a proc macro
+# parsegen
 
 parsegen is an LR parser generator, similar to happy, ocamlyacc, and lalrpop.
 
