@@ -17,6 +17,7 @@ struct LR1Item<T: Clone> {
 }
 
 impl<T: Clone> LR1Item<T> {
+    #[cfg(test)]
     fn new(
         non_terminal_idx: usize,
         production_idx: usize,
@@ -71,15 +72,6 @@ impl<T: Clone> LR1Item<T> {
         let mut item: LR1Item<T> = (*self).clone();
         item.cursor += 1;
         item
-    }
-
-    fn try_advance<T1, A>(&self, grammar: &Grammar<T1, A>) -> Option<LR1Item<T>> {
-        let production = self.get_production(grammar);
-        if self.cursor == production.symbols().len() {
-            None
-        } else {
-            Some(self.advance())
-        }
     }
 
     fn is_complete<T1, A>(&self, grammar: &Grammar<T1, A>) -> bool {
@@ -258,10 +250,6 @@ impl<T: Clone> LR1Automaton<T> {
             idx: StateIdx(0),
         }
     }
-
-    fn get_state(&self, state_idx: StateIdx) -> &LR1State<T> {
-        &self.states[state_idx.0]
-    }
 }
 
 impl<T: Clone> Default for LR1Automaton<T> {
@@ -385,13 +373,8 @@ where
 pub fn build_lr1_table<T: Clone + Eq + Hash + fmt::Debug, A: Clone>(
     grammar: &Grammar<T, A>,
     automaton: &LR1Automaton<T>,
-    n_terminals: usize,
 ) -> LRTable<T, A> {
-    let mut table: LRTableBuilder<T, A> = LRTableBuilder::new(
-        automaton.states.len(),
-        n_terminals,
-        grammar.non_terminals().len(),
-    );
+    let mut table: LRTableBuilder<T, A> = LRTableBuilder::new(automaton.states.len());
 
     for (state_idx, state) in automaton.state_indices() {
         for item in state.items() {
@@ -463,7 +446,7 @@ impl<'a, 'b, T: Clone + fmt::Debug, A> fmt::Display for LR1ItemDisplay<'a, 'b, T
         let non_terminal = self.grammar.get_non_terminal(self.item.non_terminal_idx);
         let production = non_terminal.get_production(self.item.production_idx);
 
-        write!(f, "[{} -> ", non_terminal.non_terminal)?;
+        write!(f, "[{} -> ", &non_terminal.non_terminal)?;
 
         for (symbol_idx, symbol) in production.symbols().iter().enumerate() {
             if symbol_idx == self.item.cursor {
@@ -662,7 +645,7 @@ fn simulate1() {
         }
     );
 
-    let lr1 = build_lr1_table(&grammar, &lr_automaton, 5);
+    let lr1 = build_lr1_table(&grammar, &lr_automaton);
 
     // println!(
     //     "{}",
@@ -726,7 +709,7 @@ fn simulate2() {
     //     }
     // );
 
-    let lr1 = build_lr1_table(&grammar, &lr_automaton, 2);
+    let lr1 = build_lr1_table(&grammar, &lr_automaton);
 
     println!("{}", LRTableDisplay::new(&lr1, &grammar),);
 
@@ -748,7 +731,7 @@ fn simulate3() {
     let (lr_automaton, _) = generate_lr1_automaton(&grammar, &first, || {
         Box::new(vec![Grammar7Token::Eq, Grammar7Token::Star, Grammar7Token::Id].into_iter())
     });
-    let lr1 = build_lr1_table(&grammar, &lr_automaton, 3);
+    let lr1 = build_lr1_table(&grammar, &lr_automaton);
 
     println!("{}", LRTableDisplay::new(&lr1, &grammar),);
 
@@ -820,7 +803,7 @@ fn simulate4() {
         }
     );
 
-    let lr1 = build_lr1_table(&grammar, &lr_automaton, 1);
+    let lr1 = build_lr1_table(&grammar, &lr_automaton);
 
     println!("{}", LRTableDisplay::new(&lr1, &grammar),);
 

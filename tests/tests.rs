@@ -161,7 +161,7 @@ fn bug_2() {
 #[test]
 fn test_grammar_5() {
     #[derive(Debug)]
-    enum Token {
+    pub enum Token {
         Plus,
         Star,
         Int(u64),
@@ -238,7 +238,7 @@ fn test_grammar_5() {
 fn test_grammar_6() {
     // TODO: Token and lexer duplicated from prev test
     #[derive(Debug)]
-    enum Token {
+    pub enum Token {
         Plus,
         Star,
         Int(u64),
@@ -310,7 +310,7 @@ fn test_grammar_6() {
 #[test]
 fn test_grammar_7() {
     #[derive(Debug)]
-    enum Token {
+    pub enum Token {
         Eq,
         Star,
         Id,

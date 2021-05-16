@@ -1,24 +1,18 @@
-#![allow(dead_code)]
-
 #[macro_use]
 mod maplit;
 
 pub mod ast;
 mod codegen;
 mod first;
-mod follow;
 mod grammar;
 mod lower;
-mod lr0;
 mod lr1;
 mod lr_codegen;
 mod lr_common;
-mod parse_table;
 mod terminal;
 
-// mod earley;
-// mod simulate;
-// mod graphviz;
+// mod follow;
+// mod lr0;
 
 #[cfg(test)]
 mod test_grammars;
@@ -56,14 +50,6 @@ pub fn parser(parser: ast::Parser) -> TokenStream {
     // println!("Grammar:");
     // println!("{}", grammar);
 
-    // let ll1_parser = codegen::generate_ll1_parser(
-    //     grammar.clone(),
-    //     &token_enum,
-    //     &token_kind_type_name,
-    //     &token_kind_type_decl,
-    //     &terminal_repr_arena,
-    // );
-
     let lr1_parser = lr_codegen::generate_lr1_parser(
         grammar,
         &token_enum,
@@ -73,7 +59,6 @@ pub fn parser(parser: ast::Parser) -> TokenStream {
     );
 
     quote!(
-        // #ll1_parser
         #lr1_parser
     )
     .into()

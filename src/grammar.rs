@@ -4,6 +4,13 @@ use crate::ast;
 
 use std::convert::TryFrom;
 
+/// Grammar type parameterized over terminals and user actions.
+#[derive(Debug, Clone)]
+pub struct Grammar<T, A> {
+    // Indexed by `NonTerminalIdx`
+    pub non_terminals: Vec<NonTerminal<T, A>>,
+}
+
 #[derive(Debug, PartialEq, Eq, Clone, Copy, PartialOrd, Ord, Hash)]
 pub struct NonTerminalIdx(pub u32);
 
@@ -25,16 +32,10 @@ impl ProductionIdx {
         self.0 as usize
     }
 
+    #[cfg(test)]
     pub fn from_usize(i: usize) -> Self {
         Self(u32::try_from(i).unwrap())
     }
-}
-
-/// Grammar type parameterized over terminals and user actions.
-#[derive(Debug, Clone)]
-pub struct Grammar<T, A> {
-    // Indexed by `NonTerminalIdx`
-    pub non_terminals: Vec<NonTerminal<T, A>>,
 }
 
 #[derive(Debug, Clone)]
@@ -100,6 +101,8 @@ impl<T, A> Grammar<T, A> {
         &self.non_terminals[idx.0 as usize]
     }
 
+    /*
+    #[cfg(test)]
     pub fn get_non_terminal_idx(&self, name: &str) -> Option<NonTerminalIdx> {
         self.non_terminals
             .iter()
@@ -112,6 +115,7 @@ impl<T, A> Grammar<T, A> {
                 }
             })
     }
+    */
 
     pub fn add_production(
         &mut self,
@@ -137,16 +141,15 @@ impl<T, A> Grammar<T, A> {
 }
 
 impl<T, A> NonTerminal<T, A> {
-    pub fn name(&self) -> &str {
-        &self.non_terminal
-    }
-
     pub fn productions(&self) -> &[Production<T, A>] {
         &self.productions
     }
 
-    pub fn production_indices(&self) -> impl Iterator<Item = ProductionIdx> {
-        (0..self.productions.len()).map(|i| ProductionIdx(i as u32))
+    pub fn production_indices(&self) -> impl Iterator<Item = (ProductionIdx, &Production<T, A>)> {
+        self.productions
+            .iter()
+            .enumerate()
+            .map(|(i, p)| (ProductionIdx(i as u32), p))
     }
 
     pub fn get_production(&self, production_idx: ProductionIdx) -> &Production<T, A> {
@@ -237,16 +240,6 @@ impl<'grammar, T, A> Iterator for NonTerminalProductionIndicesIter<'grammar, T, 
 }
 
 impl<T, A> Grammar<T, A> {
-    pub fn production_indices(
-        &self,
-    ) -> impl Iterator<Item = (NonTerminalIdx, ProductionIdx, &Production<T, A>)> {
-        ProductionIndicesIter {
-            grammar: self,
-            non_terminal_idx: NonTerminalIdx(0),
-            production_idx: ProductionIdx(0),
-        }
-    }
-
     pub fn non_terminals(&self) -> &[NonTerminal<T, A>] {
         &self.non_terminals
     }
@@ -310,11 +303,11 @@ impl<T: fmt::Debug, A> fmt::Display for Grammar<T, A> {
                 nt.non_terminal
             )?;
 
-            for (p_idx, p) in nt.productions.iter().enumerate() {
+            for (p_idx, p) in nt.production_indices() {
                 writeln!(
                     f,
                     "  {}: {}",
-                    p_idx,
+                    p_idx.as_usize(),
                     ProductionDisplay {
                         production: p,
                         grammar: self

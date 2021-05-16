@@ -1,99 +1,12 @@
 use crate::ast::{Conversion, FieldPattern, Name, Pattern, TokenEnum};
 use crate::grammar::{Grammar, NonTerminal, Production, Symbol, SymbolKind};
-use crate::parse_table::ParseTable;
-use crate::terminal::{TerminalReprArena, TerminalReprIdx};
+use crate::terminal::{TerminalIdx, TerminalReprArena};
 
 use std::convert::TryFrom;
 
 use fxhash::FxHashMap;
 use proc_macro2::{Span, TokenStream};
 use quote::quote;
-
-/*
-// Terminals in the grammar are the qualified enum variants (e.g. `TokenKind::T0`)
-pub fn generate_ll1_parser(
-    grammar: Grammar<TerminalReprIdx, syn::Expr>,
-    tokens: &TokenEnum,
-    token_kind_type_name: &syn::Ident,
-    token_kind_type_decl: &TokenStream,
-    terminal_arena: &TerminalReprArena,
-) -> TokenStream {
-    let (_token_kind_fn_name, token_kind_fn_decl) = token_kind_fn(token_kind_type_name, tokens);
-
-    let (
-        semantic_action_result_type_name,
-        semantic_action_result_type_decl,
-        non_terminal_action_variant_name,
-    ) = semantic_action_result_type(&grammar, &tokens.conversions, &tokens.type_lifetimes);
-
-    let (_token_value_fn_name, token_value_fn_decl) = token_value_fn(
-        &tokens.conversions,
-        &tokens.type_name,
-        &tokens.type_lifetimes,
-        &semantic_action_result_type_name,
-    );
-
-    let first_table = generate_first_table(&grammar);
-    let follow_table = generate_follow_table(&grammar, &first_table);
-    let parse_table = generate_parse_table(&grammar, terminal_arena, &first_table, &follow_table);
-
-    // Generate semantic action table, replace semantic actions in the grammar with their indices
-    // in the table
-    let (semantic_action_table, grammar) = generate_semantic_action_table(
-        grammar,
-        &non_terminal_action_variant_name,
-        &tokens.type_lifetimes,
-    );
-
-    let production_array = generate_production_array(&grammar, terminal_arena);
-
-    let parse_table = generate_parse_table_code(&grammar, &parse_table, terminal_arena);
-
-    let token_type = &tokens.type_name;
-    let token_lifetimes = &tokens.type_lifetimes;
-
-    let (parse_fn, nt_types) = {
-        if grammar.non_terminals.is_empty() {
-            (TokenStream::new(), vec![])
-        } else {
-            (
-                generate_parse_fn(token_type, token_lifetimes, terminal_arena.n_terminals()),
-                // For public non-terminals, generate a type with a `parse` method that calls our
-                // top-level parse function
-                generate_pub_non_terminal_types(&grammar, token_type, token_lifetimes),
-            )
-        }
-    };
-
-    quote!(
-        #token_kind_type_decl
-        #token_kind_fn_decl
-        #semantic_action_result_type_decl
-        #token_value_fn_decl
-        #(#semantic_action_table)*
-        #production_array
-        #parse_table
-
-        #[derive(Debug, PartialEq, Eq)]
-        pub enum ParseError<T, E> {
-            LexerError(E),
-            UnexpectedToken(T),
-            UnexpectedEOF,
-        }
-
-        #[derive(Clone, Copy)]
-        enum Action {
-            MatchNonTerminal(usize),
-            MatchTerminal(#token_kind_type_name),
-            RunSemanticAction(usize),
-        }
-
-        #parse_fn
-
-        #(#nt_types)*
-    )
-}
-*/
 
 /// Generates an `enum #{token}Kind { T0, T1, ... }` type with a variant for each token described
 /// in the `enum Token { ... }`.
@@ -136,132 +49,6 @@ pub fn token_kind_type(tokens: &TokenEnum) -> (syn::Ident, TokenStream, Terminal
     (token_kind_name, code, arena)
 }
 
-/// Generates the parser function
-fn generate_parse_fn(
-    token_type: &syn::Ident,
-    token_lifetimes: &[syn::Lifetime],
-    n_terminals: usize,
-    // nt0_name: &str,
-    // nt0_return_ty: &syn::Type,
-) -> TokenStream {
-    // let nt0_method_name = syn::Ident::new(&format!("non_terminal_{}", nt0_name), Span::call_site());
-
-    quote!(
-        fn parse<#(#token_lifetimes,)* E, R>(
-            input: &mut dyn Iterator<Item=Result<(usize, #token_type<#(#token_lifetimes),*>, usize), E>>,
-            extract_nt_return_value: fn(SemanticActionResult<#(#token_lifetimes),*>) -> R,
-        ) -> Result<R, ParseError<#token_type<#(#token_lifetimes),*>, E>>
-        {
-            let mut action_stack: Vec<Action> = vec![Action::MatchNonTerminal(0)];
-            let mut value_stack: Vec<SemanticActionResult> = vec![];
-
-            'next_token: for (token_index, token) in input.enumerate() {
-                let token = match token {
-                    Err(err) => return Err(ParseError::LexerError(err)),
-                    Ok(token) => token,
-                };
-                loop {
-                    match action_stack.pop().unwrap() {
-                        Action::MatchNonTerminal(nt_idx) => {
-                            let prod_idx: Option<u32> = PARSE_TABLE[nt_idx][token_kind(&token.1) as usize];
-                            match prod_idx {
-                                None => return Err(ParseError::UnexpectedToken(token.1)),
-                                Some(prod_idx) => {
-                                    let prod_actions = &PRODUCTIONS[prod_idx as usize];
-                                    action_stack.extend(prod_actions.iter().copied());
-                                }
-                            }
-                        }
-                        Action::MatchTerminal(token_kind_) => {
-                            if token_kind_ == token_kind(&token.1) {
-                                value_stack.push(token_value(&token.1));
-                            } else {
-                                return Err(ParseError::UnexpectedToken(token.1));
-                            }
-                            continue 'next_token;
-                        }
-                        Action::RunSemanticAction(idx) => {
-                            (SEMANTIC_ACTIONS[idx])(&mut value_stack);
-                        }
-                    }
-                }
-            }
-
-            while let Some(action) = action_stack.pop() {
-                match action {
-                    Action::MatchNonTerminal(nt_idx) => {
-                        // Last element in token tables is EOF
-                        let prod_idx: Option<u32> = PARSE_TABLE[nt_idx][#n_terminals];
-                        match prod_idx {
-                            Some(prod_idx) => {
-                                let prod_actions = &PRODUCTIONS[prod_idx as usize];
-                                // The production should be empty
-                                assert_eq!(prod_actions.len(), 1);
-                                action_stack.extend(prod_actions.iter().copied());
-                            }
-                            None => return Err(ParseError::UnexpectedEOF),
-                        }
-                    }
-                    Action::MatchTerminal(_) => {
-                        return Err(ParseError::UnexpectedEOF);
-                    }
-                    Action::RunSemanticAction(idx) => {
-                        (SEMANTIC_ACTIONS[idx])(&mut value_stack);
-                    }
-                }
-            }
-
-            assert_eq!(action_stack.len(), 0);
-            assert_eq!(value_stack.len(), 1);
-
-            let value = extract_nt_return_value(value_stack.pop().unwrap());
-            Ok(value)
-        }
-    )
-}
-
-fn generate_pub_non_terminal_types<T, A>(
-    grammar: &Grammar<T, A>,
-    non_terminal_value_extraction_fns: &[syn::Ident],
-    token_type: &syn::Ident,
-    token_lifetimes: &[syn::Lifetime],
-) -> Vec<TokenStream> {
-    let mut types: Vec<TokenStream> = vec![];
-
-    for (
-        nt_idx,
-        NonTerminal {
-            non_terminal,
-            return_ty,
-            public,
-            ..
-        },
-    ) in grammar.non_terminal_indices()
-    {
-        if !public {
-            continue;
-        }
-
-        let nt_method_name = &non_terminal_value_extraction_fns[nt_idx.as_usize()];
-        let non_terminal = syn::Ident::new(non_terminal, Span::call_site());
-
-        types.push(quote!(
-            pub struct #non_terminal;
-
-            impl #non_terminal {
-                pub fn parse<#(#token_lifetimes,)* E>(
-                    input: &mut dyn Iterator<Item=Result<(usize, #token_type<#(#token_lifetimes),*>, usize), E>>
-                ) -> Result<#return_ty, ParseError<#token_type<#(#token_lifetimes),*>, E>>
-                {
-                    parse::<E, #return_ty>(input, SemanticActionResult::#nt_method_name)
-                }
-            }
-        ));
-    }
-
-    types
-}
-
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub struct SemanticActionIdx(u16);
 
@@ -274,20 +61,17 @@ impl SemanticActionIdx {
 /// Generates semantic action functions, semantic action table (array of semantic action functions)
 /// and replaces semantic actions in the grammar with their indices in the array.
 pub fn generate_semantic_action_table(
-    grammar: Grammar<TerminalReprIdx, syn::Expr>,
+    grammar: Grammar<TerminalIdx, syn::Expr>,
     non_terminal_action_variant_name: &[usize],
     token_lifetimes: &[syn::Lifetime],
-) -> (
-    Vec<TokenStream>,
-    Grammar<TerminalReprIdx, SemanticActionIdx>,
-) {
+) -> (Vec<TokenStream>, Grammar<TerminalIdx, SemanticActionIdx>) {
     let Grammar { non_terminals } = grammar;
 
     // Action function declarations and the array
     let mut decls: Vec<TokenStream> = vec![];
     let mut fn_names: Vec<syn::Ident> = vec![];
 
-    let non_terminals: Vec<NonTerminal<TerminalReprIdx, SemanticActionIdx>> = non_terminals
+    let non_terminals: Vec<NonTerminal<TerminalIdx, SemanticActionIdx>> = non_terminals
         .into_iter()
         .enumerate()
         .map(
@@ -300,7 +84,7 @@ pub fn generate_semantic_action_table(
                     public,
                 },
             )| {
-                let productions: Vec<Production<TerminalReprIdx, SemanticActionIdx>> = productions
+                let productions: Vec<Production<TerminalIdx, SemanticActionIdx>> = productions
                     .into_iter()
                     .enumerate()
                     .map(|(p_i, Production { symbols, action })| {
@@ -382,110 +166,6 @@ pub fn generate_semantic_action_table(
     ));
 
     (decls, Grammar { non_terminals })
-}
-
-/// Generates `PARSE_TABLE: [[usize]]` that maps (non_terminal_idx, terminal_idx) to
-/// production_idx.
-fn generate_parse_table_code(
-    grammar: &Grammar<TerminalReprIdx, SemanticActionIdx>,
-    parse_table: &ParseTable,
-    terminals: &TerminalReprArena,
-) -> TokenStream {
-    let n_non_terminals = grammar.non_terminals.len();
-    let n_terminals = terminals.n_terminals();
-
-    // +1 for EOF
-    let mut table: Vec<Vec<Option<u32>>> = vec![vec![None; n_terminals + 1]; n_non_terminals];
-
-    for ((non_terminal_idx, terminal_idx), production_idx) in &parse_table.table {
-        table[non_terminal_idx.as_usize()][terminal_idx.as_usize()] = Some(u32::from(
-            grammar
-                .get_production(*non_terminal_idx, *production_idx)
-                .action
-                .as_u16(),
-        ));
-    }
-
-    for (non_terminal_idx, _) in grammar.non_terminal_indices() {
-        if let Some(production_idx) = parse_table.get_end(non_terminal_idx) {
-            table[non_terminal_idx.as_usize()][n_terminals] = Some(u32::from(
-                grammar
-                    .get_production(non_terminal_idx, production_idx)
-                    .action
-                    .as_u16(),
-            ));
-        }
-    }
-
-    let mut non_terminal_array_elems: Vec<TokenStream> = vec![];
-    for terminal_array in &table {
-        let mut array_elems: Vec<TokenStream> = vec![];
-        for production_idx in terminal_array {
-            match production_idx {
-                Option::None => array_elems.push(quote!(None)),
-                Option::Some(production_idx) => array_elems.push(quote!(Some(#production_idx))),
-            }
-        }
-        non_terminal_array_elems.push(quote!([#(#array_elems),*]));
-    }
-
-    let n_terminals = n_terminals + 1;
-    quote!(
-        static PARSE_TABLE: [[Option<u32>; #n_terminals]; #n_non_terminals] = [
-            #(#non_terminal_array_elems),*
-        ];
-    )
-}
-
-/// Generates a `PRODUCTIONS: [[Action]]` array, indexed by production index.
-///
-// NB. Index of a production in the array == the production's action idx
-fn generate_production_array(
-    grammar: &Grammar<TerminalReprIdx, SemanticActionIdx>,
-    terminals: &TerminalReprArena,
-) -> TokenStream {
-    let mut action_array_names: Vec<TokenStream> = vec![];
-    let mut action_arrays: Vec<TokenStream> = vec![];
-
-    let mut n_prod = 0;
-    for (p_idx, (_, _, production)) in grammar.production_indices().enumerate() {
-        // Just as a sanity check, production's action idx should be the index of the production in
-        // the array
-        assert_eq!(production.action, SemanticActionIdx(n_prod));
-
-        let array_name = syn::Ident::new(&format!("PROD_{}", p_idx), Span::call_site());
-        let semantic_action_idx = production.action.as_u16();
-        let mut array_elems: Vec<TokenStream> =
-            vec![quote!(Action::RunSemanticAction(#semantic_action_idx))];
-
-        for symbol in production.symbols.iter().rev() {
-            match symbol.kind {
-                SymbolKind::NonTerminal(non_terminal_idx) => {
-                    let idx = non_terminal_idx.as_usize();
-                    array_elems.push(quote!(Action::MatchNonTerminal(#idx)));
-                }
-                SymbolKind::Terminal(terminal_idx) => {
-                    let terminal_path = terminals.get_enum_path(terminal_idx);
-                    array_elems.push(quote!(Action::MatchTerminal(#terminal_path)));
-                }
-            }
-        }
-
-        let n_actions = array_elems.len();
-        action_arrays.push(quote!(
-            static #array_name: [Action; #n_actions] = [#(#array_elems),*];
-        ));
-
-        action_array_names.push(quote!(&#array_name));
-
-        n_prod += 1;
-    }
-
-    let n_elems = action_arrays.len();
-    quote!(
-        #(#action_arrays)*
-        static PRODUCTIONS: [&'static [Action]; #n_elems] = [#(#action_array_names),*];
-    )
 }
 
 /// Generates a `fn token_kind(& #token_type) -> #token_kind_type` that returns kind of a token.

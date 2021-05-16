@@ -29,8 +29,6 @@ pub struct LRTable<T: Eq + Hash, A> {
     action: FxHashMap<StateIdx, FxHashMap<Option<T>, LRAction<A>>>,
     goto: FxHashMap<StateIdx, FxHashMap<NonTerminalIdx, StateIdx>>,
     n_states: usize,
-    n_terminals: usize,
-    n_non_terminals: usize,
 }
 
 pub struct LRTableBuilder<T: Eq + Hash, A> {
@@ -38,14 +36,12 @@ pub struct LRTableBuilder<T: Eq + Hash, A> {
 }
 
 impl<T: Eq + Hash + fmt::Debug, A> LRTableBuilder<T, A> {
-    pub fn new(n_states: usize, n_terminals: usize, n_non_terminals: usize) -> Self {
+    pub fn new(n_states: usize) -> Self {
         Self {
             table: LRTable {
                 action: Default::default(),
                 goto: Default::default(),
                 n_states,
-                n_terminals,
-                n_non_terminals,
             },
         }
     }
@@ -125,12 +121,14 @@ impl<T: Eq + Hash + fmt::Debug, A> LRTableBuilder<T, A> {
 }
 
 impl<T: Eq + Hash, A> LRTable<T, A> {
+    #[cfg(test)]
     pub fn get_action(&self, state: StateIdx, non_terminal: Option<T>) -> Option<&LRAction<A>> {
         self.action
             .get(&state)
             .and_then(|action| action.get(&non_terminal))
     }
 
+    #[cfg(test)]
     pub fn get_goto(&self, state: StateIdx, non_terminal: NonTerminalIdx) -> Option<StateIdx> {
         self.goto
             .get(&state)
@@ -146,21 +144,12 @@ impl<T: Eq + Hash, A> LRTable<T, A> {
         &self.goto
     }
 
-    // For debugging
-    pub fn actions(&self) -> impl Iterator<Item = (&StateIdx, &FxHashMap<Option<T>, LRAction<A>>)> {
-        self.action.iter()
-    }
-
-    // For debugging
-    pub fn gotos(&self) -> impl Iterator<Item = (&StateIdx, &FxHashMap<NonTerminalIdx, StateIdx>)> {
-        self.goto.iter()
-    }
-
     pub fn n_states(&self) -> usize {
         self.n_states
     }
 }
 
+#[cfg(test)]
 pub fn simulate<T: Eq + Hash + Copy + std::fmt::Debug, A>(
     table: &LRTable<T, A>,
     grammar: &Grammar<T, A>,
@@ -221,6 +210,7 @@ pub struct LRTableDisplay<'a, 'b, T: Hash + Eq, A> {
 }
 
 impl<'a, 'b, T: Hash + Eq, A> LRTableDisplay<'a, 'b, T, A> {
+    #[cfg(test)]
     pub fn new(table: &'a LRTable<T, A>, grammar: &'b Grammar<T, A>) -> Self {
         Self { table, grammar }
     }
