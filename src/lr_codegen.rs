@@ -45,13 +45,13 @@ pub fn generate_lr1_parser(
         &tokens.type_lifetimes,
     );
 
-    // println!(
-    //     "{}",
-    //     crate::lr1::LR1AutomatonDisplay {
-    //         automaton: &lr1_automaton,
-    //         grammar: &grammar
-    //     }
-    // );
+    println!(
+        "{}",
+        crate::lr1::LR1AutomatonDisplay {
+            automaton: &lr1_automaton,
+            grammar: &grammar
+        }
+    );
 
     let lr1_table = build_lr1_table(&grammar, &lr1_automaton, n_terminals);
 
@@ -113,7 +113,7 @@ pub fn generate_lr1_parser(
             );
 
             quote!(
-                struct #non_terminal_name_id;
+                pub struct #non_terminal_name_id;
 
                 impl #non_terminal_name_id {
                     pub fn parse<#(#token_lifetimes,)* E: Clone>(
