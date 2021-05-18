@@ -357,88 +357,99 @@ fn test_grammar_7() {
     );
 }
 
+// An example with (1) juxtaposition application syntax (2) unary `-` (3) binary `-`
 #[test]
-fn bug() {
-    #[derive(Debug)]
-    pub enum Token {
-        Id,
-        Minus,
-        LParen,
-        RParen,
-    }
-
+fn expr_example() {
     #[derive(Debug, PartialEq, Eq)]
     pub enum Expr {
         Id,
         Neg(Box<Expr>),
         Sub(Box<Expr>, Box<Expr>),
-        App(Box<Expr>, Vec<Expr>),
+        App(Box<Expr>, Box<Expr>),
+    }
+
+    #[derive(Debug, PartialEq, Eq)]
+    pub enum Token {
+        Id,
+        Minus,
     }
 
     parser! {
         enum Token {
             "n" => Token::Id,
             "-" => Token::Minus,
-            "(" => Token::LParen,
-            ")" => Token::RParen,
         }
 
-        pub Expr0: Expr = {
-            <expr:Expr1> =>
+        pub BinOpExpr: Expr = {
+            <expr:UnOpExpr> =>
                 expr,
 
-            <expr1:Expr0> "-" <expr2:Expr1> =>
+            <expr1:BinOpExpr> "-" <expr2:UnOpExpr> =>
                 Expr::Sub(Box::new(expr1), Box::new(expr2)),
         };
 
-        Expr1: Expr = {
-            <expr:Expr2> =>
+        UnOpExpr: Expr = {
+            <expr:AppExpr> =>
                 expr,
 
-            <expr:Expr2> <exprs:Exprs2_1> =>
-                Expr::App(Box::new(expr), exprs),
-        };
-
-        // One or more exprs
-        Exprs2_1: Vec<Expr> = {
-            <expr:Expr2> <mut exprs:Exprs2_0> => {
-                exprs.push(expr);
-                exprs.reverse();
-                exprs
-            }
-        };
-
-        // Zero or more exprs
-        Exprs2_0: Vec<Expr> = {
-            => vec![],
-
-            <expr:Expr2> <mut exprs:Exprs2_0> => {
-                exprs.push(expr);
-                exprs
-            }
-        };
-
-        Expr2: Expr = {
-            <expr:Expr3> =>
-                expr,
-
-            "-" <expr:Expr1> =>
+            "-" <expr:AppExpr> =>
                 Expr::Neg(Box::new(expr)),
         };
 
-        Expr3: Expr = {
+        AppExpr: Expr = {
+            <expr:SimpleExpr> =>
+                expr,
+
+            <expr1:SimpleExpr> <expr2:SimpleExpr> =>
+                Expr::App(Box::new(expr1), Box::new(expr2)),
+        };
+
+        SimpleExpr: Expr = {
             "n" =>
                 Expr::Id,
-
-            "(" <expr:Expr0> ")" =>
-                expr,
         };
     }
 
-    use Token::*;
+    use Expr::*;
 
     assert_eq!(
-        Expr0::parse(vec![Ok::<Token, ()>(Id), Ok(Minus), Ok(Id)].into_iter()),
-        Ok(Expr::Sub(Box::new(Expr::Id), Box::new(Expr::Id))),
+        BinOpExpr::parse(
+            vec![Token::Id, Token::Minus, Token::Id]
+                .into_iter()
+                .map(|t| Ok::<Token, ()>(t))
+        ),
+        Ok(Sub(Box::new(Id), Box::new(Id)))
+    );
+    assert_eq!(
+        BinOpExpr::parse(
+            vec![Token::Id, Token::Id]
+                .into_iter()
+                .map(|t| Ok::<Token, ()>(t))
+        ),
+        Ok(App(Box::new(Id), Box::new(Id)))
+    );
+    assert_eq!(
+        BinOpExpr::parse(
+            vec![Token::Minus, Token::Id, Token::Id]
+                .into_iter()
+                .map(|t| Ok::<Token, ()>(t))
+        ),
+        Ok(Neg(Box::new(App(Box::new(Id), Box::new(Id)))))
+    );
+    assert_eq!(
+        BinOpExpr::parse(
+            vec![Token::Minus, Token::Id, Token::Minus, Token::Id]
+                .into_iter()
+                .map(|t| Ok::<Token, ()>(t))
+        ),
+        Ok(Sub(Box::new(Neg(Box::new(Id))), Box::new(Id)))
+    );
+    assert_eq!(
+        BinOpExpr::parse(
+            vec![Token::Id, Token::Minus, Token::Minus, Token::Id]
+                .into_iter()
+                .map(|t| Ok::<Token, ()>(t))
+        ),
+        Ok(Sub(Box::new(Id), Box::new(Neg(Box::new(Id)))))
     );
 }
