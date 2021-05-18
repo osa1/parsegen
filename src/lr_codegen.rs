@@ -78,10 +78,10 @@ pub fn generate_lr1_parser(
     let goto_array_code =
         generate_goto_array(&goto_vec, lr1_table.n_states(), grammar.non_terminals.len());
 
-    let (_token_kind_fn_name, token_kind_fn_decl) =
+    let (token_kind_fn_name, token_kind_fn_decl) =
         crate::codegen::token_kind_fn(token_kind_type_name, tokens);
 
-    let (_token_value_fn_name, token_value_fn_decl) = token_value_fn(
+    let (token_value_fn_name, token_value_fn_decl) = token_value_fn(
         &tokens.conversions,
         &tokens.type_name,
         &tokens.type_lifetimes,
@@ -190,14 +190,14 @@ pub fn generate_lr1_parser(
                 let terminal_idx = match &token {
                     None => #n_terminals,
                     Some(Err(err)) => return Err(ParseError_::Other(err.clone())),
-                    Some(Ok(token)) => token_kind(&token) as usize,
+                    Some(Ok(token)) => #token_kind_fn_name(&token) as usize,
                 };
                 match ACTION[state][terminal_idx] {
                     None => panic!("Stuck! (1) state={}, terminal={}", state, terminal_idx),
                     Some(LRAction::Shift { next_state }) => {
                         state_stack.push(next_state);
                         if let Some(Ok(token)) = &token {
-                            value_stack.push(token_value(token));
+                            value_stack.push(#token_value_fn_name(token));
                         }
                         token = input.next();
                     }
