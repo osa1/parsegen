@@ -356,3 +356,100 @@ fn test_grammar_7() {
         Ok(())
     );
 }
+
+// An example with (1) juxtaposition application syntax (2) unary `-` (3) binary `-`
+#[test]
+fn expr_example() {
+    #[derive(Debug, PartialEq, Eq)]
+    pub enum Expr {
+        Id,
+        Neg(Box<Expr>),
+        Sub(Box<Expr>, Box<Expr>),
+        App(Box<Expr>, Box<Expr>),
+    }
+
+    #[derive(Debug, PartialEq, Eq)]
+    pub enum Token {
+        Id,
+        Minus,
+    }
+
+    parser! {
+        enum Token {
+            "n" => Token::Id,
+            "-" => Token::Minus,
+        }
+
+        pub BinOpExpr: Expr = {
+            <expr:UnOpExpr> =>
+                expr,
+
+            <expr1:BinOpExpr> "-" <expr2:UnOpExpr> =>
+                Expr::Sub(Box::new(expr1), Box::new(expr2)),
+        };
+
+        UnOpExpr: Expr = {
+            <expr:AppExpr> =>
+                expr,
+
+            "-" <expr:AppExpr> =>
+                Expr::Neg(Box::new(expr)),
+        };
+
+        AppExpr: Expr = {
+            <expr:SimpleExpr> =>
+                expr,
+
+            <expr1:SimpleExpr> <expr2:SimpleExpr> =>
+                Expr::App(Box::new(expr1), Box::new(expr2)),
+        };
+
+        SimpleExpr: Expr = {
+            "n" =>
+                Expr::Id,
+        };
+    }
+
+    use Expr::*;
+
+    assert_eq!(
+        BinOpExpr::parse(
+            vec![Token::Id, Token::Minus, Token::Id]
+                .into_iter()
+                .map(|t| Ok::<Token, ()>(t))
+        ),
+        Ok(Sub(Box::new(Id), Box::new(Id)))
+    );
+    assert_eq!(
+        BinOpExpr::parse(
+            vec![Token::Id, Token::Id]
+                .into_iter()
+                .map(|t| Ok::<Token, ()>(t))
+        ),
+        Ok(App(Box::new(Id), Box::new(Id)))
+    );
+    assert_eq!(
+        BinOpExpr::parse(
+            vec![Token::Minus, Token::Id, Token::Id]
+                .into_iter()
+                .map(|t| Ok::<Token, ()>(t))
+        ),
+        Ok(Neg(Box::new(App(Box::new(Id), Box::new(Id)))))
+    );
+    assert_eq!(
+        BinOpExpr::parse(
+            vec![Token::Minus, Token::Id, Token::Minus, Token::Id]
+                .into_iter()
+                .map(|t| Ok::<Token, ()>(t))
+        ),
+        Ok(Sub(Box::new(Neg(Box::new(Id))), Box::new(Id)))
+    );
+    assert_eq!(
+        BinOpExpr::parse(
+            vec![Token::Id, Token::Minus, Token::Minus, Token::Id]
+                .into_iter()
+                .map(|t| Ok::<Token, ()>(t))
+        ),
+        Ok(Sub(Box::new(Id), Box::new(Neg(Box::new(Id)))))
+    );
+}

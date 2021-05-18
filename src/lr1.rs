@@ -370,7 +370,7 @@ where
     (automaton, non_terminal_state_indices)
 }
 
-pub fn build_lr1_table<T: Clone + Eq + Hash + fmt::Debug, A: Clone>(
+pub fn build_lr1_table<T: Clone + Eq + Hash + fmt::Debug, A: Clone + fmt::Debug + Eq>(
     grammar: &Grammar<T, A>,
     automaton: &LR1Automaton<T>,
 ) -> LRTable<T, A> {

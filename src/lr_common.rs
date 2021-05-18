@@ -35,7 +35,7 @@ pub struct LRTableBuilder<T: Eq + Hash, A> {
     table: LRTable<T, A>,
 }
 
-impl<T: Eq + Hash + fmt::Debug, A> LRTableBuilder<T, A> {
+impl<T: Eq + Hash + Clone + fmt::Debug, A: fmt::Debug + Eq> LRTableBuilder<T, A> {
     pub fn new(n_states: usize) -> Self {
         Self {
             table: LRTable {
@@ -51,14 +51,35 @@ impl<T: Eq + Hash + fmt::Debug, A> LRTableBuilder<T, A> {
     }
 
     pub fn add_shift(&mut self, state: StateIdx, token: T, next_state: StateIdx) {
-        let _old = self
-            .table
-            .action
-            .entry(state)
-            .or_default()
-            .insert(Some(token), LRAction::Shift(next_state));
-        // In LR(1) we sometimes add shift to same state mutiple times, not sure why
-        // assert_eq!(old, None, "trying to add {}", next_state.0);
+        let action = self.table.action.entry(state).or_default();
+
+        let old_action = action.insert(Some(token.clone()), LRAction::Shift(next_state));
+
+        if let Some(old_action) = old_action {
+            match old_action {
+                LRAction::Shift(s) => {
+                    if s != next_state {
+                        panic!(
+                            "({}, {:?}): Overriding Shift({}) with Shift({})",
+                            state.0, token, s.0, next_state.0,
+                        );
+                    }
+                }
+                LRAction::Reduce(_nt_, _p_, _) => {
+                    // TODO: Allowing overriding reduce actions for shift for now
+                    // panic!(
+                    //     "({}, {:?}): Overriding Reduce({}, {}) action with Shift({})",
+                    //     state.0, token, nt_.0, p_.0, next_state.0,
+                    // );
+                }
+                LRAction::Accept => {
+                    panic!(
+                        "({}, {:?}): Overriding Accept action with Shift({})",
+                        state.0, token, next_state.0,
+                    );
+                }
+            }
+        }
     }
 
     pub fn add_reduce(
@@ -71,31 +92,33 @@ impl<T: Eq + Hash + fmt::Debug, A> LRTableBuilder<T, A> {
     ) {
         let action = self.table.action.entry(state).or_default();
 
-        match action.get(&token) {
-            Some(LRAction::Shift(s)) => {
-                panic!(
-                    "({}, {:?}): Overriding Shift({}) with Reduce({}, {})",
-                    state.0, token, s.0, non_terminal_idx.0, production_idx.0
-                )
-            }
-            Some(LRAction::Accept) => {
-                panic!(
-                    "({}, {:?}): Overriding Accept action with Reduce({}, {})",
-                    state.0, token, non_terminal_idx.0, production_idx.0
-                );
-            }
-            Some(LRAction::Reduce(nt_, p_, _)) => {
-                panic!(
-                    "({}, {:?}): Overriding Reduce({}, {}) action with Reduce({}, {})",
-                    state.0, token, nt_.0, p_.0, non_terminal_idx.0, production_idx.0
-                );
-            }
-            None => {}
-        }
-        action.insert(
-            token,
+        let old_action = action.insert(
+            token.clone(),
             LRAction::Reduce(non_terminal_idx, production_idx, semantic_action),
         );
+
+        if let Some(old_action) = old_action {
+            match old_action {
+                LRAction::Shift(s) => {
+                    panic!(
+                        "({}, {:?}): Overriding Shift({}) with Reduce({}, {})",
+                        state.0, token, s.0, non_terminal_idx.0, production_idx.0
+                    )
+                }
+                LRAction::Reduce(nt_, p_, _) => {
+                    panic!(
+                        "({}, {:?}): Overriding Reduce({}, {}) action with Reduce({}, {})",
+                        state.0, token, nt_.0, p_.0, non_terminal_idx.0, production_idx.0
+                    );
+                }
+                LRAction::Accept => {
+                    panic!(
+                        "({}, {:?}): Overriding Accept action with Reduce({}, {})",
+                        state.0, token, non_terminal_idx.0, production_idx.0
+                    );
+                }
+            }
+        }
     }
 
     pub fn add_accept(&mut self, state: StateIdx) {
