@@ -1,14 +1,15 @@
 //! A lowered representation of grammars
 
 use crate::ast;
+use crate::terminal::TerminalIdx;
 
 use std::convert::TryFrom;
 
 /// Grammar type parameterized over terminals and user actions.
 #[derive(Debug, Clone)]
-pub struct Grammar<T, A> {
+pub struct Grammar<A> {
     // Indexed by `NonTerminalIdx`
-    pub non_terminals: Vec<NonTerminal<T, A>>,
+    pub non_terminals: Vec<NonTerminal<A>>,
 }
 
 #[derive(Debug, PartialEq, Eq, Clone, Copy, PartialOrd, Ord, Hash)]
@@ -39,21 +40,21 @@ impl ProductionIdx {
 }
 
 #[derive(Debug, Clone)]
-pub struct NonTerminal<T, A> {
+pub struct NonTerminal<A> {
     pub non_terminal: String,
     // Indexed by `ProductionIdx`
-    pub productions: Vec<Production<T, A>>,
+    pub productions: Vec<Production<A>>,
     pub return_ty: syn::Type,
     pub public: bool,
 }
 
 #[derive(Clone)]
-pub struct Production<T, A> {
-    pub symbols: Vec<Symbol<T>>,
+pub struct Production<A> {
+    pub symbols: Vec<Symbol>,
     pub action: A,
 }
 
-impl<T: std::fmt::Debug, A> std::fmt::Debug for Production<T, A> {
+impl<A> std::fmt::Debug for Production<A> {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         f.debug_struct("Production")
             .field("symbols", &self.symbols)
@@ -63,18 +64,18 @@ impl<T: std::fmt::Debug, A> std::fmt::Debug for Production<T, A> {
 }
 
 #[derive(Debug, Clone)]
-pub struct Symbol<T> {
+pub struct Symbol {
     pub binder: Option<ast::Name>,
-    pub kind: SymbolKind<T>,
+    pub kind: SymbolKind,
 }
 
 #[derive(Debug, PartialEq, Eq, PartialOrd, Ord, Hash, Clone)]
-pub enum SymbolKind<T> {
+pub enum SymbolKind {
     NonTerminal(NonTerminalIdx),
-    Terminal(T),
+    Terminal(TerminalIdx),
 }
 
-impl<T, A> Grammar<T, A> {
+impl<A> Grammar<A> {
     pub fn new() -> Self {
         Grammar {
             non_terminals: vec![],
@@ -97,7 +98,7 @@ impl<T, A> Grammar<T, A> {
         NonTerminalIdx(idx as u32)
     }
 
-    pub fn get_non_terminal(&self, idx: NonTerminalIdx) -> &NonTerminal<T, A> {
+    pub fn get_non_terminal(&self, idx: NonTerminalIdx) -> &NonTerminal<A> {
         &self.non_terminals[idx.0 as usize]
     }
 
@@ -120,7 +121,7 @@ impl<T, A> Grammar<T, A> {
     pub fn add_production(
         &mut self,
         non_terminal: NonTerminalIdx,
-        symbols: Vec<Symbol<T>>,
+        symbols: Vec<Symbol>,
         action: A,
     ) -> ProductionIdx {
         let non_terminal = &mut self.non_terminals[non_terminal.0 as usize];
@@ -135,53 +136,53 @@ impl<T, A> Grammar<T, A> {
         &self,
         nt_idx: NonTerminalIdx,
         prod_idx: ProductionIdx,
-    ) -> &Production<T, A> {
+    ) -> &Production<A> {
         &self.non_terminals[nt_idx.0 as usize].productions[prod_idx.0 as usize]
     }
 }
 
-impl<T, A> NonTerminal<T, A> {
-    pub fn productions(&self) -> &[Production<T, A>] {
+impl<A> NonTerminal<A> {
+    pub fn productions(&self) -> &[Production<A>] {
         &self.productions
     }
 
-    pub fn production_indices(&self) -> impl Iterator<Item = (ProductionIdx, &Production<T, A>)> {
+    pub fn production_indices(&self) -> impl Iterator<Item = (ProductionIdx, &Production<A>)> {
         self.productions
             .iter()
             .enumerate()
             .map(|(i, p)| (ProductionIdx(i as u32), p))
     }
 
-    pub fn get_production(&self, production_idx: ProductionIdx) -> &Production<T, A> {
+    pub fn get_production(&self, production_idx: ProductionIdx) -> &Production<A> {
         &self.productions[production_idx.0 as usize]
     }
 }
 
-impl<T, A> Production<T, A> {
-    pub fn symbols(&self) -> &[Symbol<T>] {
+impl<A> Production<A> {
+    pub fn symbols(&self) -> &[Symbol] {
         &self.symbols
     }
 }
 
-struct ProductionIndicesIter<'grammar, T, A> {
-    grammar: &'grammar Grammar<T, A>,
+struct ProductionIndicesIter<'grammar, A> {
+    grammar: &'grammar Grammar<A>,
     non_terminal_idx: NonTerminalIdx,
     production_idx: ProductionIdx,
 }
 
-struct NonTerminalIndicesIter<'grammar, T, A> {
-    grammar: &'grammar Grammar<T, A>,
+struct NonTerminalIndicesIter<'grammar, A> {
+    grammar: &'grammar Grammar<A>,
     non_terminal_idx: NonTerminalIdx,
 }
 
-struct NonTerminalProductionIndicesIter<'grammar, T, A> {
-    grammar: &'grammar Grammar<T, A>,
+struct NonTerminalProductionIndicesIter<'grammar, A> {
+    grammar: &'grammar Grammar<A>,
     non_terminal_idx: NonTerminalIdx,
     production_idx: ProductionIdx,
 }
 
-impl<'grammar, T, A> Iterator for ProductionIndicesIter<'grammar, T, A> {
-    type Item = (NonTerminalIdx, ProductionIdx, &'grammar Production<T, A>);
+impl<'grammar, A> Iterator for ProductionIndicesIter<'grammar, A> {
+    type Item = (NonTerminalIdx, ProductionIdx, &'grammar Production<A>);
 
     fn next(&mut self) -> Option<Self::Item> {
         loop {
@@ -209,8 +210,8 @@ impl<'grammar, T, A> Iterator for ProductionIndicesIter<'grammar, T, A> {
     }
 }
 
-impl<'grammar, T, A> Iterator for NonTerminalIndicesIter<'grammar, T, A> {
-    type Item = (NonTerminalIdx, &'grammar NonTerminal<T, A>);
+impl<'grammar, A> Iterator for NonTerminalIndicesIter<'grammar, A> {
+    type Item = (NonTerminalIdx, &'grammar NonTerminal<A>);
 
     fn next(&mut self) -> Option<Self::Item> {
         self.grammar
@@ -224,8 +225,8 @@ impl<'grammar, T, A> Iterator for NonTerminalIndicesIter<'grammar, T, A> {
     }
 }
 
-impl<'grammar, T, A> Iterator for NonTerminalProductionIndicesIter<'grammar, T, A> {
-    type Item = (ProductionIdx, &'grammar Production<T, A>);
+impl<'grammar, A> Iterator for NonTerminalProductionIndicesIter<'grammar, A> {
+    type Item = (ProductionIdx, &'grammar Production<A>);
 
     fn next(&mut self) -> Option<Self::Item> {
         let production_idx = self.production_idx;
@@ -239,14 +240,12 @@ impl<'grammar, T, A> Iterator for NonTerminalProductionIndicesIter<'grammar, T, 
     }
 }
 
-impl<T, A> Grammar<T, A> {
-    pub fn non_terminals(&self) -> &[NonTerminal<T, A>] {
+impl<A> Grammar<A> {
+    pub fn non_terminals(&self) -> &[NonTerminal<A>] {
         &self.non_terminals
     }
 
-    pub fn non_terminal_indices(
-        &self,
-    ) -> impl Iterator<Item = (NonTerminalIdx, &NonTerminal<T, A>)> {
+    pub fn non_terminal_indices(&self) -> impl Iterator<Item = (NonTerminalIdx, &NonTerminal<A>)> {
         NonTerminalIndicesIter {
             grammar: self,
             non_terminal_idx: NonTerminalIdx(0),
@@ -256,7 +255,7 @@ impl<T, A> Grammar<T, A> {
     pub fn non_terminal_production_indices(
         &self,
         non_terminal: NonTerminalIdx,
-    ) -> impl Iterator<Item = (ProductionIdx, &Production<T, A>)> {
+    ) -> impl Iterator<Item = (ProductionIdx, &Production<A>)> {
         NonTerminalProductionIndicesIter {
             grammar: self,
             non_terminal_idx: non_terminal,
@@ -265,24 +264,24 @@ impl<T, A> Grammar<T, A> {
     }
 }
 
-pub struct SymbolKindDisplay<'a, 'b, T, A> {
-    symbol: &'a SymbolKind<T>,
-    grammar: &'b Grammar<T, A>,
+pub struct SymbolKindDisplay<'a, 'b, A> {
+    symbol: &'a SymbolKind,
+    grammar: &'b Grammar<A>,
 }
 
-impl<'a, 'b, T, A> SymbolKindDisplay<'a, 'b, T, A> {
-    pub fn new(symbol: &'a SymbolKind<T>, grammar: &'b Grammar<T, A>) -> Self {
+impl<'a, 'b, A> SymbolKindDisplay<'a, 'b, A> {
+    pub fn new(symbol: &'a SymbolKind, grammar: &'b Grammar<A>) -> Self {
         Self { symbol, grammar }
     }
 }
 
-pub struct ProductionDisplay<'a, 'b, T, A> {
-    production: &'a Production<T, A>,
-    grammar: &'b Grammar<T, A>,
+pub struct ProductionDisplay<'a, 'b, A> {
+    production: &'a Production<A>,
+    grammar: &'b Grammar<A>,
 }
 
-impl<'a, 'b, T, A> ProductionDisplay<'a, 'b, T, A> {
-    pub fn new(production: &'a Production<T, A>, grammar: &'b Grammar<T, A>) -> Self {
+impl<'a, 'b, A> ProductionDisplay<'a, 'b, A> {
+    pub fn new(production: &'a Production<A>, grammar: &'b Grammar<A>) -> Self {
         Self {
             production,
             grammar,
@@ -292,7 +291,7 @@ impl<'a, 'b, T, A> ProductionDisplay<'a, 'b, T, A> {
 
 use std::fmt;
 
-impl<T: fmt::Debug, A> fmt::Display for Grammar<T, A> {
+impl<A> fmt::Display for Grammar<A> {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         for (nt_idx, nt) in self.non_terminals.iter().enumerate() {
             writeln!(
@@ -322,7 +321,7 @@ impl<T: fmt::Debug, A> fmt::Display for Grammar<T, A> {
     }
 }
 
-impl<'a, 'b, T: fmt::Debug, A> fmt::Display for ProductionDisplay<'a, 'b, T, A> {
+impl<'a, 'b, A> fmt::Display for ProductionDisplay<'a, 'b, A> {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         for (symbol_idx, symbol) in self.production.symbols().iter().enumerate() {
             match &symbol.kind {
@@ -342,7 +341,7 @@ impl<'a, 'b, T: fmt::Debug, A> fmt::Display for ProductionDisplay<'a, 'b, T, A> 
     }
 }
 
-impl<'a, 'b, T: Clone + fmt::Debug, A> fmt::Display for SymbolKindDisplay<'a, 'b, T, A> {
+impl<'a, 'b, A> fmt::Display for SymbolKindDisplay<'a, 'b, A> {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self.symbol {
             SymbolKind::NonTerminal(nt) => {

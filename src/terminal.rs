@@ -34,6 +34,11 @@ impl fmt::Debug for TerminalIdx {
 }
 
 impl TerminalIdx {
+    #[cfg(test)]
+    pub const fn from_usize(i: usize) -> TerminalIdx {
+        TerminalIdx(i)
+    }
+
     pub fn as_usize(self) -> usize {
         self.0
     }

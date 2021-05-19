@@ -1,6 +1,6 @@
 use crate::ast::{Conversion, FieldPattern, Name, Pattern, TokenEnum};
 use crate::grammar::{Grammar, NonTerminal, Production, Symbol, SymbolKind};
-use crate::terminal::{TerminalIdx, TerminalReprArena};
+use crate::terminal::TerminalReprArena;
 
 use std::convert::TryFrom;
 
@@ -61,17 +61,17 @@ impl SemanticActionIdx {
 /// Generates semantic action functions, semantic action table (array of semantic action functions)
 /// and replaces semantic actions in the grammar with their indices in the array.
 pub fn generate_semantic_action_table(
-    grammar: Grammar<TerminalIdx, syn::Expr>,
+    grammar: Grammar<syn::Expr>,
     non_terminal_action_variant_name: &[usize],
     token_lifetimes: &[syn::Lifetime],
-) -> (Vec<TokenStream>, Grammar<TerminalIdx, SemanticActionIdx>) {
+) -> (Vec<TokenStream>, Grammar<SemanticActionIdx>) {
     let Grammar { non_terminals } = grammar;
 
     // Action function declarations and the array
     let mut decls: Vec<TokenStream> = vec![];
     let mut fn_names: Vec<syn::Ident> = vec![];
 
-    let non_terminals: Vec<NonTerminal<TerminalIdx, SemanticActionIdx>> = non_terminals
+    let non_terminals: Vec<NonTerminal<SemanticActionIdx>> = non_terminals
         .into_iter()
         .enumerate()
         .map(
@@ -84,7 +84,7 @@ pub fn generate_semantic_action_table(
                     public,
                 },
             )| {
-                let productions: Vec<Production<TerminalIdx, SemanticActionIdx>> = productions
+                let productions: Vec<Production<SemanticActionIdx>> = productions
                     .into_iter()
                     .enumerate()
                     .map(|(p_i, Production { symbols, action })| {
@@ -295,8 +295,8 @@ fn pattern_ignore(pattern: &Pattern) -> TokenStream {
 /// each token with value. Used in the value stack for terminals and non-terminals.
 ///
 /// The `Vec` maps `NonTerminalIdx`s to their value extraction method names.
-pub fn semantic_action_result_type<T, A>(
-    grammar: &Grammar<T, A>,
+pub fn semantic_action_result_type<A>(
+    grammar: &Grammar<A>,
     tokens: &[Conversion],
     token_lifetimes: &[syn::Lifetime],
 ) -> (syn::Ident, TokenStream, Vec<usize>) {

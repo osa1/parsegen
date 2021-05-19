@@ -15,7 +15,7 @@ use proc_macro2::{Span, TokenStream};
 use quote::quote;
 
 pub fn generate_lr1_parser(
-    grammar: Grammar<TerminalIdx, syn::Expr>,
+    grammar: Grammar<syn::Expr>,
     tokens: &TokenEnum,
     terminals: &TerminalReprArena,
     token_kind_type_name: &syn::Ident,
@@ -287,7 +287,7 @@ fn generate_goto_vec(
 }
 
 fn generate_action_array<A>(
-    grammar: &Grammar<TerminalIdx, A>,
+    grammar: &Grammar<A>,
     table: &[Vec<Option<LRAction<SemanticActionIdx>>>],
     n_states: usize,
     n_terminals: usize,

@@ -1,6 +1,7 @@
 use crate::first::{FirstSet, FirstTable};
 use crate::grammar::{Grammar, NonTerminalIdx, Production, ProductionIdx, SymbolKind};
 use crate::lr_common::{LRTable, LRTableBuilder, StateIdx};
+use crate::terminal::TerminalIdx;
 
 use std::collections::BTreeSet;
 use std::hash::Hash;
@@ -8,21 +9,21 @@ use std::hash::Hash;
 use fxhash::{FxHashMap, FxHashSet};
 
 #[derive(Debug, PartialEq, Eq, PartialOrd, Ord, Hash, Clone)]
-struct LR1Item<T: Clone> {
+struct LR1Item {
     non_terminal_idx: NonTerminalIdx,
     production_idx: ProductionIdx,
     cursor: usize,
     // None => EOF
-    lookahead: Option<T>,
+    lookahead: Option<TerminalIdx>,
 }
 
-impl<T: Clone> LR1Item<T> {
+impl LR1Item {
     #[cfg(test)]
     fn new(
         non_terminal_idx: usize,
         production_idx: usize,
         cursor: usize,
-        lookahead: Option<T>,
+        lookahead: Option<TerminalIdx>,
     ) -> Self {
         Self {
             non_terminal_idx: NonTerminalIdx::from_usize(non_terminal_idx),
@@ -32,19 +33,19 @@ impl<T: Clone> LR1Item<T> {
         }
     }
 
-    fn next_symbol<'grammar, T1, A>(
+    fn next_symbol<'grammar, A>(
         &self,
-        grammar: &'grammar Grammar<T1, A>,
-    ) -> Option<&'grammar SymbolKind<T1>> {
+        grammar: &'grammar Grammar<A>,
+    ) -> Option<&'grammar SymbolKind> {
         let production = grammar.get_production(self.non_terminal_idx, self.production_idx);
         production.symbols().get(self.cursor).map(|s| &s.kind)
     }
 
     /// Returns non-terminal expected by the item, if the next expected symbol is a non-terminal.
     /// Otherwise returns `None`.
-    fn next_non_terminal<'grammar, T1, A>(
+    fn next_non_terminal<'grammar, A>(
         &self,
-        grammar: &'grammar Grammar<T1, A>,
+        grammar: &'grammar Grammar<A>,
     ) -> Option<NonTerminalIdx> {
         match self.next_symbol(grammar) {
             Some(SymbolKind::NonTerminal(nt_idx)) => Some(*nt_idx),
@@ -54,40 +55,40 @@ impl<T: Clone> LR1Item<T> {
 
     /// Returns terminal expected by the item, if the next expected symbol is a terminal. Otherwise
     /// returns `None`.
-    fn next_terminal<'grammar, A>(&self, grammar: &'grammar Grammar<T, A>) -> Option<&'grammar T> {
+    fn next_terminal<'grammar, A>(&self, grammar: &'grammar Grammar<A>) -> Option<TerminalIdx> {
         match self.next_symbol(grammar) {
-            Some(SymbolKind::Terminal(t)) => Some(t),
+            Some(SymbolKind::Terminal(t)) => Some(*t),
             _ => None,
         }
     }
 
-    fn get_production<'grammar, T1, A>(
+    fn get_production<'grammar, A>(
         &self,
-        grammar: &'grammar Grammar<T1, A>,
-    ) -> &'grammar Production<T1, A> {
+        grammar: &'grammar Grammar<A>,
+    ) -> &'grammar Production<A> {
         grammar.get_production(self.non_terminal_idx, self.production_idx)
     }
 
-    fn advance(&self) -> LR1Item<T> {
-        let mut item: LR1Item<T> = (*self).clone();
+    fn advance(&self) -> LR1Item {
+        let mut item: LR1Item = (*self).clone();
         item.cursor += 1;
         item
     }
 
-    fn is_complete<T1, A>(&self, grammar: &Grammar<T1, A>) -> bool {
+    fn is_complete<A>(&self, grammar: &Grammar<A>) -> bool {
         let production = self.get_production(grammar);
         self.cursor == production.symbols().len()
     }
 }
 
-fn compute_lr1_closure<T: Ord + Eq + Hash + Clone + std::fmt::Debug, A>(
-    grammar: &Grammar<T, A>,
-    first_table: &FirstTable<T>,
-    items: FxHashSet<LR1Item<T>>,
-) -> BTreeSet<LR1Item<T>> {
-    let mut closure: FxHashSet<LR1Item<T>> = items;
+fn compute_lr1_closure<A>(
+    grammar: &Grammar<A>,
+    first_table: &FirstTable,
+    items: FxHashSet<LR1Item>,
+) -> BTreeSet<LR1Item> {
+    let mut closure: FxHashSet<LR1Item> = items;
 
-    let mut work_list: Vec<LR1Item<T>> = closure.iter().cloned().collect();
+    let mut work_list: Vec<LR1Item> = closure.iter().cloned().collect();
     while let Some(item) = work_list.pop() {
         if let Some(next) = item.next_non_terminal(grammar) {
             // Need to find the `first` set of the item after `next`. So if the item is
@@ -99,7 +100,7 @@ fn compute_lr1_closure<T: Ord + Eq + Hash + Clone + std::fmt::Debug, A>(
             // `t` is the item's lookahead token.
             let first = {
                 let production = item.get_production(grammar);
-                let mut first: FirstSet<T> = Default::default();
+                let mut first: FirstSet = Default::default();
                 if item.cursor + 1 == production.symbols().len() {
                     // `B` is the last symbol in the production, so the first set is just `t`
                     match &item.lookahead {
@@ -182,13 +183,13 @@ fn compute_lr1_closure<T: Ord + Eq + Hash + Clone + std::fmt::Debug, A>(
     closure.into_iter().collect()
 }
 
-fn compute_lr1_goto<T: Hash + Clone + Eq + Ord + std::fmt::Debug, A>(
-    state: &BTreeSet<LR1Item<T>>,
-    symbol: &SymbolKind<T>,
-    grammar: &Grammar<T, A>,
-    first: &FirstTable<T>,
-) -> BTreeSet<LR1Item<T>> {
-    let mut goto: FxHashSet<LR1Item<T>> = Default::default();
+fn compute_lr1_goto<A>(
+    state: &BTreeSet<LR1Item>,
+    symbol: &SymbolKind,
+    grammar: &Grammar<A>,
+    first: &FirstTable,
+) -> BTreeSet<LR1Item> {
+    let mut goto: FxHashSet<LR1Item> = Default::default();
 
     for item in state {
         if let Some(next_symbol) = item.next_symbol(grammar) {
@@ -202,34 +203,34 @@ fn compute_lr1_goto<T: Hash + Clone + Eq + Ord + std::fmt::Debug, A>(
 }
 
 #[derive(Debug)]
-struct LR1State<T: Clone> {
-    items: BTreeSet<LR1Item<T>>,
-    goto: FxHashMap<SymbolKind<T>, StateIdx>,
+struct LR1State {
+    items: BTreeSet<LR1Item>,
+    goto: FxHashMap<SymbolKind, StateIdx>,
 }
 
-impl<T: Clone> LR1State<T> {
-    fn items(&self) -> impl Iterator<Item = &LR1Item<T>> {
+impl LR1State {
+    fn items(&self) -> impl Iterator<Item = &LR1Item> {
         self.items.iter()
     }
 
-    fn gotos(&self) -> impl Iterator<Item = (&SymbolKind<T>, &StateIdx)> {
+    fn gotos(&self) -> impl Iterator<Item = (&SymbolKind, &StateIdx)> {
         self.goto.iter()
     }
 }
 
 #[derive(Debug)]
-pub struct LR1Automaton<T: Clone> {
+pub struct LR1Automaton {
     // Indexed by `StateIdx`
-    states: Vec<LR1State<T>>,
+    states: Vec<LR1State>,
 }
 
-struct LR1AutomatonStateIndicesIter<'automaton, T: Clone> {
-    automaton: &'automaton LR1Automaton<T>,
+struct LR1AutomatonStateIndicesIter<'automaton> {
+    automaton: &'automaton LR1Automaton,
     idx: StateIdx,
 }
 
-impl<'automaton, T: Clone> Iterator for LR1AutomatonStateIndicesIter<'automaton, T> {
-    type Item = (StateIdx, &'automaton LR1State<T>);
+impl<'automaton> Iterator for LR1AutomatonStateIndicesIter<'automaton> {
+    type Item = (StateIdx, &'automaton LR1State);
 
     fn next(&mut self) -> Option<Self::Item> {
         let idx = self.idx;
@@ -243,8 +244,8 @@ impl<'automaton, T: Clone> Iterator for LR1AutomatonStateIndicesIter<'automaton,
     }
 }
 
-impl<T: Clone> LR1Automaton<T> {
-    fn state_indices(&self) -> impl Iterator<Item = (StateIdx, &LR1State<T>)> {
+impl LR1Automaton {
+    fn state_indices(&self) -> impl Iterator<Item = (StateIdx, &LR1State)> {
         LR1AutomatonStateIndicesIter {
             automaton: self,
             idx: StateIdx(0),
@@ -252,34 +253,33 @@ impl<T: Clone> LR1Automaton<T> {
     }
 }
 
-impl<T: Clone> Default for LR1Automaton<T> {
+impl Default for LR1Automaton {
     fn default() -> Self {
         LR1Automaton { states: vec![] }
     }
 }
 
-pub fn generate_lr1_automaton<T, A, F>(
-    grammar: &Grammar<T, A>,
-    first_table: &FirstTable<T>,
+pub fn generate_lr1_automaton<A, F>(
+    grammar: &Grammar<A>,
+    first_table: &FirstTable,
     terminal_iter: F,
-) -> (LR1Automaton<T>, FxHashMap<NonTerminalIdx, StateIdx>)
+) -> (LR1Automaton, FxHashMap<NonTerminalIdx, StateIdx>)
 where
-    T: Eq + Ord + Hash + Clone + fmt::Debug,
-    F: Fn() -> Box<dyn Iterator<Item = T>>,
+    F: Fn() -> Box<dyn Iterator<Item = TerminalIdx>>,
 {
     // Maps existing item sets to their state indices, to maintain sharing.
-    let mut state_indices: FxHashMap<BTreeSet<LR1Item<T>>, StateIdx> = Default::default();
+    let mut state_indices: FxHashMap<BTreeSet<LR1Item>, StateIdx> = Default::default();
 
     // Maps entry points to their state indices
     let mut non_terminal_state_indices: FxHashMap<NonTerminalIdx, StateIdx> = Default::default();
 
-    let mut automaton: LR1Automaton<T> = Default::default();
+    let mut automaton: LR1Automaton = Default::default();
 
     for (non_terminal_idx, non_terminal) in grammar.non_terminal_indices() {
         if non_terminal.public {
             assert_eq!(non_terminal.productions().len(), 1);
 
-            let i0_items: FxHashSet<LR1Item<T>> = hashset! {
+            let i0_items: FxHashSet<LR1Item> = hashset! {
                 LR1Item {
                     non_terminal_idx,
                     production_idx: ProductionIdx(0),
@@ -310,10 +310,10 @@ where
         let mut next_state_idx: StateIdx = StateIdx(automaton.states.len());
 
         // New states allocated in this iteration
-        let mut new_states: Vec<LR1State<T>> = vec![];
+        let mut new_states: Vec<LR1State> = vec![];
 
         // New GOTOs added in this iteration
-        let mut new_gotos: Vec<(StateIdx, SymbolKind<T>, StateIdx)> = Default::default();
+        let mut new_gotos: Vec<(StateIdx, SymbolKind, StateIdx)> = Default::default();
 
         for (state_idx, state) in automaton.state_indices() {
             for symbol in grammar
@@ -370,11 +370,11 @@ where
     (automaton, non_terminal_state_indices)
 }
 
-pub fn build_lr1_table<T: Clone + Eq + Hash + fmt::Debug, A: Clone + fmt::Debug + Eq>(
-    grammar: &Grammar<T, A>,
-    automaton: &LR1Automaton<T>,
-) -> LRTable<T, A> {
-    let mut table: LRTableBuilder<T, A> = LRTableBuilder::new(automaton.states.len());
+pub fn build_lr1_table<A: Clone + fmt::Debug + Eq>(
+    grammar: &Grammar<A>,
+    automaton: &LR1Automaton,
+) -> LRTable<A> {
+    let mut table: LRTableBuilder<A> = LRTableBuilder::new(automaton.states.len());
 
     for (state_idx, state) in automaton.state_indices() {
         for item in state.items() {
@@ -426,22 +426,22 @@ use crate::lr_common::LRTableDisplay;
 
 use std::fmt;
 
-pub struct LR1AutomatonDisplay<'a, 'b, T: Clone, A> {
-    pub automaton: &'a LR1Automaton<T>,
-    pub grammar: &'b Grammar<T, A>,
+pub struct LR1AutomatonDisplay<'a, 'b, A> {
+    pub automaton: &'a LR1Automaton,
+    pub grammar: &'b Grammar<A>,
 }
 
-struct LR1StateDisplay<'a, 'b, T: Clone, A> {
-    state: &'a LR1State<T>,
-    grammar: &'b Grammar<T, A>,
+struct LR1StateDisplay<'a, 'b, A> {
+    state: &'a LR1State,
+    grammar: &'b Grammar<A>,
 }
 
-struct LR1ItemDisplay<'a, 'b, T: Clone, A> {
-    item: &'a LR1Item<T>,
-    grammar: &'b Grammar<T, A>,
+struct LR1ItemDisplay<'a, 'b, A> {
+    item: &'a LR1Item,
+    grammar: &'b Grammar<A>,
 }
 
-impl<'a, 'b, T: Clone + fmt::Debug, A> fmt::Display for LR1ItemDisplay<'a, 'b, T, A> {
+impl<'a, 'b, A> fmt::Display for LR1ItemDisplay<'a, 'b, A> {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         let non_terminal = self.grammar.get_non_terminal(self.item.non_terminal_idx);
         let production = non_terminal.get_production(self.item.production_idx);
@@ -470,7 +470,7 @@ impl<'a, 'b, T: Clone + fmt::Debug, A> fmt::Display for LR1ItemDisplay<'a, 'b, T
     }
 }
 
-impl<'a, 'b, T: Clone + fmt::Debug, A> fmt::Display for LR1StateDisplay<'a, 'b, T, A> {
+impl<'a, 'b, A> fmt::Display for LR1StateDisplay<'a, 'b, A> {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         for item in &self.state.items {
             writeln!(
@@ -496,7 +496,7 @@ impl<'a, 'b, T: Clone + fmt::Debug, A> fmt::Display for LR1StateDisplay<'a, 'b, 
     }
 }
 
-impl<'a, 'b, T: Clone + fmt::Debug, A> fmt::Display for LR1AutomatonDisplay<'a, 'b, T, A> {
+impl<'a, 'b, A> fmt::Display for LR1AutomatonDisplay<'a, 'b, A> {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         for (state_idx, state) in self.automaton.state_indices() {
             writeln!(f, "{}: {{", state_idx.0)?;
@@ -518,12 +518,12 @@ impl<'a, 'b, T: Clone + fmt::Debug, A> fmt::Display for LR1AutomatonDisplay<'a, 
 #[test]
 fn grammar8_lr1_states() {
     use crate::first::generate_first_table;
-    use crate::test_grammars::{grammar8, Grammar8Token};
+    use crate::test_grammars::{grammar8, GRAMMAR8_C, GRAMMAR8_D};
 
     let grammar = grammar8();
     let first_table = generate_first_table(&grammar);
     let (lr1_automaton, _) = generate_lr1_automaton(&grammar, &first_table, || {
-        Box::new(vec![Grammar8Token::C, Grammar8Token::D].into_iter())
+        Box::new(vec![GRAMMAR8_C, GRAMMAR8_D].into_iter())
     });
 
     println!(
@@ -540,10 +540,10 @@ fn grammar8_lr1_states() {
         btreeset! {
             LR1Item::new(0, 0, 0, None), // [S0 -> | S, EOF]
             LR1Item::new(1, 0, 0, None), // [S -> | C C, EOF]
-            LR1Item::new(2, 0, 0, Some(Grammar8Token::D)), // [C -> . c C, d]
-            LR1Item::new(2, 0, 0, Some(Grammar8Token::C)), // [C -> . c C, c]
-            LR1Item::new(2, 1, 0, Some(Grammar8Token::C)), // [C -> . d, c]
-            LR1Item::new(2, 1, 0, Some(Grammar8Token::D)), // [C -> . d, c]
+            LR1Item::new(2, 0, 0, Some(GRAMMAR8_D)), // [C -> . c C, d]
+            LR1Item::new(2, 0, 0, Some(GRAMMAR8_C)), // [C -> . c C, c]
+            LR1Item::new(2, 1, 0, Some(GRAMMAR8_C)), // [C -> . d, c]
+            LR1Item::new(2, 1, 0, Some(GRAMMAR8_D)), // [C -> . d, c]
         },
     );
 
@@ -569,12 +569,12 @@ fn grammar8_lr1_states() {
     assert_eq!(
         i3.items,
         btreeset! {
-            LR1Item::new(2, 0, 1, Some(Grammar8Token::C)), // [C -> c | C, c]
-            LR1Item::new(2, 0, 1, Some(Grammar8Token::D)), // [C -> c | C, d]
-            LR1Item::new(2, 0, 0, Some(Grammar8Token::C)), // [C -> | c C, c]
-            LR1Item::new(2, 0, 0, Some(Grammar8Token::D)), // [C -> | c C, d]
-            LR1Item::new(2, 1, 0, Some(Grammar8Token::C)), // [C -> | d, c]
-            LR1Item::new(2, 1, 0, Some(Grammar8Token::D)), // [C -> | d, d]
+            LR1Item::new(2, 0, 1, Some(GRAMMAR8_C)), // [C -> c | C, c]
+            LR1Item::new(2, 0, 1, Some(GRAMMAR8_D)), // [C -> c | C, d]
+            LR1Item::new(2, 0, 0, Some(GRAMMAR8_C)), // [C -> | c C, c]
+            LR1Item::new(2, 0, 0, Some(GRAMMAR8_D)), // [C -> | c C, d]
+            LR1Item::new(2, 1, 0, Some(GRAMMAR8_C)), // [C -> | d, c]
+            LR1Item::new(2, 1, 0, Some(GRAMMAR8_D)), // [C -> | d, d]
         },
     );
 
@@ -582,8 +582,8 @@ fn grammar8_lr1_states() {
     assert_eq!(
         i4.items,
         btreeset! {
-            LR1Item::new(2, 1, 1, Some(Grammar8Token::C)), // [C -> d |, c]
-            LR1Item::new(2, 1, 1, Some(Grammar8Token::D)), // [C -> d |, c]
+            LR1Item::new(2, 1, 1, Some(GRAMMAR8_C)), // [C -> d |, c]
+            LR1Item::new(2, 1, 1, Some(GRAMMAR8_D)), // [C -> d |, c]
         },
     );
 
@@ -602,8 +602,8 @@ fn grammar8_lr1_states() {
     assert_eq!(
         i8.items,
         btreeset! {
-            LR1Item::new(2, 0, 2, Some(Grammar8Token::C)), // [C -> c C |, c]
-            LR1Item::new(2, 0, 2, Some(Grammar8Token::D)), // [C -> c C |, d]
+            LR1Item::new(2, 0, 2, Some(GRAMMAR8_C)), // [C -> c C |, c]
+            LR1Item::new(2, 0, 2, Some(GRAMMAR8_D)), // [C -> c C |, d]
         },
     );
 
@@ -620,18 +620,20 @@ fn grammar8_lr1_states() {
 #[test]
 fn simulate1() {
     use crate::first::generate_first_table;
-    use crate::test_grammars::{grammar6, Grammar6Token};
+    use crate::test_grammars::{
+        grammar6, GRAMMAR6_ID, GRAMMAR6_LPAREN, GRAMMAR6_PLUS, GRAMMAR6_RPAREN, GRAMMAR6_STAR,
+    };
 
     let grammar = grammar6();
     let first = generate_first_table(&grammar);
     let (lr_automaton, _) = generate_lr1_automaton(&grammar, &first, || {
         Box::new(
             vec![
-                Grammar6Token::LParen,
-                Grammar6Token::RParen,
-                Grammar6Token::Plus,
-                Grammar6Token::Star,
-                Grammar6Token::Id,
+                GRAMMAR6_LPAREN,
+                GRAMMAR6_RPAREN,
+                GRAMMAR6_PLUS,
+                GRAMMAR6_STAR,
+                GRAMMAR6_ID,
             ]
             .into_iter(),
         )
@@ -658,18 +660,18 @@ fn simulate1() {
     crate::lr_common::simulate(
         &lr1,
         &grammar,
-        vec![Grammar6Token::Id, Grammar6Token::Plus, Grammar6Token::Id].into_iter(),
+        vec![GRAMMAR6_ID, GRAMMAR6_PLUS, GRAMMAR6_ID].into_iter(),
     );
 
     crate::lr_common::simulate(
         &lr1,
         &grammar,
         vec![
-            Grammar6Token::Id,
-            Grammar6Token::Plus,
-            Grammar6Token::Id,
-            Grammar6Token::Star,
-            Grammar6Token::Id,
+            GRAMMAR6_ID,
+            GRAMMAR6_PLUS,
+            GRAMMAR6_ID,
+            GRAMMAR6_STAR,
+            GRAMMAR6_ID,
         ]
         .into_iter(),
     );
@@ -678,13 +680,13 @@ fn simulate1() {
         &lr1,
         &grammar,
         vec![
-            Grammar6Token::LParen,
-            Grammar6Token::Id,
-            Grammar6Token::Plus,
-            Grammar6Token::Id,
-            Grammar6Token::RParen,
-            Grammar6Token::Star,
-            Grammar6Token::Id,
+            GRAMMAR6_LPAREN,
+            GRAMMAR6_ID,
+            GRAMMAR6_PLUS,
+            GRAMMAR6_ID,
+            GRAMMAR6_RPAREN,
+            GRAMMAR6_STAR,
+            GRAMMAR6_ID,
         ]
         .into_iter(),
     );
@@ -693,12 +695,12 @@ fn simulate1() {
 #[test]
 fn simulate2() {
     use crate::first::generate_first_table;
-    use crate::test_grammars::{grammar9, Grammar9Token};
+    use crate::test_grammars::{grammar9, GRAMMAR9_LPAREN, GRAMMAR9_RPAREN};
 
     let grammar = grammar9();
     let first = generate_first_table(&grammar);
     let (lr_automaton, _) = generate_lr1_automaton(&grammar, &first, || {
-        Box::new(vec![Grammar9Token::LParen, Grammar9Token::RParen].into_iter())
+        Box::new(vec![GRAMMAR9_LPAREN, GRAMMAR9_RPAREN].into_iter())
     });
 
     // println!(
@@ -717,65 +719,49 @@ fn simulate2() {
     crate::lr_common::simulate(
         &lr1,
         &grammar,
-        vec![Grammar9Token::LParen, Grammar9Token::RParen].into_iter(),
+        vec![GRAMMAR9_LPAREN, GRAMMAR9_RPAREN].into_iter(),
     );
 }
 
 #[test]
 fn simulate3() {
     use crate::first::generate_first_table;
-    use crate::test_grammars::{grammar7, Grammar7Token};
+    use crate::test_grammars::{grammar7, GRAMMAR7_EQ, GRAMMAR7_ID, GRAMMAR7_STAR};
 
     let grammar = grammar7();
     let first = generate_first_table(&grammar);
     let (lr_automaton, _) = generate_lr1_automaton(&grammar, &first, || {
-        Box::new(vec![Grammar7Token::Eq, Grammar7Token::Star, Grammar7Token::Id].into_iter())
+        Box::new(vec![GRAMMAR7_EQ, GRAMMAR7_STAR, GRAMMAR7_ID].into_iter())
     });
     let lr1 = build_lr1_table(&grammar, &lr_automaton);
 
     println!("{}", LRTableDisplay::new(&lr1, &grammar),);
 
+    crate::lr_common::simulate(&lr1, &grammar, vec![GRAMMAR7_STAR, GRAMMAR7_ID].into_iter());
     crate::lr_common::simulate(
         &lr1,
         &grammar,
-        vec![Grammar7Token::Star, Grammar7Token::Id].into_iter(),
+        vec![GRAMMAR7_ID, GRAMMAR7_EQ, GRAMMAR7_ID].into_iter(),
     );
     crate::lr_common::simulate(
         &lr1,
         &grammar,
-        vec![Grammar7Token::Id, Grammar7Token::Eq, Grammar7Token::Id].into_iter(),
+        vec![GRAMMAR7_ID, GRAMMAR7_EQ, GRAMMAR7_STAR, GRAMMAR7_ID].into_iter(),
     );
     crate::lr_common::simulate(
         &lr1,
         &grammar,
-        vec![
-            Grammar7Token::Id,
-            Grammar7Token::Eq,
-            Grammar7Token::Star,
-            Grammar7Token::Id,
-        ]
-        .into_iter(),
+        vec![GRAMMAR7_STAR, GRAMMAR7_ID, GRAMMAR7_EQ, GRAMMAR7_ID].into_iter(),
     );
     crate::lr_common::simulate(
         &lr1,
         &grammar,
         vec![
-            Grammar7Token::Star,
-            Grammar7Token::Id,
-            Grammar7Token::Eq,
-            Grammar7Token::Id,
-        ]
-        .into_iter(),
-    );
-    crate::lr_common::simulate(
-        &lr1,
-        &grammar,
-        vec![
-            Grammar7Token::Star,
-            Grammar7Token::Id,
-            Grammar7Token::Eq,
-            Grammar7Token::Star,
-            Grammar7Token::Id,
+            GRAMMAR7_STAR,
+            GRAMMAR7_ID,
+            GRAMMAR7_EQ,
+            GRAMMAR7_STAR,
+            GRAMMAR7_ID,
         ]
         .into_iter(),
     );
@@ -784,7 +770,9 @@ fn simulate3() {
 #[test]
 fn simulate4() {
     use crate::first::generate_first_table;
-    use crate::test_grammars::grammar5;
+    use crate::test_grammars::{
+        grammar5, GRAMMAR5_LPAREN, GRAMMAR5_N, GRAMMAR5_PLUS, GRAMMAR5_RPAREN, GRAMMAR5_STAR,
+    };
 
     let grammar = grammar5();
 
@@ -792,7 +780,16 @@ fn simulate4() {
 
     let first = generate_first_table(&grammar);
     let (lr_automaton, _) = generate_lr1_automaton(&grammar, &first, || {
-        Box::new(vec!['+', '*', '(', ')', 'n'].into_iter())
+        Box::new(
+            vec![
+                GRAMMAR5_PLUS,
+                GRAMMAR5_STAR,
+                GRAMMAR5_LPAREN,
+                GRAMMAR5_RPAREN,
+                GRAMMAR5_N,
+            ]
+            .into_iter(),
+        )
     });
 
     println!(
@@ -807,7 +804,22 @@ fn simulate4() {
 
     println!("{}", LRTableDisplay::new(&lr1, &grammar),);
 
-    crate::lr_common::simulate(&lr1, &grammar, vec!['n'].into_iter());
-    crate::lr_common::simulate(&lr1, &grammar, vec!['n', '+', 'n'].into_iter());
-    crate::lr_common::simulate(&lr1, &grammar, vec!['n', '+', 'n', '*', 'n'].into_iter());
+    crate::lr_common::simulate(&lr1, &grammar, vec![GRAMMAR5_N].into_iter());
+    crate::lr_common::simulate(
+        &lr1,
+        &grammar,
+        vec![GRAMMAR5_N, GRAMMAR5_PLUS, GRAMMAR5_N].into_iter(),
+    );
+    crate::lr_common::simulate(
+        &lr1,
+        &grammar,
+        vec![
+            GRAMMAR5_N,
+            GRAMMAR5_PLUS,
+            GRAMMAR5_N,
+            GRAMMAR5_STAR,
+            GRAMMAR5_N,
+        ]
+        .into_iter(),
+    );
 }
