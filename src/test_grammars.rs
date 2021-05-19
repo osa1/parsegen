@@ -1,24 +1,21 @@
 use crate::grammar::{Grammar, NonTerminalIdx, Symbol, SymbolKind};
+use crate::terminal::TerminalIdx;
 
-fn nt<T>(idx: NonTerminalIdx) -> Symbol<T> {
+fn nt(idx: NonTerminalIdx) -> Symbol {
     Symbol {
         binder: None,
         kind: SymbolKind::NonTerminal(idx),
     }
 }
 
-fn t<T>(token: T) -> Symbol<T> {
+fn t(token: TerminalIdx) -> Symbol {
     Symbol {
         binder: None,
         kind: SymbolKind::Terminal(token),
     }
 }
 
-fn add_non_terminal<T>(
-    grammar: &mut Grammar<T, ()>,
-    non_terminal: &str,
-    public: bool,
-) -> NonTerminalIdx {
+fn add_non_terminal(grammar: &mut Grammar<()>, non_terminal: &str, public: bool) -> NonTerminalIdx {
     grammar.add_non_terminal(
         non_terminal.to_owned(),
         syn::Type::Tuple(syn::TypeTuple {
@@ -36,20 +33,23 @@ fn add_non_terminal<T>(
 //
 // ambiguous
 #[allow(unused)]
-pub fn grammar1() -> Grammar<char, ()> {
-    let mut grammar: Grammar<char, ()> = Grammar::new();
+pub fn grammar1() -> Grammar<()> {
+    let mut grammar: Grammar<()> = Grammar::new();
 
     let e0_nt_idx = add_non_terminal(&mut grammar, "E0", true);
     let e_nt_idx = add_non_terminal(&mut grammar, "E", false);
+
+    let plus = TerminalIdx::from_usize(0);
+    let n = TerminalIdx::from_usize(1);
 
     // E0 -> E
     grammar.add_production(e0_nt_idx, vec![nt(e_nt_idx)], ());
 
     // E -> E + E
-    grammar.add_production(e_nt_idx, vec![nt(e_nt_idx), t('+'), nt(e_nt_idx)], ());
+    grammar.add_production(e_nt_idx, vec![nt(e_nt_idx), t(plus), nt(e_nt_idx)], ());
 
     // E -> n
-    grammar.add_production(e_nt_idx, vec![t('n')], ());
+    grammar.add_production(e_nt_idx, vec![t(n)], ());
 
     grammar
 }
@@ -62,13 +62,15 @@ pub fn grammar1() -> Grammar<char, ()> {
 //
 // ambiguous
 #[allow(unused)]
-pub fn grammar2() -> Grammar<char, ()> {
-    let mut grammar: Grammar<char, ()> = Grammar::new();
+pub fn grammar2() -> Grammar<()> {
+    let mut grammar: Grammar<()> = Grammar::new();
 
     let s0_nt_idx = add_non_terminal(&mut grammar, "S0", true);
     let s_nt_idx = add_non_terminal(&mut grammar, "S", false);
     let a_nt_idx = add_non_terminal(&mut grammar, "A", false);
     let e_nt_idx = add_non_terminal(&mut grammar, "E", false);
+
+    let a = TerminalIdx::from_usize(0);
 
     // S0 -> S
     grammar.add_production(s0_nt_idx, vec![nt(s_nt_idx)], ());
@@ -81,7 +83,7 @@ pub fn grammar2() -> Grammar<char, ()> {
     );
 
     // A -> a
-    grammar.add_production(a_nt_idx, vec![t('a')], ());
+    grammar.add_production(a_nt_idx, vec![t(a)], ());
 
     // A -> E
     grammar.add_production(a_nt_idx, vec![nt(e_nt_idx)], ());
@@ -99,34 +101,38 @@ pub fn grammar2() -> Grammar<char, ()> {
 //
 // ambiguous: try "aab"
 #[allow(unused)]
-pub fn grammar3() -> Grammar<char, ()> {
-    let mut grammar: Grammar<char, ()> = Grammar::new();
+pub fn grammar3() -> Grammar<()> {
+    let mut grammar: Grammar<()> = Grammar::new();
 
     let s_nt_idx = add_non_terminal(&mut grammar, "S", true);
     let a_nt_idx = add_non_terminal(&mut grammar, "A", false);
     let b_nt_idx = add_non_terminal(&mut grammar, "B", false);
     let c_nt_idx = add_non_terminal(&mut grammar, "C", false);
 
+    let a = TerminalIdx::from_usize(0);
+    let b = TerminalIdx::from_usize(1);
+    let d = TerminalIdx::from_usize(2);
+
     // S -> A
     grammar.add_production(s_nt_idx, vec![nt(a_nt_idx)], ());
 
     // A -> Ba
-    grammar.add_production(a_nt_idx, vec![nt(b_nt_idx), t('a')], ());
+    grammar.add_production(a_nt_idx, vec![nt(b_nt_idx), t(a)], ());
 
     // A -> Bb
-    grammar.add_production(a_nt_idx, vec![nt(b_nt_idx), t('b')], ());
+    grammar.add_production(a_nt_idx, vec![nt(b_nt_idx), t(b)], ());
 
     // A -> Cab
-    grammar.add_production(a_nt_idx, vec![nt(c_nt_idx), t('a'), t('b')], ());
+    grammar.add_production(a_nt_idx, vec![nt(c_nt_idx), t(a), t(b)], ());
 
     // A -> Ad
-    grammar.add_production(a_nt_idx, vec![nt(a_nt_idx), t('d')], ());
+    grammar.add_production(a_nt_idx, vec![nt(a_nt_idx), t(d)], ());
 
     // B -> a
-    grammar.add_production(b_nt_idx, vec![t('a')], ());
+    grammar.add_production(b_nt_idx, vec![t(a)], ());
 
     // C -> a
-    grammar.add_production(c_nt_idx, vec![t('a')], ());
+    grammar.add_production(c_nt_idx, vec![t(a)], ());
 
     grammar
 }
@@ -136,13 +142,15 @@ pub fn grammar3() -> Grammar<char, ()> {
 // B -> (empty)
 // T -> aB | a
 #[allow(unused)]
-pub fn grammar4() -> Grammar<char, ()> {
-    let mut grammar: Grammar<char, ()> = Grammar::new();
+pub fn grammar4() -> Grammar<()> {
+    let mut grammar: Grammar<()> = Grammar::new();
 
     let s0_nt_idx = add_non_terminal(&mut grammar, "S0", true);
     let s_nt_idx = add_non_terminal(&mut grammar, "S", false);
     let b_nt_idx = add_non_terminal(&mut grammar, "B", false);
     let t_nt_idx = add_non_terminal(&mut grammar, "T", false);
+
+    let a = TerminalIdx::from_usize(0);
 
     // S0 -> S
     grammar.add_production(s0_nt_idx, vec![nt(s_nt_idx)], ());
@@ -151,19 +159,25 @@ pub fn grammar4() -> Grammar<char, ()> {
     grammar.add_production(s_nt_idx, vec![nt(s_nt_idx), nt(t_nt_idx)], ());
 
     // S -> a
-    grammar.add_production(s_nt_idx, vec![t('a')], ());
+    grammar.add_production(s_nt_idx, vec![t(a)], ());
 
     // B -> (empty)
     grammar.add_production(b_nt_idx, vec![], ());
 
     // T -> aB
-    grammar.add_production(t_nt_idx, vec![t('a'), nt(b_nt_idx)], ());
+    grammar.add_production(t_nt_idx, vec![t(a), nt(b_nt_idx)], ());
 
     // T -> a
-    grammar.add_production(t_nt_idx, vec![t('a')], ());
+    grammar.add_production(t_nt_idx, vec![t(a)], ());
 
     grammar
 }
+
+pub const GRAMMAR5_PLUS: TerminalIdx = TerminalIdx::from_usize(0);
+pub const GRAMMAR5_STAR: TerminalIdx = TerminalIdx::from_usize(1);
+pub const GRAMMAR5_LPAREN: TerminalIdx = TerminalIdx::from_usize(2);
+pub const GRAMMAR5_RPAREN: TerminalIdx = TerminalIdx::from_usize(3);
+pub const GRAMMAR5_N: TerminalIdx = TerminalIdx::from_usize(4);
 
 // E0 -> E
 // E  -> T E'
@@ -171,8 +185,8 @@ pub fn grammar4() -> Grammar<char, ()> {
 // T  -> F T'
 // T' -> * F T' | (empty)
 // F -> ( E ) | n
-pub fn grammar5() -> Grammar<char, ()> {
-    let mut grammar: Grammar<char, ()> = Grammar::new();
+pub fn grammar5() -> Grammar<()> {
+    let mut grammar: Grammar<()> = Grammar::new();
 
     let e0_nt_idx = add_non_terminal(&mut grammar, "E0", true);
     let e_nt_idx = add_non_terminal(&mut grammar, "E", false);
@@ -188,7 +202,11 @@ pub fn grammar5() -> Grammar<char, ()> {
     grammar.add_production(e_nt_idx, vec![nt(t_nt_idx), nt(e1_nt_idx)], ());
 
     // E' -> + T E'
-    grammar.add_production(e1_nt_idx, vec![t('+'), nt(t_nt_idx), nt(e1_nt_idx)], ());
+    grammar.add_production(
+        e1_nt_idx,
+        vec![t(GRAMMAR5_PLUS), nt(t_nt_idx), nt(e1_nt_idx)],
+        (),
+    );
 
     // E' -> (empty)
     grammar.add_production(e1_nt_idx, vec![], ());
@@ -197,28 +215,33 @@ pub fn grammar5() -> Grammar<char, ()> {
     grammar.add_production(t_nt_idx, vec![nt(f_nt_idx), nt(t1_nt_idx)], ());
 
     // T' -> * F T'
-    grammar.add_production(t1_nt_idx, vec![t('*'), nt(f_nt_idx), nt(t1_nt_idx)], ());
+    grammar.add_production(
+        t1_nt_idx,
+        vec![t(GRAMMAR5_STAR), nt(f_nt_idx), nt(t1_nt_idx)],
+        (),
+    );
 
     // T' -> (empty)
     grammar.add_production(t1_nt_idx, vec![], ());
 
     // F -> ( E )
-    grammar.add_production(f_nt_idx, vec![t('('), nt(e_nt_idx), t(')')], ());
+    grammar.add_production(
+        f_nt_idx,
+        vec![t(GRAMMAR5_LPAREN), nt(e_nt_idx), t(GRAMMAR5_RPAREN)],
+        (),
+    );
 
     // F -> n
-    grammar.add_production(f_nt_idx, vec![t('n')], ());
+    grammar.add_production(f_nt_idx, vec![t(GRAMMAR5_N)], ());
 
     grammar
 }
 
-#[derive(Debug, PartialEq, Eq, PartialOrd, Ord, Hash, Clone, Copy)]
-pub enum Grammar6Token {
-    LParen,
-    RParen,
-    Plus,
-    Star,
-    Id,
-}
+pub const GRAMMAR6_PLUS: TerminalIdx = TerminalIdx::from_usize(0);
+pub const GRAMMAR6_STAR: TerminalIdx = TerminalIdx::from_usize(1);
+pub const GRAMMAR6_LPAREN: TerminalIdx = TerminalIdx::from_usize(2);
+pub const GRAMMAR6_RPAREN: TerminalIdx = TerminalIdx::from_usize(3);
+pub const GRAMMAR6_ID: TerminalIdx = TerminalIdx::from_usize(4);
 
 // Figure 4.1 in dragon book. grammar5 is the left-factored version of this grammar.
 //
@@ -226,8 +249,8 @@ pub enum Grammar6Token {
 // E -> E + T | T
 // T -> T * F | F
 // F -> ( E ) | id
-pub fn grammar6() -> Grammar<Grammar6Token, ()> {
-    let mut grammar: Grammar<Grammar6Token, ()> = Grammar::new();
+pub fn grammar6() -> Grammar<()> {
+    let mut grammar: Grammar<()> = Grammar::new();
 
     let e0_nt_idx = add_non_terminal(&mut grammar, "E0", true);
     let e_nt_idx = add_non_terminal(&mut grammar, "E", false);
@@ -240,7 +263,7 @@ pub fn grammar6() -> Grammar<Grammar6Token, ()> {
     // E -> E + T
     grammar.add_production(
         e_nt_idx,
-        vec![nt(e_nt_idx), t(Grammar6Token::Plus), nt(t_nt_idx)],
+        vec![nt(e_nt_idx), t(GRAMMAR6_PLUS), nt(t_nt_idx)],
         (),
     );
 
@@ -250,7 +273,7 @@ pub fn grammar6() -> Grammar<Grammar6Token, ()> {
     // T -> T * F
     grammar.add_production(
         t_nt_idx,
-        vec![nt(t_nt_idx), t(Grammar6Token::Star), nt(f_nt_idx)],
+        vec![nt(t_nt_idx), t(GRAMMAR6_STAR), nt(f_nt_idx)],
         (),
     );
 
@@ -260,26 +283,19 @@ pub fn grammar6() -> Grammar<Grammar6Token, ()> {
     // F -> ( E )
     grammar.add_production(
         f_nt_idx,
-        vec![
-            t(Grammar6Token::LParen),
-            nt(e_nt_idx),
-            t(Grammar6Token::RParen),
-        ],
+        vec![t(GRAMMAR6_LPAREN), nt(e_nt_idx), t(GRAMMAR6_RPAREN)],
         (),
     );
 
     // F -> id
-    grammar.add_production(f_nt_idx, vec![t(Grammar6Token::Id)], ());
+    grammar.add_production(f_nt_idx, vec![t(GRAMMAR6_ID)], ());
 
     grammar
 }
 
-#[derive(Debug, PartialEq, Eq, PartialOrd, Ord, Hash, Clone, Copy)]
-pub enum Grammar7Token {
-    Eq,
-    Star,
-    Id,
-}
+pub const GRAMMAR7_EQ: TerminalIdx = TerminalIdx::from_usize(0);
+pub const GRAMMAR7_STAR: TerminalIdx = TerminalIdx::from_usize(1);
+pub const GRAMMAR7_ID: TerminalIdx = TerminalIdx::from_usize(2);
 
 // Figure 4.49 (assignment with lvalues)
 //
@@ -289,8 +305,8 @@ pub enum Grammar7Token {
 // R -> L
 //
 // Not ambiguous, but not SLR(1)!
-pub fn grammar7() -> Grammar<Grammar7Token, ()> {
-    let mut grammar: Grammar<Grammar7Token, ()> = Grammar::new();
+pub fn grammar7() -> Grammar<()> {
+    let mut grammar: Grammar<()> = Grammar::new();
 
     let s0_nt_idx = add_non_terminal(&mut grammar, "S0", true);
     let s_nt_idx = add_non_terminal(&mut grammar, "S", false);
@@ -303,7 +319,7 @@ pub fn grammar7() -> Grammar<Grammar7Token, ()> {
     // S -> L = R
     grammar.add_production(
         s_nt_idx,
-        vec![nt(l_nt_idx), t(Grammar7Token::Eq), nt(r_nt_idx)],
+        vec![nt(l_nt_idx), t(GRAMMAR7_EQ), nt(r_nt_idx)],
         (),
     );
 
@@ -311,10 +327,10 @@ pub fn grammar7() -> Grammar<Grammar7Token, ()> {
     grammar.add_production(s_nt_idx, vec![nt(r_nt_idx)], ());
 
     // L -> * R
-    grammar.add_production(l_nt_idx, vec![t(Grammar7Token::Star), nt(r_nt_idx)], ());
+    grammar.add_production(l_nt_idx, vec![t(GRAMMAR7_STAR), nt(r_nt_idx)], ());
 
     // L -> id
-    grammar.add_production(l_nt_idx, vec![t(Grammar7Token::Id)], ());
+    grammar.add_production(l_nt_idx, vec![t(GRAMMAR7_ID)], ());
 
     // R -> L
     grammar.add_production(r_nt_idx, vec![nt(l_nt_idx)], ());
@@ -322,22 +338,8 @@ pub fn grammar7() -> Grammar<Grammar7Token, ()> {
     grammar
 }
 
-#[derive(Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
-pub enum Grammar8Token {
-    C,
-    D,
-}
-
-// Custom Debug impl to print in lowercase, otherwise things get confusing as non-terminals in this
-// grammar have same names as terminals
-impl std::fmt::Debug for Grammar8Token {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> Result<(), std::fmt::Error> {
-        match self {
-            Grammar8Token::C => write!(f, "c"),
-            Grammar8Token::D => write!(f, "d"),
-        }
-    }
-}
+pub const GRAMMAR8_C: TerminalIdx = TerminalIdx::from_usize(0);
+pub const GRAMMAR8_D: TerminalIdx = TerminalIdx::from_usize(1);
 
 // Figure 4.55
 //
@@ -345,8 +347,8 @@ impl std::fmt::Debug for Grammar8Token {
 // S -> C C
 // C -> c C | d
 //
-pub fn grammar8() -> Grammar<Grammar8Token, ()> {
-    let mut grammar: Grammar<Grammar8Token, ()> = Grammar::new();
+pub fn grammar8() -> Grammar<()> {
+    let mut grammar: Grammar<()> = Grammar::new();
 
     let s0_nt_idx = add_non_terminal(&mut grammar, "S0", true);
     let s_nt_idx = add_non_terminal(&mut grammar, "S", false);
@@ -359,23 +361,20 @@ pub fn grammar8() -> Grammar<Grammar8Token, ()> {
     grammar.add_production(s_nt_idx, vec![nt(c_nt_idx), nt(c_nt_idx)], ());
 
     // C -> c C
-    grammar.add_production(c_nt_idx, vec![t(Grammar8Token::C), nt(c_nt_idx)], ());
+    grammar.add_production(c_nt_idx, vec![t(GRAMMAR8_C), nt(c_nt_idx)], ());
 
     // C -> d
-    grammar.add_production(c_nt_idx, vec![t(Grammar8Token::D)], ());
+    grammar.add_production(c_nt_idx, vec![t(GRAMMAR8_D)], ());
 
     grammar
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
-pub enum Grammar9Token {
-    LParen,
-    RParen,
-}
+pub const GRAMMAR9_LPAREN: TerminalIdx = TerminalIdx::from_usize(0);
+pub const GRAMMAR9_RPAREN: TerminalIdx = TerminalIdx::from_usize(1);
 
 // S0 -> S
 // S -> ( S ) | (empty)
-pub fn grammar9() -> Grammar<Grammar9Token, ()> {
+pub fn grammar9() -> Grammar<()> {
     let mut grammar = Grammar::new();
 
     // NB: Deliberately inserted in reverse order. This breaks stuff.
@@ -388,11 +387,7 @@ pub fn grammar9() -> Grammar<Grammar9Token, ()> {
     // S -> ( S )
     grammar.add_production(
         s_nt_idx,
-        vec![
-            t(Grammar9Token::LParen),
-            nt(s_nt_idx),
-            t(Grammar9Token::RParen),
-        ],
+        vec![t(GRAMMAR9_LPAREN), nt(s_nt_idx), t(GRAMMAR9_RPAREN)],
         (),
     );
 

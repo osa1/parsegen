@@ -1,6 +1,5 @@
 use crate::grammar::{Grammar, NonTerminalIdx, ProductionIdx};
-
-use std::hash::Hash;
+use crate::terminal::TerminalIdx;
 
 use fxhash::FxHashMap;
 
@@ -25,17 +24,17 @@ pub enum LRAction<A> {
     Accept,
 }
 
-pub struct LRTable<T: Eq + Hash, A> {
-    action: FxHashMap<StateIdx, FxHashMap<Option<T>, LRAction<A>>>,
+pub struct LRTable<A> {
+    action: FxHashMap<StateIdx, FxHashMap<Option<TerminalIdx>, LRAction<A>>>,
     goto: FxHashMap<StateIdx, FxHashMap<NonTerminalIdx, StateIdx>>,
     n_states: usize,
 }
 
-pub struct LRTableBuilder<T: Eq + Hash, A> {
-    table: LRTable<T, A>,
+pub struct LRTableBuilder<A> {
+    table: LRTable<A>,
 }
 
-impl<T: Eq + Hash + Clone + fmt::Debug, A: fmt::Debug + Eq> LRTableBuilder<T, A> {
+impl<A: fmt::Debug + Eq> LRTableBuilder<A> {
     pub fn new(n_states: usize) -> Self {
         Self {
             table: LRTable {
@@ -46,11 +45,11 @@ impl<T: Eq + Hash + Clone + fmt::Debug, A: fmt::Debug + Eq> LRTableBuilder<T, A>
         }
     }
 
-    pub fn build(self) -> LRTable<T, A> {
+    pub fn build(self) -> LRTable<A> {
         self.table
     }
 
-    pub fn add_shift(&mut self, state: StateIdx, token: T, next_state: StateIdx) {
+    pub fn add_shift(&mut self, state: StateIdx, token: TerminalIdx, next_state: StateIdx) {
         let action = self.table.action.entry(state).or_default();
 
         let old_action = action.insert(Some(token.clone()), LRAction::Shift(next_state));
@@ -85,7 +84,7 @@ impl<T: Eq + Hash + Clone + fmt::Debug, A: fmt::Debug + Eq> LRTableBuilder<T, A>
     pub fn add_reduce(
         &mut self,
         state: StateIdx,
-        token: Option<T>,
+        token: Option<TerminalIdx>,
         non_terminal_idx: NonTerminalIdx,
         production_idx: ProductionIdx,
         semantic_action: A,
@@ -143,9 +142,13 @@ impl<T: Eq + Hash + Clone + fmt::Debug, A: fmt::Debug + Eq> LRTableBuilder<T, A>
     }
 }
 
-impl<T: Eq + Hash, A> LRTable<T, A> {
+impl<A> LRTable<A> {
     #[cfg(test)]
-    pub fn get_action(&self, state: StateIdx, non_terminal: Option<T>) -> Option<&LRAction<A>> {
+    pub fn get_action(
+        &self,
+        state: StateIdx,
+        non_terminal: Option<TerminalIdx>,
+    ) -> Option<&LRAction<A>> {
         self.action
             .get(&state)
             .and_then(|action| action.get(&non_terminal))
@@ -159,7 +162,9 @@ impl<T: Eq + Hash, A> LRTable<T, A> {
             .copied()
     }
 
-    pub fn get_action_table(&self) -> &FxHashMap<StateIdx, FxHashMap<Option<T>, LRAction<A>>> {
+    pub fn get_action_table(
+        &self,
+    ) -> &FxHashMap<StateIdx, FxHashMap<Option<TerminalIdx>, LRAction<A>>> {
         &self.action
     }
 
@@ -173,10 +178,10 @@ impl<T: Eq + Hash, A> LRTable<T, A> {
 }
 
 #[cfg(test)]
-pub fn simulate<T: Eq + Hash + Copy + std::fmt::Debug, A>(
-    table: &LRTable<T, A>,
-    grammar: &Grammar<T, A>,
-    mut input: impl Iterator<Item = T>,
+pub fn simulate<A>(
+    table: &LRTable<A>,
+    grammar: &Grammar<A>,
+    mut input: impl Iterator<Item = TerminalIdx>,
 ) {
     let mut stack: Vec<StateIdx> = vec![StateIdx(0)];
 
@@ -227,28 +232,28 @@ pub fn simulate<T: Eq + Hash + Copy + std::fmt::Debug, A>(
     );
 }
 
-pub struct LRTableDisplay<'a, 'b, T: Hash + Eq, A> {
-    table: &'a LRTable<T, A>,
-    grammar: &'b Grammar<T, A>,
+pub struct LRTableDisplay<'a, 'b, A> {
+    table: &'a LRTable<A>,
+    grammar: &'b Grammar<A>,
 }
 
-impl<'a, 'b, T: Hash + Eq, A> LRTableDisplay<'a, 'b, T, A> {
+impl<'a, 'b, A> LRTableDisplay<'a, 'b, A> {
     #[cfg(test)]
-    pub fn new(table: &'a LRTable<T, A>, grammar: &'b Grammar<T, A>) -> Self {
+    pub fn new(table: &'a LRTable<A>, grammar: &'b Grammar<A>) -> Self {
         Self { table, grammar }
     }
 }
 
-pub struct LRActionDisplay<'a, 'b, T, A> {
+pub struct LRActionDisplay<'a, 'b, A> {
     action: &'a LRAction<A>,
-    grammar: &'b Grammar<T, A>,
+    grammar: &'b Grammar<A>,
 }
 
 use crate::grammar::ProductionDisplay;
 
 use std::fmt;
 
-impl<'a, 'b, T: Hash + Eq + fmt::Debug, A> fmt::Display for LRTableDisplay<'a, 'b, T, A> {
+impl<'a, 'b, A> fmt::Display for LRTableDisplay<'a, 'b, A> {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         for state_idx in 0..self.table.n_states() {
             writeln!(f, "{}: {{", state_idx)?;
@@ -289,7 +294,7 @@ impl<'a, 'b, T: Hash + Eq + fmt::Debug, A> fmt::Display for LRTableDisplay<'a, '
     }
 }
 
-impl<'a, 'b, T: fmt::Debug, A> fmt::Display for LRActionDisplay<'a, 'b, T, A> {
+impl<'a, 'b, A> fmt::Display for LRActionDisplay<'a, 'b, A> {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match &self.action {
             LRAction::Shift(next) => write!(f, "Shift {}", next.0),
