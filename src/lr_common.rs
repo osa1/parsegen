@@ -52,7 +52,7 @@ impl<A: fmt::Debug + Eq> LRTableBuilder<A> {
     pub fn add_shift(&mut self, state: StateIdx, token: TerminalIdx, next_state: StateIdx) {
         let action = self.table.action.entry(state).or_default();
 
-        let old_action = action.insert(Some(token.clone()), LRAction::Shift(next_state));
+        let old_action = action.insert(Some(token), LRAction::Shift(next_state));
 
         if let Some(old_action) = old_action {
             match old_action {
@@ -92,7 +92,7 @@ impl<A: fmt::Debug + Eq> LRTableBuilder<A> {
         let action = self.table.action.entry(state).or_default();
 
         let old_action = action.insert(
-            token.clone(),
+            token,
             LRAction::Reduce(non_terminal_idx, production_idx, semantic_action),
         );
 

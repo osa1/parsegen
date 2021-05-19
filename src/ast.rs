@@ -364,14 +364,12 @@ impl Parse for Symbol {
 
 fn symbol0(input: &ParseBuffer) -> syn::Result<Symbol> {
     // TODO: No peek for LitStr?
-    match input.parse::<syn::LitStr>() {
-        Ok(str) => return Ok(Symbol::Terminal(str)),
-        Err(_) => {}
+    if let Ok(str) = input.parse::<syn::LitStr>() {
+        return Ok(Symbol::Terminal(str));
     }
 
-    match input.parse::<syn::Ident>() {
-        Ok(ident) => return Ok(Symbol::NonTerminal(ident)),
-        Err(_) => {}
+    if let Ok(ident) = input.parse::<syn::Ident>() {
+        return Ok(Symbol::NonTerminal(ident));
     }
 
     // if input.peek(syn::token::Lt) {
@@ -381,7 +379,7 @@ fn symbol0(input: &ParseBuffer) -> syn::Result<Symbol> {
     input.parse::<syn::token::Colon>()?;
     let symbol = input.parse::<Symbol>()?;
     input.parse::<syn::token::Gt>()?;
-    return Ok(Symbol::Name(Name { mutable, name }, Box::new(symbol)));
+    Ok(Symbol::Name(Name { mutable, name }, Box::new(symbol)))
     // }
 }
 

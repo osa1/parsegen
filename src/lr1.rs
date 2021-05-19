@@ -43,10 +43,7 @@ impl LR1Item {
 
     /// Returns non-terminal expected by the item, if the next expected symbol is a non-terminal.
     /// Otherwise returns `None`.
-    fn next_non_terminal<'grammar, A>(
-        &self,
-        grammar: &'grammar Grammar<A>,
-    ) -> Option<NonTerminalIdx> {
+    fn next_non_terminal<A>(&self, grammar: &Grammar<A>) -> Option<NonTerminalIdx> {
         match self.next_symbol(grammar) {
             Some(SymbolKind::NonTerminal(nt_idx)) => Some(*nt_idx),
             _ => None,
@@ -55,7 +52,7 @@ impl LR1Item {
 
     /// Returns terminal expected by the item, if the next expected symbol is a terminal. Otherwise
     /// returns `None`.
-    fn next_terminal<'grammar, A>(&self, grammar: &'grammar Grammar<A>) -> Option<TerminalIdx> {
+    fn next_terminal<A>(&self, grammar: &Grammar<A>) -> Option<TerminalIdx> {
         match self.next_symbol(grammar) {
             Some(SymbolKind::Terminal(t)) => Some(*t),
             _ => None,
@@ -104,7 +101,7 @@ fn compute_lr1_closure<A>(
                 if item.cursor + 1 == production.symbols().len() {
                     // `B` is the last symbol in the production, so the first set is just `t`
                     match &item.lookahead {
-                        Some(lookahead) => first.add(lookahead.clone()),
+                        Some(lookahead) => first.add(*lookahead),
                         None => first.set_empty(),
                     }
                 } else {
@@ -122,12 +119,12 @@ fn compute_lr1_closure<A>(
                         match &symbol.kind {
                             SymbolKind::Terminal(t) => {
                                 end_allowed = false;
-                                first.add(t.clone());
+                                first.add(*t);
                             }
                             SymbolKind::NonTerminal(nt) => {
                                 let nt_first = first_table.get_first(*nt);
                                 for t in nt_first.terminals() {
-                                    first.add(t.clone());
+                                    first.add(*t);
                                 }
                                 if !nt_first.has_empty() {
                                     end_allowed = false;
@@ -138,7 +135,7 @@ fn compute_lr1_closure<A>(
                     }
                     if end_allowed {
                         match &item.lookahead {
-                            Some(lookahead) => first.add(lookahead.clone()),
+                            Some(lookahead) => first.add(*lookahead),
                             None => first.set_empty(),
                         }
                     }
@@ -159,7 +156,7 @@ fn compute_lr1_closure<A>(
                         non_terminal_idx: next,
                         production_idx,
                         cursor: 0,
-                        lookahead: Some(t.clone()),
+                        lookahead: Some(*t),
                     };
                     if closure.insert(item.clone()) {
                         work_list.push(item);
@@ -380,10 +377,8 @@ pub fn build_lr1_table<A: Clone + fmt::Debug + Eq>(
         for item in state.items() {
             // Rule 2.a
             if let Some(next_terminal) = item.next_terminal(grammar) {
-                if let Some(next_state) =
-                    state.goto.get(&SymbolKind::Terminal(next_terminal.clone()))
-                {
-                    table.add_shift(state_idx, next_terminal.clone(), *next_state);
+                if let Some(next_state) = state.goto.get(&SymbolKind::Terminal(next_terminal)) {
+                    table.add_shift(state_idx, next_terminal, *next_state);
                 }
             }
 
@@ -394,7 +389,7 @@ pub fn build_lr1_table<A: Clone + fmt::Debug + Eq>(
                 let production = grammar.get_production(item.non_terminal_idx, item.production_idx);
                 table.add_reduce(
                     state_idx,
-                    item.lookahead.clone(),
+                    item.lookahead,
                     item.non_terminal_idx,
                     item.production_idx,
                     production.action.clone(),
