@@ -1,6 +1,5 @@
 use crate::ast::{Conversion, FieldPattern, Name, Pattern, TokenEnum};
 use crate::grammar::{Grammar, NonTerminal, Production, Symbol, SymbolKind};
-use crate::terminal::TerminalReprArena;
 
 use std::convert::TryFrom;
 
@@ -18,7 +17,7 @@ use quote::quote;
 /// - A map from token names (as written by the user in `enum Token { ... }`) to the their token
 ///   kind enum variants
 ///
-pub fn token_kind_type(tokens: &TokenEnum) -> (syn::Ident, TokenStream, TerminalReprArena) {
+pub fn generate_token_kind_type(tokens: &TokenEnum) -> (syn::Ident, TokenStream) {
     let TokenEnum {
         type_name,
         type_lifetimes: _,
@@ -27,16 +26,10 @@ pub fn token_kind_type(tokens: &TokenEnum) -> (syn::Ident, TokenStream, Terminal
 
     let token_kind_name = syn::Ident::new(&(type_name.to_string() + "Kind"), type_name.span());
 
-    let mut arena = TerminalReprArena::new(token_kind_name.clone());
-
     let enum_alts: Vec<syn::Ident> = conversions
         .iter()
         .enumerate()
-        .map(|(i, conv)| {
-            let ident = syn::Ident::new(&format!("T{}", i), conv.span);
-            arena.new_terminal(conv.from.clone(), ident.clone());
-            ident
-        })
+        .map(|(i, conv)| syn::Ident::new(&format!("T{}", i), conv.span))
         .collect();
 
     let code = quote!(
@@ -46,7 +39,7 @@ pub fn token_kind_type(tokens: &TokenEnum) -> (syn::Ident, TokenStream, Terminal
         }
     );
 
-    (token_kind_name, code, arena)
+    (token_kind_name, code)
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
@@ -65,7 +58,10 @@ pub fn generate_semantic_action_table(
     non_terminal_action_variant_name: &[usize],
     token_lifetimes: &[syn::Lifetime],
 ) -> (Vec<TokenStream>, Grammar<SemanticActionIdx>) {
-    let Grammar { non_terminals } = grammar;
+    let Grammar {
+        non_terminals,
+        n_terminals,
+    } = grammar;
 
     // Action function declarations and the array
     let mut decls: Vec<TokenStream> = vec![];
@@ -165,7 +161,13 @@ pub fn generate_semantic_action_table(
         ];
     ));
 
-    (decls, Grammar { non_terminals })
+    (
+        decls,
+        Grammar {
+            non_terminals,
+            n_terminals,
+        },
+    )
 }
 
 /// Generates a `fn token_kind(& #token_type) -> #token_kind_type` that returns kind of a token.

@@ -1,15 +1,17 @@
 //! A lowered representation of grammars
 
 use crate::ast;
-use crate::terminal::TerminalIdx;
 
 use std::convert::TryFrom;
 
 /// Grammar type parameterized over terminals and user actions.
 #[derive(Debug, Clone)]
 pub struct Grammar<A> {
-    // Indexed by `NonTerminalIdx`
+    // Non-terminals, indexed by `NonTerminalIdx`
     pub non_terminals: Vec<NonTerminal<A>>,
+
+    // Number of terminals in the grammar
+    pub n_terminals: u32,
 }
 
 #[derive(Debug, PartialEq, Eq, Clone, Copy, PartialOrd, Ord, Hash)]
@@ -22,6 +24,15 @@ impl NonTerminalIdx {
 
     pub fn from_usize(i: usize) -> Self {
         Self(u32::try_from(i).unwrap())
+    }
+}
+
+#[derive(Debug, PartialEq, Eq, Clone, Copy, PartialOrd, Ord, Hash)]
+pub struct TerminalIdx(u32);
+
+impl TerminalIdx {
+    pub fn as_usize(self) -> usize {
+        self.0 as usize
     }
 }
 
@@ -79,6 +90,7 @@ impl<A> Grammar<A> {
     pub fn new() -> Self {
         Grammar {
             non_terminals: vec![],
+            n_terminals: 0,
         }
     }
 
@@ -96,6 +108,12 @@ impl<A> Grammar<A> {
             public,
         });
         NonTerminalIdx(idx as u32)
+    }
+
+    pub fn next_terminal_idx(&mut self) -> TerminalIdx {
+        let idx = TerminalIdx(self.n_terminals);
+        self.n_terminals += 1;
+        idx
     }
 
     pub fn get_non_terminal(&self, idx: NonTerminalIdx) -> &NonTerminal<A> {
@@ -261,6 +279,10 @@ impl<A> Grammar<A> {
             non_terminal_idx: non_terminal,
             production_idx: ProductionIdx(0),
         }
+    }
+
+    pub fn terminal_indices(&self) -> impl Iterator<Item = TerminalIdx> {
+        (0..self.n_terminals).map(TerminalIdx)
     }
 }
 

@@ -1,7 +1,6 @@
 use crate::first::{FirstSet, FirstTable};
-use crate::grammar::{Grammar, NonTerminalIdx, Production, ProductionIdx, SymbolKind};
+use crate::grammar::{Grammar, NonTerminalIdx, Production, ProductionIdx, SymbolKind, TerminalIdx};
 use crate::lr_common::{LRTable, LRTableBuilder, StateIdx};
-use crate::terminal::TerminalIdx;
 
 use std::collections::BTreeSet;
 use std::hash::Hash;
@@ -256,14 +255,10 @@ impl Default for LR1Automaton {
     }
 }
 
-pub fn generate_lr1_automaton<A, F>(
+pub fn generate_lr1_automaton<A>(
     grammar: &Grammar<A>,
     first_table: &FirstTable,
-    terminal_iter: F,
-) -> (LR1Automaton, FxHashMap<NonTerminalIdx, StateIdx>)
-where
-    F: Fn() -> Box<dyn Iterator<Item = TerminalIdx>>,
-{
+) -> (LR1Automaton, FxHashMap<NonTerminalIdx, StateIdx>) {
     // Maps existing item sets to their state indices, to maintain sharing.
     let mut state_indices: FxHashMap<BTreeSet<LR1Item>, StateIdx> = Default::default();
 
@@ -316,7 +311,7 @@ where
             for symbol in grammar
                 .non_terminal_indices()
                 .map(|(nt, _)| SymbolKind::NonTerminal(nt))
-                .chain(terminal_iter().map(SymbolKind::Terminal))
+                .chain(grammar.terminal_indices().map(SymbolKind::Terminal))
             {
                 let goto = compute_lr1_goto(&state.items, &symbol, grammar, first_table);
 
@@ -513,13 +508,12 @@ impl<'a, 'b, A> fmt::Display for LR1AutomatonDisplay<'a, 'b, A> {
 #[test]
 fn grammar8_lr1_states() {
     use crate::first::generate_first_table;
-    use crate::test_grammars::{grammar8, GRAMMAR8_C, GRAMMAR8_D};
+    use crate::test_grammars::grammar8;
 
-    let grammar = grammar8();
-    let first_table = generate_first_table(&grammar);
-    let (lr1_automaton, _) = generate_lr1_automaton(&grammar, &first_table, || {
-        Box::new(vec![GRAMMAR8_C, GRAMMAR8_D].into_iter())
-    });
+    let test_grammar = grammar8();
+    let grammar = test_grammar.get_grammar();
+    let first_table = generate_first_table(grammar);
+    let (lr1_automaton, _) = generate_lr1_automaton(grammar, &first_table);
 
     println!(
         "{}",
@@ -529,16 +523,19 @@ fn grammar8_lr1_states() {
         }
     );
 
+    let d = test_grammar.t("d");
+    let c = test_grammar.t("c");
+
     let i0 = &lr1_automaton.states[0];
     assert_eq!(
         i0.items,
         btreeset! {
             LR1Item::new(0, 0, 0, None), // [S0 -> | S, EOF]
             LR1Item::new(1, 0, 0, None), // [S -> | C C, EOF]
-            LR1Item::new(2, 0, 0, Some(GRAMMAR8_D)), // [C -> . c C, d]
-            LR1Item::new(2, 0, 0, Some(GRAMMAR8_C)), // [C -> . c C, c]
-            LR1Item::new(2, 1, 0, Some(GRAMMAR8_C)), // [C -> . d, c]
-            LR1Item::new(2, 1, 0, Some(GRAMMAR8_D)), // [C -> . d, c]
+            LR1Item::new(2, 0, 0, Some(c)), // [C -> . c C, d]
+            LR1Item::new(2, 0, 0, Some(d)), // [C -> . c C, c]
+            LR1Item::new(2, 1, 0, Some(c)), // [C -> . d, c]
+            LR1Item::new(2, 1, 0, Some(d)), // [C -> . d, c]
         },
     );
 
@@ -564,12 +561,12 @@ fn grammar8_lr1_states() {
     assert_eq!(
         i3.items,
         btreeset! {
-            LR1Item::new(2, 0, 1, Some(GRAMMAR8_C)), // [C -> c | C, c]
-            LR1Item::new(2, 0, 1, Some(GRAMMAR8_D)), // [C -> c | C, d]
-            LR1Item::new(2, 0, 0, Some(GRAMMAR8_C)), // [C -> | c C, c]
-            LR1Item::new(2, 0, 0, Some(GRAMMAR8_D)), // [C -> | c C, d]
-            LR1Item::new(2, 1, 0, Some(GRAMMAR8_C)), // [C -> | d, c]
-            LR1Item::new(2, 1, 0, Some(GRAMMAR8_D)), // [C -> | d, d]
+            LR1Item::new(2, 0, 1, Some(c)), // [C -> c | C, c]
+            LR1Item::new(2, 0, 1, Some(d)), // [C -> c | C, d]
+            LR1Item::new(2, 0, 0, Some(c)), // [C -> | c C, c]
+            LR1Item::new(2, 0, 0, Some(d)), // [C -> | c C, d]
+            LR1Item::new(2, 1, 0, Some(c)), // [C -> | d, c]
+            LR1Item::new(2, 1, 0, Some(d)), // [C -> | d, d]
         },
     );
 
@@ -577,8 +574,8 @@ fn grammar8_lr1_states() {
     assert_eq!(
         i4.items,
         btreeset! {
-            LR1Item::new(2, 1, 1, Some(GRAMMAR8_C)), // [C -> d |, c]
-            LR1Item::new(2, 1, 1, Some(GRAMMAR8_D)), // [C -> d |, c]
+            LR1Item::new(2, 1, 1, Some(c)), // [C -> d |, c]
+            LR1Item::new(2, 1, 1, Some(d)), // [C -> d |, c]
         },
     );
 
@@ -597,8 +594,8 @@ fn grammar8_lr1_states() {
     assert_eq!(
         i8.items,
         btreeset! {
-            LR1Item::new(2, 0, 2, Some(GRAMMAR8_C)), // [C -> c C |, c]
-            LR1Item::new(2, 0, 2, Some(GRAMMAR8_D)), // [C -> c C |, d]
+            LR1Item::new(2, 0, 2, Some(c)), // [C -> c C |, c]
+            LR1Item::new(2, 0, 2, Some(d)), // [C -> c C |, d]
         },
     );
 
@@ -615,24 +612,12 @@ fn grammar8_lr1_states() {
 #[test]
 fn simulate1() {
     use crate::first::generate_first_table;
-    use crate::test_grammars::{
-        grammar6, GRAMMAR6_ID, GRAMMAR6_LPAREN, GRAMMAR6_PLUS, GRAMMAR6_RPAREN, GRAMMAR6_STAR,
-    };
+    use crate::test_grammars::grammar6;
 
-    let grammar = grammar6();
-    let first = generate_first_table(&grammar);
-    let (lr_automaton, _) = generate_lr1_automaton(&grammar, &first, || {
-        Box::new(
-            vec![
-                GRAMMAR6_LPAREN,
-                GRAMMAR6_RPAREN,
-                GRAMMAR6_PLUS,
-                GRAMMAR6_STAR,
-                GRAMMAR6_ID,
-            ]
-            .into_iter(),
-        )
-    });
+    let test_grammar = grammar6();
+    let grammar = test_grammar.get_grammar();
+    let first = generate_first_table(grammar);
+    let (lr_automaton, _) = generate_lr1_automaton(grammar, &first);
 
     println!(
         "{}",
@@ -644,6 +629,12 @@ fn simulate1() {
 
     let lr1 = build_lr1_table(&grammar, &lr_automaton);
 
+    let id = test_grammar.t("id");
+    let plus = test_grammar.t("+");
+    let star = test_grammar.t("*");
+    let lparen = test_grammar.t("(");
+    let rparen = test_grammar.t(")");
+
     // println!(
     //     "{}",
     //     LR1TableDisplay {
@@ -652,51 +643,26 @@ fn simulate1() {
     //     }
     // );
 
-    crate::lr_common::simulate(
-        &lr1,
-        &grammar,
-        vec![GRAMMAR6_ID, GRAMMAR6_PLUS, GRAMMAR6_ID].into_iter(),
-    );
+    crate::lr_common::simulate(&lr1, &grammar, vec![id, plus, id].into_iter());
+
+    crate::lr_common::simulate(&lr1, &grammar, vec![id, plus, id, star, id].into_iter());
 
     crate::lr_common::simulate(
         &lr1,
         &grammar,
-        vec![
-            GRAMMAR6_ID,
-            GRAMMAR6_PLUS,
-            GRAMMAR6_ID,
-            GRAMMAR6_STAR,
-            GRAMMAR6_ID,
-        ]
-        .into_iter(),
-    );
-
-    crate::lr_common::simulate(
-        &lr1,
-        &grammar,
-        vec![
-            GRAMMAR6_LPAREN,
-            GRAMMAR6_ID,
-            GRAMMAR6_PLUS,
-            GRAMMAR6_ID,
-            GRAMMAR6_RPAREN,
-            GRAMMAR6_STAR,
-            GRAMMAR6_ID,
-        ]
-        .into_iter(),
+        vec![lparen, id, plus, id, rparen, star, id].into_iter(),
     );
 }
 
 #[test]
 fn simulate2() {
     use crate::first::generate_first_table;
-    use crate::test_grammars::{grammar9, GRAMMAR9_LPAREN, GRAMMAR9_RPAREN};
+    use crate::test_grammars::grammar9;
 
-    let grammar = grammar9();
-    let first = generate_first_table(&grammar);
-    let (lr_automaton, _) = generate_lr1_automaton(&grammar, &first, || {
-        Box::new(vec![GRAMMAR9_LPAREN, GRAMMAR9_RPAREN].into_iter())
-    });
+    let test_grammar = grammar9();
+    let grammar = test_grammar.get_grammar();
+    let first = generate_first_table(grammar);
+    let (lr_automaton, _) = generate_lr1_automaton(&grammar, &first);
 
     // println!(
     //     "{}",
@@ -710,82 +676,49 @@ fn simulate2() {
 
     println!("{}", LRTableDisplay::new(&lr1, &grammar),);
 
+    let lparen = test_grammar.t("(");
+    let rparen = test_grammar.t(")");
+
     crate::lr_common::simulate(&lr1, &grammar, vec![].into_iter());
-    crate::lr_common::simulate(
-        &lr1,
-        &grammar,
-        vec![GRAMMAR9_LPAREN, GRAMMAR9_RPAREN].into_iter(),
-    );
+    crate::lr_common::simulate(&lr1, &grammar, vec![lparen, rparen].into_iter());
 }
 
 #[test]
 fn simulate3() {
     use crate::first::generate_first_table;
-    use crate::test_grammars::{grammar7, GRAMMAR7_EQ, GRAMMAR7_ID, GRAMMAR7_STAR};
+    use crate::test_grammars::grammar7;
 
-    let grammar = grammar7();
+    let test_grammar = grammar7();
+    let grammar = test_grammar.get_grammar();
     let first = generate_first_table(&grammar);
-    let (lr_automaton, _) = generate_lr1_automaton(&grammar, &first, || {
-        Box::new(vec![GRAMMAR7_EQ, GRAMMAR7_STAR, GRAMMAR7_ID].into_iter())
-    });
+    let (lr_automaton, _) = generate_lr1_automaton(&grammar, &first);
     let lr1 = build_lr1_table(&grammar, &lr_automaton);
 
     println!("{}", LRTableDisplay::new(&lr1, &grammar),);
 
-    crate::lr_common::simulate(&lr1, &grammar, vec![GRAMMAR7_STAR, GRAMMAR7_ID].into_iter());
-    crate::lr_common::simulate(
-        &lr1,
-        &grammar,
-        vec![GRAMMAR7_ID, GRAMMAR7_EQ, GRAMMAR7_ID].into_iter(),
-    );
-    crate::lr_common::simulate(
-        &lr1,
-        &grammar,
-        vec![GRAMMAR7_ID, GRAMMAR7_EQ, GRAMMAR7_STAR, GRAMMAR7_ID].into_iter(),
-    );
-    crate::lr_common::simulate(
-        &lr1,
-        &grammar,
-        vec![GRAMMAR7_STAR, GRAMMAR7_ID, GRAMMAR7_EQ, GRAMMAR7_ID].into_iter(),
-    );
-    crate::lr_common::simulate(
-        &lr1,
-        &grammar,
-        vec![
-            GRAMMAR7_STAR,
-            GRAMMAR7_ID,
-            GRAMMAR7_EQ,
-            GRAMMAR7_STAR,
-            GRAMMAR7_ID,
-        ]
-        .into_iter(),
-    );
+    let star = test_grammar.t("*");
+    let id = test_grammar.t("id");
+    let eq = test_grammar.t("=");
+
+    crate::lr_common::simulate(&lr1, &grammar, vec![star, id].into_iter());
+    crate::lr_common::simulate(&lr1, &grammar, vec![id, eq, id].into_iter());
+    crate::lr_common::simulate(&lr1, &grammar, vec![id, eq, star, id].into_iter());
+    crate::lr_common::simulate(&lr1, &grammar, vec![star, id, eq, id].into_iter());
+    crate::lr_common::simulate(&lr1, &grammar, vec![star, id, eq, star, id].into_iter());
 }
 
 #[test]
 fn simulate4() {
     use crate::first::generate_first_table;
-    use crate::test_grammars::{
-        grammar5, GRAMMAR5_LPAREN, GRAMMAR5_N, GRAMMAR5_PLUS, GRAMMAR5_RPAREN, GRAMMAR5_STAR,
-    };
+    use crate::test_grammars::grammar5;
 
-    let grammar = grammar5();
+    let test_grammar = grammar5();
+    let grammar = test_grammar.get_grammar();
 
     println!("{}", grammar);
 
     let first = generate_first_table(&grammar);
-    let (lr_automaton, _) = generate_lr1_automaton(&grammar, &first, || {
-        Box::new(
-            vec![
-                GRAMMAR5_PLUS,
-                GRAMMAR5_STAR,
-                GRAMMAR5_LPAREN,
-                GRAMMAR5_RPAREN,
-                GRAMMAR5_N,
-            ]
-            .into_iter(),
-        )
-    });
+    let (lr_automaton, _) = generate_lr1_automaton(&grammar, &first);
 
     println!(
         "{}",
@@ -799,22 +732,13 @@ fn simulate4() {
 
     println!("{}", LRTableDisplay::new(&lr1, &grammar),);
 
-    crate::lr_common::simulate(&lr1, &grammar, vec![GRAMMAR5_N].into_iter());
-    crate::lr_common::simulate(
-        &lr1,
-        &grammar,
-        vec![GRAMMAR5_N, GRAMMAR5_PLUS, GRAMMAR5_N].into_iter(),
-    );
-    crate::lr_common::simulate(
-        &lr1,
-        &grammar,
-        vec![
-            GRAMMAR5_N,
-            GRAMMAR5_PLUS,
-            GRAMMAR5_N,
-            GRAMMAR5_STAR,
-            GRAMMAR5_N,
-        ]
-        .into_iter(),
-    );
+    let n = test_grammar.t("n");
+    let plus = test_grammar.t("+");
+    let star = test_grammar.t("*");
+    // let lparen = test_grammar.t("(");
+    // let rparen = test_grammar.t(")");
+
+    crate::lr_common::simulate(&lr1, &grammar, vec![n].into_iter());
+    crate::lr_common::simulate(&lr1, &grammar, vec![n, plus, n].into_iter());
+    crate::lr_common::simulate(&lr1, &grammar, vec![n, plus, n, star, n].into_iter());
 }

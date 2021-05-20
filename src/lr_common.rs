@@ -1,5 +1,4 @@
-use crate::grammar::{Grammar, NonTerminalIdx, ProductionIdx};
-use crate::terminal::TerminalIdx;
+use crate::grammar::{Grammar, NonTerminalIdx, ProductionIdx, TerminalIdx};
 
 use fxhash::FxHashMap;
 

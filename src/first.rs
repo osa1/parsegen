@@ -1,7 +1,6 @@
 //! Implementation of "first" sets
 
-use crate::grammar::{Grammar, NonTerminalIdx, SymbolKind};
-use crate::terminal::TerminalIdx;
+use crate::grammar::{Grammar, NonTerminalIdx, SymbolKind, TerminalIdx};
 
 use fxhash::FxHashSet;
 
