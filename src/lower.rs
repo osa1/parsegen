@@ -1,6 +1,5 @@
 use crate::ast;
-use crate::grammar::{Grammar, NonTerminalIdx, Symbol, SymbolKind};
-use crate::terminal::TerminalReprArena;
+use crate::grammar::{Grammar, NonTerminalIdx, Symbol, SymbolKind, TerminalIdx};
 
 use std::iter::FromIterator;
 
@@ -9,11 +8,23 @@ use proc_macro2::Span;
 
 pub fn lower(
     non_terminals: Vec<ast::NonTerminal>,
-    arena: &TerminalReprArena,
+    terminals: &[ast::Conversion],
 ) -> Grammar<syn::Expr> {
     let mut grammar = Grammar::new();
 
     let mut nt_indices: FxHashMap<String, NonTerminalIdx> = Default::default();
+
+    let t_indices = {
+        let mut t_indices: FxHashMap<String, TerminalIdx> = Default::default();
+        for conv in terminals {
+            let idx = grammar.next_terminal_idx();
+            let old = t_indices.insert(conv.from.clone(), idx);
+            if old.is_some() {
+                panic!("Terminal {:?} defined multiple times", conv.from);
+            }
+        }
+        t_indices
+    };
 
     for nt in &non_terminals {
         if nt.visibility.is_pub() {
@@ -70,7 +81,14 @@ pub fn lower(
         for prod in productions {
             let mut symbols: Vec<Symbol> = vec![];
             for sym in prod.symbols {
-                add_symbol(arena, &nt_indices, &mut symbols, None, sym);
+                add_symbol(
+                    &mut grammar,
+                    &nt_indices,
+                    &t_indices,
+                    &mut symbols,
+                    None,
+                    sym,
+                );
             }
             let nt_idx = nt_indices.get(&name.to_string()).unwrap();
 
@@ -86,9 +104,10 @@ pub fn lower(
     grammar
 }
 
-fn add_symbol(
-    arena: &TerminalReprArena,
+fn add_symbol<A>(
+    grammar: &mut Grammar<A>,
     nt_indices: &FxHashMap<String, NonTerminalIdx>,
+    t_indices: &FxHashMap<String, TerminalIdx>,
     symbols: &mut Vec<Symbol>,
     binder: Option<ast::Name>,
     symbol: ast::Symbol,
@@ -106,16 +125,20 @@ fn add_symbol(
             });
         }
         ast::Symbol::Terminal(str) => {
+            let str = str.value();
+            let idx = t_indices
+                .get(&str)
+                .unwrap_or_else(|| panic!("Unknown non-terminal: {:?}", str));
             symbols.push(Symbol {
                 binder,
-                kind: SymbolKind::Terminal(arena.get_name_idx(&str.value())),
+                kind: SymbolKind::Terminal(*idx),
             });
         }
         ast::Symbol::Repeat(_) => {
             todo!("Repeat symbol not supported yet");
         }
         ast::Symbol::Name(binder, sym) => {
-            add_symbol(arena, nt_indices, symbols, Some(binder), *sym)
+            add_symbol(grammar, nt_indices, t_indices, symbols, Some(binder), *sym)
         }
     }
 }

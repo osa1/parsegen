@@ -1,7 +1,6 @@
 //! Implementation of "first" sets
 
-use crate::grammar::{Grammar, NonTerminalIdx, SymbolKind};
-use crate::terminal::TerminalIdx;
+use crate::grammar::{Grammar, NonTerminalIdx, SymbolKind, TerminalIdx};
 
 use fxhash::FxHashSet;
 
@@ -92,12 +91,12 @@ pub fn generate_first_table<A>(grammar: &Grammar<A>) -> FirstTable {
                             }
                             // TODO: clone below to avoid borrowck issues
                             for terminal in terminals.clone() {
-                                updated |= table.add_first(non_terminal_idx, terminal.clone());
+                                updated |= table.add_first(non_terminal_idx, terminal);
                             }
                             continue 'production_loop;
                         }
                         SymbolKind::Terminal(terminal) => {
-                            updated |= table.add_first(non_terminal_idx, terminal.clone());
+                            updated |= table.add_first(non_terminal_idx, *terminal);
                             continue 'production_loop;
                         }
                     }

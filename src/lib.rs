@@ -9,7 +9,6 @@ mod lower;
 mod lr1;
 mod lr_codegen;
 mod lr_common;
-mod terminal;
 
 // mod follow;
 // mod lr0;
@@ -41,22 +40,11 @@ pub fn parser(parser: ast::Parser) -> TokenStream {
 
     let token_enum = token_enum.expect("Token type (`enum Token`) is not defined");
 
-    // Generate the token kind enum type before lowering the grammar, to avoid mapping terminal
-    // strings in the parser definition to token kind enum variants multiple times.
-    let (token_kind_type_name, token_kind_type_decl, terminal_repr_arena) =
-        codegen::token_kind_type(&token_enum);
-
-    let grammar = lower::lower(non_terminals, &terminal_repr_arena);
+    let grammar = lower::lower(non_terminals, &token_enum.conversions);
     // println!("Grammar:");
     // println!("{}", grammar);
 
-    let lr1_parser = lr_codegen::generate_lr1_parser(
-        grammar,
-        &token_enum,
-        &terminal_repr_arena,
-        &token_kind_type_name,
-        &token_kind_type_decl,
-    );
+    let lr1_parser = lr_codegen::generate_lr1_parser(grammar, &token_enum);
 
     quote!(
         #lr1_parser
