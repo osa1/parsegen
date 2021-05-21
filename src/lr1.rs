@@ -119,6 +119,7 @@ fn compute_lr1_closure<A>(
                             SymbolKind::Terminal(t) => {
                                 end_allowed = false;
                                 first.add(*t);
+                                break;
                             }
                             SymbolKind::NonTerminal(nt) => {
                                 let nt_first = first_table.get_first(*nt);
