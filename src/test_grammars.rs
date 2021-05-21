@@ -398,3 +398,36 @@ pub fn grammar9() -> TestGrammar<()> {
 
     g
 }
+
+// S0 -> S1
+// S1 -> A S1 c
+// S1 -> b
+// A -> (empty)
+//
+// Generates (empty)^n b c^n. Not LR(1): in state 0 we have a conflict between shifting `b` vs.
+// reducing `A`.
+#[allow(unused)]
+pub fn hidden_left_recursion() -> TestGrammar<()> {
+    let mut g = TestGrammar::new();
+
+    let s0_nt = g.add_nt("S0", true);
+    let s1_nt = g.add_nt("S1", false);
+    let a_nt = g.add_nt("A", false);
+
+    let b = g.add_t("b");
+    let c = g.add_t("c");
+
+    // S0 -> S1
+    g.add_p(s0_nt, vec![nt(s1_nt)], ());
+
+    // S1 -> A S1 c
+    g.add_p(s1_nt, vec![nt(a_nt), nt(s1_nt), t(c)], ());
+
+    // S1 -> b
+    g.add_p(s1_nt, vec![t(b)], ());
+
+    // A -> (empty)
+    g.add_p(a_nt, vec![], ());
+
+    g
+}
