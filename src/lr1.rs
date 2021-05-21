@@ -144,9 +144,9 @@ fn compute_lr1_closure<A>(
 
             // println!(
             //     "LR1 closure item = {}, next = {}, first = {}",
-            //     LR1ItemDisplay { item, grammar },
+            //     LR1ItemDisplay { item: &item, grammar },
             //     grammar.get_non_terminal(next).non_terminal,
-            //     FirstSetDisplay { set: &first }
+            //     crate::first::FirstSetDisplay { set: &first, grammar }
             // );
 
             for (production_idx, _) in grammar.non_terminal_production_indices(next) {
