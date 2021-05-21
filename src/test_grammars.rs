@@ -24,7 +24,7 @@ impl<A> TestGrammar<A> {
     }
 
     fn add_t(&mut self, terminal: &'static str) -> TerminalIdx {
-        let idx = self.grammar.next_terminal_idx();
+        let idx = self.grammar.new_terminal(terminal.to_owned());
         let old = self.terminals.insert(terminal, idx);
         assert_eq!(old, None);
         idx

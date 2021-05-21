@@ -60,7 +60,7 @@ pub fn generate_semantic_action_table(
 ) -> (Vec<TokenStream>, Grammar<SemanticActionIdx>) {
     let Grammar {
         non_terminals,
-        n_terminals,
+        terminals,
     } = grammar;
 
     // Action function declarations and the array
@@ -165,7 +165,7 @@ pub fn generate_semantic_action_table(
         decls,
         Grammar {
             non_terminals,
-            n_terminals,
+            terminals,
         },
     )
 }

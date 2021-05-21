@@ -48,7 +48,13 @@ impl<A: fmt::Debug + Eq> LRTableBuilder<A> {
         self.table
     }
 
-    pub fn add_shift(&mut self, state: StateIdx, token: TerminalIdx, next_state: StateIdx) {
+    pub fn add_shift(
+        &mut self,
+        grammar: &Grammar<A>,
+        state: StateIdx,
+        token: TerminalIdx,
+        next_state: StateIdx,
+    ) {
         let action = self.table.action.entry(state).or_default();
 
         let old_action = action.insert(Some(token), LRAction::Shift(next_state));
@@ -59,7 +65,10 @@ impl<A: fmt::Debug + Eq> LRTableBuilder<A> {
                     if s != next_state {
                         panic!(
                             "({}, {:?}): Overriding Shift({}) with Shift({})",
-                            state.0, token, s.0, next_state.0,
+                            state.0,
+                            grammar.get_terminal(token),
+                            s.0,
+                            next_state.0,
                         );
                     }
                 }
@@ -67,13 +76,19 @@ impl<A: fmt::Debug + Eq> LRTableBuilder<A> {
                     // TODO: Allowing overriding reduce actions for shift for now
                     // panic!(
                     //     "({}, {:?}): Overriding Reduce({}, {}) action with Shift({})",
-                    //     state.0, token, nt_.0, p_.0, next_state.0,
+                    //     state.0,
+                    //     grammar.get_terminal(token),
+                    //     nt_.0,
+                    //     p_.0,
+                    //     next_state.0,
                     // );
                 }
                 LRAction::Accept => {
                     panic!(
                         "({}, {:?}): Overriding Accept action with Shift({})",
-                        state.0, token, next_state.0,
+                        state.0,
+                        grammar.get_terminal(token),
+                        next_state.0,
                     );
                 }
             }
@@ -82,6 +97,7 @@ impl<A: fmt::Debug + Eq> LRTableBuilder<A> {
 
     pub fn add_reduce(
         &mut self,
+        grammar: &Grammar<A>,
         state: StateIdx,
         token: Option<TerminalIdx>,
         non_terminal_idx: NonTerminalIdx,
@@ -100,19 +116,31 @@ impl<A: fmt::Debug + Eq> LRTableBuilder<A> {
                 LRAction::Shift(s) => {
                     panic!(
                         "({}, {:?}): Overriding Shift({}) with Reduce({}, {})",
-                        state.0, token, s.0, non_terminal_idx.0, production_idx.0
+                        state.0,
+                        token.map(|t| grammar.get_terminal(t)),
+                        s.0,
+                        non_terminal_idx.0,
+                        production_idx.0
                     )
                 }
                 LRAction::Reduce(nt_, p_, _) => {
                     panic!(
                         "({}, {:?}): Overriding Reduce({}, {}) action with Reduce({}, {})",
-                        state.0, token, nt_.0, p_.0, non_terminal_idx.0, production_idx.0
+                        state.0,
+                        token.map(|t| grammar.get_terminal(t)),
+                        nt_.0,
+                        p_.0,
+                        non_terminal_idx.0,
+                        production_idx.0
                     );
                 }
                 LRAction::Accept => {
                     panic!(
                         "({}, {:?}): Overriding Accept action with Reduce({}, {})",
-                        state.0, token, non_terminal_idx.0, production_idx.0
+                        state.0,
+                        token.map(|t| grammar.get_terminal(t)),
+                        non_terminal_idx.0,
+                        production_idx.0
                     );
                 }
             }

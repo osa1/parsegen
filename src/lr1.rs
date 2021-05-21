@@ -373,7 +373,7 @@ pub fn build_lr1_table<A: Clone + fmt::Debug + Eq>(
             // Rule 2.a
             if let Some(next_terminal) = item.next_terminal(grammar) {
                 if let Some(next_state) = state.goto.get(&SymbolKind::Terminal(next_terminal)) {
-                    table.add_shift(state_idx, next_terminal, *next_state);
+                    table.add_shift(grammar, state_idx, next_terminal, *next_state);
                 }
             }
 
@@ -383,6 +383,7 @@ pub fn build_lr1_table<A: Clone + fmt::Debug + Eq>(
             if item.is_complete(grammar) && !non_terminal.public {
                 let production = grammar.get_production(item.non_terminal_idx, item.production_idx);
                 table.add_reduce(
+                    grammar,
                     state_idx,
                     item.lookahead,
                     item.non_terminal_idx,
@@ -456,7 +457,11 @@ impl<'a, 'b, A> fmt::Display for LR1ItemDisplay<'a, 'b, A> {
             write!(f, "|")?;
         }
 
-        write!(f, ", {:?}]", self.item.lookahead)
+        write!(
+            f,
+            ", {:?}]",
+            self.item.lookahead.map(|t| self.grammar.get_terminal(t))
+        )
     }
 }
 
@@ -730,7 +735,7 @@ fn simulate4() {
 
     let lr1 = build_lr1_table(&grammar, &lr_automaton);
 
-    println!("{}", LRTableDisplay::new(&lr1, &grammar),);
+    println!("{}", LRTableDisplay::new(&lr1, &grammar));
 
     let n = test_grammar.t("n");
     let plus = test_grammar.t("+");

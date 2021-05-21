@@ -10,8 +10,10 @@ pub struct Grammar<A> {
     // Non-terminals, indexed by `NonTerminalIdx`
     pub non_terminals: Vec<NonTerminal<A>>,
 
-    // Number of terminals in the grammar
-    pub n_terminals: u32,
+    // Maps terminals to their user-written names (in `enum Token { ... }`). The strings are only
+    // used for debugging purposes, but we use the length of this vector to generate
+    // `TerminalIdx`s.
+    pub terminals: Vec<String>,
 }
 
 #[derive(Debug, PartialEq, Eq, Clone, Copy, PartialOrd, Ord, Hash)]
@@ -90,7 +92,7 @@ impl<A> Grammar<A> {
     pub fn new() -> Self {
         Grammar {
             non_terminals: vec![],
-            n_terminals: 0,
+            terminals: vec![],
         }
     }
 
@@ -110,14 +112,26 @@ impl<A> Grammar<A> {
         NonTerminalIdx(idx as u32)
     }
 
-    pub fn next_terminal_idx(&mut self) -> TerminalIdx {
-        let idx = TerminalIdx(self.n_terminals);
-        self.n_terminals += 1;
+    pub fn new_terminal(&mut self, str: String) -> TerminalIdx {
+        let idx = TerminalIdx(u32::try_from(self.terminals.len()).unwrap());
+        self.terminals.push(str);
         idx
     }
 
     pub fn get_non_terminal(&self, idx: NonTerminalIdx) -> &NonTerminal<A> {
         &self.non_terminals[idx.0 as usize]
+    }
+
+    pub fn get_terminal(&self, idx: TerminalIdx) -> &str {
+        &self.terminals[idx.0 as usize]
+    }
+
+    pub fn n_non_terminals(&self) -> usize {
+        self.non_terminals.len()
+    }
+
+    pub fn n_terminals(&self) -> usize {
+        self.terminals.len()
     }
 
     /*
@@ -282,7 +296,7 @@ impl<A> Grammar<A> {
     }
 
     pub fn terminal_indices(&self) -> impl Iterator<Item = TerminalIdx> {
-        (0..self.n_terminals).map(TerminalIdx)
+        (0..self.terminals.len()).map(|idx| TerminalIdx(u32::try_from(idx).unwrap()))
     }
 }
 
@@ -370,7 +384,10 @@ impl<'a, 'b, A> fmt::Display for SymbolKindDisplay<'a, 'b, A> {
                 let nt = self.grammar.get_non_terminal(*nt);
                 write!(f, "{}", nt.non_terminal)
             }
-            SymbolKind::Terminal(t) => write!(f, "{:?}", t),
+            SymbolKind::Terminal(t) => {
+                let t = &self.grammar.terminals[t.0 as usize];
+                write!(f, "{:?}", t)
+            }
         }
     }
 }
