@@ -1,8 +1,6 @@
 use crate::ast::{Conversion, FieldPattern, Name, Pattern, TokenEnum};
 use crate::grammar::{Grammar, NonTerminal, Production, Symbol, SymbolKind};
 
-use std::convert::TryFrom;
-
 use fxhash::FxHashMap;
 use proc_macro2::{Span, TokenStream};
 use quote::quote;

@@ -2,8 +2,6 @@
 
 use crate::ast;
 
-use std::convert::TryFrom;
-
 /// Grammar type parameterized over terminals and user actions.
 #[derive(Debug, Clone)]
 pub struct Grammar<A> {

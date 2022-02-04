@@ -8,8 +8,6 @@ use crate::grammar::{Grammar, NonTerminalIdx, ProductionIdx, TerminalIdx};
 use crate::lr1::{build_lr1_table, generate_lr1_automaton};
 use crate::lr_common::{LRAction, StateIdx};
 
-use std::convert::TryFrom;
-
 use fxhash::FxHashMap;
 use proc_macro2::{Span, TokenStream};
 use quote::quote;
