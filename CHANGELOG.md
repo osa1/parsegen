@@ -1,4 +1,4 @@
-# Unreleased
+# 2022/02/05: 0.1.1
 
 - Fixed a bug in LR(1) parse table generation, more specifically, in first set
   generation in LR(1) closure computation.
