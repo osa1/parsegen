@@ -257,6 +257,7 @@ pub struct LRTableDisplay<'a, 'b> {
 }
 
 impl<'a, 'b> LRTableDisplay<'a, 'b> {
+    #[allow(unused)]
     pub fn new(table: &'a LRTable, grammar: &'b Grammar) -> Self {
         Self { table, grammar }
     }

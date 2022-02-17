@@ -30,10 +30,10 @@ pub fn generate_lr1_parser(grammar: Grammar, tokens: &TokenEnum) -> TokenStream 
 
     let lr1_table = build_lr1_table(&grammar, &lr1_automaton);
 
-    println!(
-        "{}",
-        crate::lr_common::LRTableDisplay::new(&lr1_table, &grammar)
-    );
+    // println!(
+    //     "{}",
+    //     crate::lr_common::LRTableDisplay::new(&lr1_table, &grammar)
+    // );
 
     let action_vec = action_table_vec(&grammar, lr1_table.get_action_table(), lr1_table.n_states());
 
@@ -167,6 +167,10 @@ pub fn generate_lr1_parser(grammar: Grammar, tokens: &TokenEnum) -> TokenStream 
                             span: (0, 0),
                             children,
                         });
+
+                        for _ in 0 .. n_symbols {
+                            state_stack.pop();
+                        }
 
                         let state = *state_stack.last().unwrap() as usize;
                         match GOTO[state][non_terminal_idx as usize] {
