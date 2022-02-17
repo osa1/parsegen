@@ -318,7 +318,7 @@ impl Parse for NonTerminal {
 impl Parse for Production {
     fn parse(input: &ParseBuffer) -> syn::Result<Self> {
         let mut symbols: Vec<Symbol> = vec![];
-        while !input.peek(syn::token::FatArrow) {
+        while !input.peek(syn::token::Comma) {
             symbols.push(input.parse::<Symbol>()?);
         }
         Ok(Production { symbols })
