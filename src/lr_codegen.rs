@@ -1,10 +1,7 @@
 use crate::ast::TokenEnum;
-use crate::codegen::{
-    generate_semantic_action_table, generate_token_kind_type, semantic_action_result_type,
-    token_value_fn, SemanticActionIdx,
-};
+use crate::codegen::generate_token_kind_type;
 use crate::first::generate_first_table;
-use crate::grammar::{Grammar, NonTerminalIdx, ProductionIdx, TerminalIdx};
+use crate::grammar::{Grammar, NonTerminalIdx, TerminalIdx};
 use crate::lr1::{build_lr1_table, generate_lr1_automaton};
 use crate::lr_common::{LRAction, StateIdx};
 
@@ -12,7 +9,7 @@ use fxhash::FxHashMap;
 use proc_macro2::{Span, TokenStream};
 use quote::quote;
 
-pub fn generate_lr1_parser(grammar: Grammar<syn::Expr>, tokens: &TokenEnum) -> TokenStream {
+pub fn generate_lr1_parser(grammar: Grammar, tokens: &TokenEnum) -> TokenStream {
     let (token_kind_type_name, token_kind_type_decl) = generate_token_kind_type(tokens);
 
     let n_terminals = grammar.n_terminals();
@@ -22,20 +19,6 @@ pub fn generate_lr1_parser(grammar: Grammar<syn::Expr>, tokens: &TokenEnum) -> T
     let (lr1_automaton, nt_state_indices) = generate_lr1_automaton(&grammar, &first_table);
 
     let token_lifetimes = &tokens.type_lifetimes;
-
-    let (
-        semantic_action_result_type_name,
-        semantic_action_result_type_decl,
-        non_terminal_action_variant_name,
-    ) = semantic_action_result_type(&grammar, &tokens.conversions, token_lifetimes);
-
-    // Generate semantic action table, replace semantic actions in the grammar with their indices
-    // in the table
-    let (semantic_action_table, grammar) = generate_semantic_action_table(
-        grammar,
-        &non_terminal_action_variant_name,
-        &tokens.type_lifetimes,
-    );
 
     // println!(
     //     "{}",
@@ -47,10 +30,10 @@ pub fn generate_lr1_parser(grammar: Grammar<syn::Expr>, tokens: &TokenEnum) -> T
 
     let lr1_table = build_lr1_table(&grammar, &lr1_automaton);
 
-    // println!(
-    //     "{}",
-    //     crate::lr_common::LRTableDisplay::new(&lr1_table, &grammar)
-    // );
+    println!(
+        "{}",
+        crate::lr_common::LRTableDisplay::new(&lr1_table, &grammar)
+    );
 
     let action_vec = action_table_vec(&grammar, lr1_table.get_action_table(), lr1_table.n_states());
 
@@ -69,13 +52,6 @@ pub fn generate_lr1_parser(grammar: Grammar<syn::Expr>, tokens: &TokenEnum) -> T
     let (token_kind_fn_name, token_kind_fn_decl) =
         crate::codegen::token_kind_fn(&token_kind_type_name, tokens);
 
-    let (token_value_fn_name, token_value_fn_decl) = token_value_fn(
-        &tokens.conversions,
-        &tokens.type_name,
-        &tokens.type_lifetimes,
-        &semantic_action_result_type_name,
-    );
-
     // struct NonTerminal;
     // impl NonTerminal { fn parse() { ... } }
     let parser_structs: Vec<TokenStream> = nt_state_indices
@@ -85,34 +61,18 @@ pub fn generate_lr1_parser(grammar: Grammar<syn::Expr>, tokens: &TokenEnum) -> T
             let non_terminal = grammar.get_non_terminal(non_terminal_idx);
             let non_terminal_name_id =
                 syn::Ident::new(&non_terminal.non_terminal, Span::call_site());
-            let non_terminal_return_type = &non_terminal.return_ty;
-            let action_idx = usize::from(
-                grammar
-                    .get_production(non_terminal_idx, ProductionIdx(0))
-                    .action
-                    .as_u16(),
-            );
-            let extract_method_id = syn::Ident::new(
-                &format!(
-                    "non_terminal_{}",
-                    non_terminal_action_variant_name[non_terminal_idx.as_usize()]
-                ),
-                Span::call_site(),
-            );
 
             quote!(
                 pub struct #non_terminal_name_id;
 
                 impl #non_terminal_name_id {
-                    pub fn parse<#(#token_lifetimes,)* E: Clone>(
+                    pub fn parse<#(#token_lifetimes,)* E: ::std::fmt::Debug + Clone>(
                         mut input: impl Iterator<Item=Result<#token_type<#(#token_lifetimes,)*>, E>>
-                    ) -> Result<#non_terminal_return_type, ParseError_<E>>
+                    ) -> Result<Node, ParseError_<E>>
                     {
                         parse_generic(
                             input,
-                            SemanticActionResult::#extract_method_id,
                             #parser_state,
-                            #action_idx,
                         )
                     }
                 }
@@ -128,10 +88,23 @@ pub fn generate_lr1_parser(grammar: Grammar<syn::Expr>, tokens: &TokenEnum) -> T
             },
             Reduce {
                 non_terminal_idx: u16,
+                production_idx: u16,
                 n_symbols: u16,
-                semantic_action_idx: u16,
             },
             Accept,
+        }
+
+        #[derive(Debug)]
+        enum Kind<#(#token_lifetimes,)*> {
+            NonTerminal(usize),
+            Terminal(#token_type<#(#token_lifetimes,)*>),
+        }
+
+        #[derive(Debug)]
+        pub struct Node<#(#token_lifetimes,)*> {
+            kind: Kind<#(#token_lifetimes,)*>,
+            span: (usize, usize),
+            children: Vec<Node>,
         }
 
         // static ACTION: [[Option<LRAction>; ...]; ...]
@@ -151,27 +124,16 @@ pub fn generate_lr1_parser(grammar: Grammar<syn::Expr>, tokens: &TokenEnum) -> T
         // fn token_kind(token: &Token) -> TokenKind { ... }
         #token_kind_fn_decl
 
-        // fn token_value(token: &Token) -> SemanticActionResult { ... }
-        #token_value_fn_decl
-
-        // enum SemanticActionResult { ... } + an impl for extracting fields
-        #semantic_action_result_type_decl
-
-        // static SEMANTIC_ACTIONS: [fn(&mut Vec<SemanticActionResult); ...] = [ ... ]
-        // + the functions
-        #(#semantic_action_table)*
-
-        fn parse_generic<#(#token_lifetimes,)* R, E: Clone>(
-            mut input: impl Iterator<Item=Result<#token_type<#(#token_lifetimes),*>, E>>,
-            extract_value: fn(SemanticActionResult<#(#token_lifetimes),*>) -> R,
+        fn parse_generic<#(#token_lifetimes,)* E: ::std::fmt::Debug + Clone>(
+            mut input: impl Iterator<Item=Result<#token_type<#(#token_lifetimes,)*>, E>>,
             init_state: u32,
-            action_idx: usize,
-        ) -> Result<R, ParseError_<E>>
+        ) -> Result<Node, ParseError_<E>>
         {
             let mut state_stack: Vec<u32> = vec![init_state];
-            let mut value_stack: Vec<SemanticActionResult<#(#token_lifetimes),*>> = vec![];
+            let mut value_stack: Vec<Node> = vec![];
 
-            let mut token = input.next();
+            let mut token: Option<Result<#token_type<#(#token_lifetimes,)*>, E>> =
+                input.next();
 
             loop {
                 let state = *state_stack.last().unwrap() as usize;
@@ -184,16 +146,28 @@ pub fn generate_lr1_parser(grammar: Grammar<syn::Expr>, tokens: &TokenEnum) -> T
                     None => panic!("Stuck! (1) state={}, terminal={}", state, terminal_idx),
                     Some(LRAction::Shift { next_state }) => {
                         state_stack.push(next_state);
-                        if let Some(Ok(token)) = &token {
-                            value_stack.push(#token_value_fn_name(token));
-                        }
+                        let token_ = token.unwrap().unwrap();
+                        value_stack.push(Node {
+                            kind: Kind::Terminal(token_),
+                            span: (0, 0),
+                            children: Vec::new(),
+                        });
                         token = input.next();
                     }
-                    Some(LRAction::Reduce { non_terminal_idx, n_symbols, semantic_action_idx }) => {
-                        (SEMANTIC_ACTIONS[semantic_action_idx as usize])(&mut value_stack);
-                        for _ in 0 .. n_symbols {
-                            state_stack.pop().unwrap();
-                        }
+                    Some(LRAction::Reduce {
+                        non_terminal_idx,
+                        production_idx,
+                        n_symbols,
+                    }) => {
+                        let children: Vec<Node> =
+                            value_stack.drain(value_stack.len() - (n_symbols as usize)..).collect();
+
+                        value_stack.push(Node {
+                            kind: Kind::NonTerminal(non_terminal_idx as usize),
+                            span: (0, 0),
+                            children,
+                        });
+
                         let state = *state_stack.last().unwrap() as usize;
                         match GOTO[state][non_terminal_idx as usize] {
                             None => panic!("Stuck! (2)"),
@@ -204,11 +178,7 @@ pub fn generate_lr1_parser(grammar: Grammar<syn::Expr>, tokens: &TokenEnum) -> T
                 }
             }
 
-            // TODO: We could call the function directly here, instead of going through the
-            // table
-            SEMANTIC_ACTIONS[action_idx](&mut value_stack);
-
-            Ok(extract_value(value_stack.pop().unwrap()))
+            Ok(value_stack.pop().unwrap())
         }
 
         #(#parser_structs)*
@@ -216,19 +186,19 @@ pub fn generate_lr1_parser(grammar: Grammar<syn::Expr>, tokens: &TokenEnum) -> T
 }
 
 /// Generates array representation of the action table. Reminder: EOF = last terminal.
-fn action_table_vec<A: Copy>(
-    grammar: &Grammar<A>,
-    action_table: &FxHashMap<StateIdx, FxHashMap<Option<TerminalIdx>, LRAction<A>>>,
+fn action_table_vec(
+    grammar: &Grammar,
+    action_table: &FxHashMap<StateIdx, FxHashMap<Option<TerminalIdx>, LRAction>>,
     n_states: usize,
-) -> Vec<Vec<Option<LRAction<A>>>> {
+) -> Vec<Vec<Option<LRAction>>> {
     let n_terminals = grammar.n_terminals();
 
-    let mut state_to_terminal_to_action: Vec<Vec<Option<LRAction<A>>>> =
+    let mut state_to_terminal_to_action: Vec<Vec<Option<LRAction>>> =
         Vec::with_capacity(n_terminals);
     for state in 0..n_states {
         let state_idx = StateIdx(state);
         // +1 for EOF
-        let mut terminal_to_action: Vec<Option<LRAction<A>>> = Vec::with_capacity(n_terminals + 1);
+        let mut terminal_to_action: Vec<Option<LRAction>> = Vec::with_capacity(n_terminals + 1);
         for terminal in grammar.terminal_indices() {
             terminal_to_action.push(
                 action_table
@@ -274,9 +244,9 @@ fn generate_goto_vec(
     state_to_non_terminal_to_state
 }
 
-fn generate_action_array<A>(
-    grammar: &Grammar<A>,
-    table: &[Vec<Option<LRAction<SemanticActionIdx>>>],
+fn generate_action_array(
+    grammar: &Grammar,
+    table: &[Vec<Option<LRAction>>],
     n_states: usize,
     n_terminals: usize,
 ) -> TokenStream {
@@ -296,7 +266,7 @@ fn generate_action_array<A>(
                             let next_state: u32 = u32::try_from(next_state.as_usize()).unwrap();
                             quote!(LRAction::Shift { next_state: #next_state })
                         }
-                        LRAction::Reduce(non_terminal_idx, production_idx, semantic_action_idx) => {
+                        LRAction::Reduce(non_terminal_idx, production_idx) => {
                             let n_symbols: u16 = u16::try_from(
                                 grammar
                                     .get_production(*non_terminal_idx, *production_idx)
@@ -304,13 +274,17 @@ fn generate_action_array<A>(
                                     .len(),
                             )
                             .unwrap();
+
                             let non_terminal_idx: u16 =
                                 u16::try_from(non_terminal_idx.as_usize()).unwrap();
-                            let semantic_action_idx = semantic_action_idx.as_u16();
+
+                            let production_idx: u16 =
+                                u16::try_from(production_idx.as_usize()).unwrap();
+
                             quote!(LRAction::Reduce {
                                 non_terminal_idx: #non_terminal_idx,
+                                production_idx: #production_idx,
                                 n_symbols: #n_symbols,
-                                semantic_action_idx: #semantic_action_idx,
                             })
                         }
                         LRAction::Accept => quote!(LRAction::Accept),

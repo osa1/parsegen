@@ -1,15 +1,10 @@
 use crate::ast;
 use crate::grammar::{Grammar, NonTerminalIdx, Symbol, SymbolKind, TerminalIdx};
 
-use std::iter::FromIterator;
-
 use fxhash::FxHashMap;
 use proc_macro2::Span;
 
-pub fn lower(
-    non_terminals: Vec<ast::NonTerminal>,
-    terminals: &[ast::Conversion],
-) -> Grammar<syn::Expr> {
+pub fn lower(non_terminals: Vec<ast::NonTerminal>, terminals: &[ast::Conversion]) -> Grammar {
     let mut grammar = Grammar::new();
 
     let mut nt_indices: FxHashMap<String, NonTerminalIdx> = Default::default();
@@ -55,17 +50,6 @@ pub fn lower(
                     }),
                     kind: SymbolKind::NonTerminal(nt1_idx),
                 }],
-                syn::Expr::Path(syn::ExprPath {
-                    attrs: vec![],
-                    qself: None,
-                    path: syn::Path {
-                        leading_colon: None,
-                        segments: syn::punctuated::Punctuated::from_iter(vec![syn::PathSegment {
-                            ident: binder_ident,
-                            arguments: syn::PathArguments::None,
-                        }]),
-                    },
-                }),
             );
         } else {
             let nt_name = nt.name.to_string();
@@ -92,20 +76,15 @@ pub fn lower(
             }
             let nt_idx = nt_indices.get(&name.to_string()).unwrap();
 
-            let action = match prod.action {
-                ast::Action::User(expr) => expr,
-                ast::Action::Fallible(_) => todo!("Fallible actions not supported yet"),
-            };
-
-            grammar.add_production(*nt_idx, symbols, action);
+            grammar.add_production(*nt_idx, symbols);
         }
     }
 
     grammar
 }
 
-fn add_symbol<A>(
-    grammar: &mut Grammar<A>,
+fn add_symbol(
+    grammar: &mut Grammar,
     nt_indices: &FxHashMap<String, NonTerminalIdx>,
     t_indices: &FxHashMap<String, TerminalIdx>,
     symbols: &mut Vec<Symbol>,

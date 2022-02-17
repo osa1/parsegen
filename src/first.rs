@@ -70,7 +70,7 @@ impl FirstTable {
     }
 }
 
-pub fn generate_first_table<A>(grammar: &Grammar<A>) -> FirstTable {
+pub fn generate_first_table(grammar: &Grammar) -> FirstTable {
     let mut table: FirstTable = FirstTable::new(grammar.non_terminals().len());
 
     let mut updated = true;
@@ -113,12 +113,12 @@ pub fn generate_first_table<A>(grammar: &Grammar<A>) -> FirstTable {
 
 use std::fmt;
 
-pub struct FirstSetDisplay<'a, 'b, A> {
+pub struct FirstSetDisplay<'a, 'b> {
     pub set: &'a FirstSet,
-    pub grammar: &'b Grammar<A>,
+    pub grammar: &'b Grammar,
 }
 
-impl<'a, 'b, A> fmt::Display for FirstSetDisplay<'a, 'b, A> {
+impl<'a, 'b> fmt::Display for FirstSetDisplay<'a, 'b> {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(f, "{{")?;
         for (t_idx, t) in self.set.terminals.iter().enumerate() {

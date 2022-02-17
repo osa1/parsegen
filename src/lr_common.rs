@@ -12,28 +12,28 @@ impl StateIdx {
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum LRAction<A> {
+pub enum LRAction {
     /// Shift current terminal, switch to given state
     Shift(StateIdx),
 
     /// Reduce using the given production
-    Reduce(NonTerminalIdx, ProductionIdx, A),
+    Reduce(NonTerminalIdx, ProductionIdx),
 
     /// Accept the input
     Accept,
 }
 
-pub struct LRTable<A> {
-    action: FxHashMap<StateIdx, FxHashMap<Option<TerminalIdx>, LRAction<A>>>,
+pub struct LRTable {
+    action: FxHashMap<StateIdx, FxHashMap<Option<TerminalIdx>, LRAction>>,
     goto: FxHashMap<StateIdx, FxHashMap<NonTerminalIdx, StateIdx>>,
     n_states: usize,
 }
 
-pub struct LRTableBuilder<A> {
-    table: LRTable<A>,
+pub struct LRTableBuilder {
+    table: LRTable,
 }
 
-impl<A: fmt::Debug + Eq> LRTableBuilder<A> {
+impl LRTableBuilder {
     pub fn new(n_states: usize) -> Self {
         Self {
             table: LRTable {
@@ -44,13 +44,13 @@ impl<A: fmt::Debug + Eq> LRTableBuilder<A> {
         }
     }
 
-    pub fn build(self) -> LRTable<A> {
+    pub fn build(self) -> LRTable {
         self.table
     }
 
     pub fn add_shift(
         &mut self,
-        grammar: &Grammar<A>,
+        grammar: &Grammar,
         state: StateIdx,
         token: TerminalIdx,
         next_state: StateIdx,
@@ -72,7 +72,7 @@ impl<A: fmt::Debug + Eq> LRTableBuilder<A> {
                         );
                     }
                 }
-                LRAction::Reduce(_nt_, _p_, _) => {
+                LRAction::Reduce(_nt_, _p_) => {
                     // TODO: Allowing overriding reduce actions for shift for now
                     // panic!(
                     //     "({}, {:?}): Overriding Reduce({}, {}) action with Shift({})",
@@ -97,19 +97,15 @@ impl<A: fmt::Debug + Eq> LRTableBuilder<A> {
 
     pub fn add_reduce(
         &mut self,
-        grammar: &Grammar<A>,
+        grammar: &Grammar,
         state: StateIdx,
         token: Option<TerminalIdx>,
         non_terminal_idx: NonTerminalIdx,
         production_idx: ProductionIdx,
-        semantic_action: A,
     ) {
         let action = self.table.action.entry(state).or_default();
 
-        let old_action = action.insert(
-            token,
-            LRAction::Reduce(non_terminal_idx, production_idx, semantic_action),
-        );
+        let old_action = action.insert(token, LRAction::Reduce(non_terminal_idx, production_idx));
 
         if let Some(old_action) = old_action {
             match old_action {
@@ -123,7 +119,7 @@ impl<A: fmt::Debug + Eq> LRTableBuilder<A> {
                         production_idx.0
                     )
                 }
-                LRAction::Reduce(nt_, p_, _) => {
+                LRAction::Reduce(nt_, p_) => {
                     panic!(
                         "({}, {:?}): Overriding Reduce({}, {}) action with Reduce({}, {})",
                         state.0,
@@ -169,13 +165,13 @@ impl<A: fmt::Debug + Eq> LRTableBuilder<A> {
     }
 }
 
-impl<A> LRTable<A> {
+impl LRTable {
     #[cfg(test)]
     pub fn get_action(
         &self,
         state: StateIdx,
         non_terminal: Option<TerminalIdx>,
-    ) -> Option<&LRAction<A>> {
+    ) -> Option<&LRAction> {
         self.action
             .get(&state)
             .and_then(|action| action.get(&non_terminal))
@@ -191,7 +187,7 @@ impl<A> LRTable<A> {
 
     pub fn get_action_table(
         &self,
-    ) -> &FxHashMap<StateIdx, FxHashMap<Option<TerminalIdx>, LRAction<A>>> {
+    ) -> &FxHashMap<StateIdx, FxHashMap<Option<TerminalIdx>, LRAction>> {
         &self.action
     }
 
@@ -205,11 +201,7 @@ impl<A> LRTable<A> {
 }
 
 #[cfg(test)]
-pub fn simulate<A>(
-    table: &LRTable<A>,
-    grammar: &Grammar<A>,
-    mut input: impl Iterator<Item = TerminalIdx>,
-) {
+pub fn simulate(table: &LRTable, grammar: &Grammar, mut input: impl Iterator<Item = TerminalIdx>) {
     let mut stack: Vec<StateIdx> = vec![StateIdx(0)];
 
     let mut a = input.next();
@@ -259,28 +251,27 @@ pub fn simulate<A>(
     );
 }
 
-pub struct LRTableDisplay<'a, 'b, A> {
-    table: &'a LRTable<A>,
-    grammar: &'b Grammar<A>,
+pub struct LRTableDisplay<'a, 'b> {
+    table: &'a LRTable,
+    grammar: &'b Grammar,
 }
 
-impl<'a, 'b, A> LRTableDisplay<'a, 'b, A> {
-    #[cfg(test)]
-    pub fn new(table: &'a LRTable<A>, grammar: &'b Grammar<A>) -> Self {
+impl<'a, 'b> LRTableDisplay<'a, 'b> {
+    pub fn new(table: &'a LRTable, grammar: &'b Grammar) -> Self {
         Self { table, grammar }
     }
 }
 
-pub struct LRActionDisplay<'a, 'b, A> {
-    action: &'a LRAction<A>,
-    grammar: &'b Grammar<A>,
+pub struct LRActionDisplay<'a, 'b> {
+    action: &'a LRAction,
+    grammar: &'b Grammar,
 }
 
 use crate::grammar::ProductionDisplay;
 
 use std::fmt;
 
-impl<'a, 'b, A> fmt::Display for LRTableDisplay<'a, 'b, A> {
+impl<'a, 'b> fmt::Display for LRTableDisplay<'a, 'b> {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         for state_idx in 0..self.table.n_states() {
             writeln!(f, "{}: {{", state_idx)?;
@@ -321,11 +312,11 @@ impl<'a, 'b, A> fmt::Display for LRTableDisplay<'a, 'b, A> {
     }
 }
 
-impl<'a, 'b, A> fmt::Display for LRActionDisplay<'a, 'b, A> {
+impl<'a, 'b> fmt::Display for LRActionDisplay<'a, 'b> {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match &self.action {
             LRAction::Shift(next) => write!(f, "Shift {}", next.0),
-            LRAction::Reduce(nt, p, _) => {
+            LRAction::Reduce(nt, p) => {
                 let p_ = self.grammar.get_production(*nt, *p);
                 let nt_ = self.grammar.get_non_terminal(*nt);
                 write!(

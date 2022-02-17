@@ -32,17 +32,14 @@ impl LR1Item {
         }
     }
 
-    fn next_symbol<'grammar, A>(
-        &self,
-        grammar: &'grammar Grammar<A>,
-    ) -> Option<&'grammar SymbolKind> {
+    fn next_symbol<'grammar>(&self, grammar: &'grammar Grammar) -> Option<&'grammar SymbolKind> {
         let production = grammar.get_production(self.non_terminal_idx, self.production_idx);
         production.symbols().get(self.cursor).map(|s| &s.kind)
     }
 
     /// Returns non-terminal expected by the item, if the next expected symbol is a non-terminal.
     /// Otherwise returns `None`.
-    fn next_non_terminal<A>(&self, grammar: &Grammar<A>) -> Option<NonTerminalIdx> {
+    fn next_non_terminal(&self, grammar: &Grammar) -> Option<NonTerminalIdx> {
         match self.next_symbol(grammar) {
             Some(SymbolKind::NonTerminal(nt_idx)) => Some(*nt_idx),
             _ => None,
@@ -51,17 +48,14 @@ impl LR1Item {
 
     /// Returns terminal expected by the item, if the next expected symbol is a terminal. Otherwise
     /// returns `None`.
-    fn next_terminal<A>(&self, grammar: &Grammar<A>) -> Option<TerminalIdx> {
+    fn next_terminal(&self, grammar: &Grammar) -> Option<TerminalIdx> {
         match self.next_symbol(grammar) {
             Some(SymbolKind::Terminal(t)) => Some(*t),
             _ => None,
         }
     }
 
-    fn get_production<'grammar, A>(
-        &self,
-        grammar: &'grammar Grammar<A>,
-    ) -> &'grammar Production<A> {
+    fn get_production<'grammar>(&self, grammar: &'grammar Grammar) -> &'grammar Production {
         grammar.get_production(self.non_terminal_idx, self.production_idx)
     }
 
@@ -71,14 +65,14 @@ impl LR1Item {
         item
     }
 
-    fn is_complete<A>(&self, grammar: &Grammar<A>) -> bool {
+    fn is_complete(&self, grammar: &Grammar) -> bool {
         let production = self.get_production(grammar);
         self.cursor == production.symbols().len()
     }
 }
 
-fn compute_lr1_closure<A>(
-    grammar: &Grammar<A>,
+fn compute_lr1_closure(
+    grammar: &Grammar,
     first_table: &FirstTable,
     items: FxHashSet<LR1Item>,
 ) -> BTreeSet<LR1Item> {
@@ -180,10 +174,10 @@ fn compute_lr1_closure<A>(
     closure.into_iter().collect()
 }
 
-fn compute_lr1_goto<A>(
+fn compute_lr1_goto(
     state: &BTreeSet<LR1Item>,
     symbol: &SymbolKind,
-    grammar: &Grammar<A>,
+    grammar: &Grammar,
     first: &FirstTable,
 ) -> BTreeSet<LR1Item> {
     let mut goto: FxHashSet<LR1Item> = Default::default();
@@ -256,8 +250,8 @@ impl Default for LR1Automaton {
     }
 }
 
-pub fn generate_lr1_automaton<A>(
-    grammar: &Grammar<A>,
+pub fn generate_lr1_automaton(
+    grammar: &Grammar,
     first_table: &FirstTable,
 ) -> (LR1Automaton, FxHashMap<NonTerminalIdx, StateIdx>) {
     // Maps existing item sets to their state indices, to maintain sharing.
@@ -363,11 +357,8 @@ pub fn generate_lr1_automaton<A>(
     (automaton, non_terminal_state_indices)
 }
 
-pub fn build_lr1_table<A: Clone + fmt::Debug + Eq>(
-    grammar: &Grammar<A>,
-    automaton: &LR1Automaton,
-) -> LRTable<A> {
-    let mut table: LRTableBuilder<A> = LRTableBuilder::new(automaton.states.len());
+pub fn build_lr1_table(grammar: &Grammar, automaton: &LR1Automaton) -> LRTable {
+    let mut table = LRTableBuilder::new(automaton.states.len());
 
     for (state_idx, state) in automaton.state_indices() {
         for item in state.items() {
@@ -382,14 +373,12 @@ pub fn build_lr1_table<A: Clone + fmt::Debug + Eq>(
 
             // Rule 2.b
             if item.is_complete(grammar) && !non_terminal.public {
-                let production = grammar.get_production(item.non_terminal_idx, item.production_idx);
                 table.add_reduce(
                     grammar,
                     state_idx,
                     item.lookahead,
                     item.non_terminal_idx,
                     item.production_idx,
-                    production.action.clone(),
                 );
             }
 
@@ -418,22 +407,22 @@ use crate::lr_common::LRTableDisplay;
 
 use std::fmt;
 
-pub struct LR1AutomatonDisplay<'a, 'b, A> {
+pub struct LR1AutomatonDisplay<'a, 'b> {
     pub automaton: &'a LR1Automaton,
-    pub grammar: &'b Grammar<A>,
+    pub grammar: &'b Grammar,
 }
 
-struct LR1StateDisplay<'a, 'b, A> {
+struct LR1StateDisplay<'a, 'b> {
     state: &'a LR1State,
-    grammar: &'b Grammar<A>,
+    grammar: &'b Grammar,
 }
 
-struct LR1ItemDisplay<'a, 'b, A> {
+struct LR1ItemDisplay<'a, 'b> {
     item: &'a LR1Item,
-    grammar: &'b Grammar<A>,
+    grammar: &'b Grammar,
 }
 
-impl<'a, 'b, A> fmt::Display for LR1ItemDisplay<'a, 'b, A> {
+impl<'a, 'b> fmt::Display for LR1ItemDisplay<'a, 'b> {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         let non_terminal = self.grammar.get_non_terminal(self.item.non_terminal_idx);
         let production = non_terminal.get_production(self.item.production_idx);
@@ -466,7 +455,7 @@ impl<'a, 'b, A> fmt::Display for LR1ItemDisplay<'a, 'b, A> {
     }
 }
 
-impl<'a, 'b, A> fmt::Display for LR1StateDisplay<'a, 'b, A> {
+impl<'a, 'b> fmt::Display for LR1StateDisplay<'a, 'b> {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         for item in &self.state.items {
             writeln!(
@@ -492,7 +481,7 @@ impl<'a, 'b, A> fmt::Display for LR1StateDisplay<'a, 'b, A> {
     }
 }
 
-impl<'a, 'b, A> fmt::Display for LR1AutomatonDisplay<'a, 'b, A> {
+impl<'a, 'b> fmt::Display for LR1AutomatonDisplay<'a, 'b> {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         for (state_idx, state) in self.automaton.state_indices() {
             writeln!(f, "{}: {{", state_idx.0)?;
