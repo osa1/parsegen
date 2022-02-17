@@ -30,10 +30,10 @@ pub fn generate_lr1_parser(grammar: Grammar, tokens: &TokenEnum) -> TokenStream 
 
     let lr1_table = build_lr1_table(&grammar, &lr1_automaton);
 
-    // println!(
-    //     "{}",
-    //     crate::lr_common::LRTableDisplay::new(&lr1_table, &grammar)
-    // );
+    println!(
+        "{}",
+        crate::lr_common::LRTableDisplay::new(&lr1_table, &grammar)
+    );
 
     let action_vec = action_table_vec(&grammar, lr1_table.get_action_table(), lr1_table.n_states());
 
@@ -59,7 +59,6 @@ pub fn generate_lr1_parser(grammar: Grammar, tokens: &TokenEnum) -> TokenStream 
         .map(|(non_terminal_idx, parser_state)| {
             let parser_state = u32::try_from(parser_state.as_usize()).unwrap();
             let non_terminal = grammar.get_non_terminal(non_terminal_idx);
-            let non_terminal_idx = non_terminal_idx.as_usize();
             let non_terminal_name_id =
                 syn::Ident::new(&non_terminal.non_terminal, Span::call_site());
 
@@ -74,7 +73,6 @@ pub fn generate_lr1_parser(grammar: Grammar, tokens: &TokenEnum) -> TokenStream 
                         parse_generic(
                             input,
                             #parser_state,
-                            #non_terminal_idx,
                         )
                     }
                 }
@@ -129,7 +127,6 @@ pub fn generate_lr1_parser(grammar: Grammar, tokens: &TokenEnum) -> TokenStream 
         fn parse_generic<#(#token_lifetimes,)* E: ::std::fmt::Debug + Clone>(
             mut input: impl Iterator<Item=Result<#token_type<#(#token_lifetimes,)*>, E>>,
             init_state: u32,
-            non_terminal_idx: usize,
         ) -> Result<Node, ParseError_<E>>
         {
             let mut state_stack: Vec<u32> = vec![init_state];
