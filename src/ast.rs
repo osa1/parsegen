@@ -93,7 +93,6 @@ pub struct NonTerminal {
 #[derive(Debug)]
 pub struct Production {
     pub symbols: Vec<Symbol>,
-    pub action: Action,
 }
 
 #[derive(Debug)]
@@ -129,12 +128,6 @@ pub enum RepeatOp {
     Plus,
     Star,
     Question,
-}
-
-#[derive(Debug)]
-pub enum Action {
-    User(syn::Expr),
-    Fallible(syn::Expr),
 }
 
 impl Parse for FieldPattern {
@@ -328,8 +321,7 @@ impl Parse for Production {
         while !input.peek(syn::token::FatArrow) {
             symbols.push(input.parse::<Symbol>()?);
         }
-        let action = input.parse::<Action>()?;
-        Ok(Production { symbols, action })
+        Ok(Production { symbols })
     }
 }
 
@@ -381,18 +373,6 @@ fn symbol0(input: &ParseBuffer) -> syn::Result<Symbol> {
     input.parse::<syn::token::Gt>()?;
     Ok(Symbol::Name(Name { mutable, name }, Box::new(symbol)))
     // }
-}
-
-impl Parse for Action {
-    fn parse(input: &ParseBuffer) -> syn::Result<Self> {
-        input.parse::<syn::token::FatArrow>()?;
-        if input.peek(syn::token::Question) {
-            input.parse::<syn::token::Question>()?;
-            Ok(Action::Fallible(input.parse::<syn::Expr>()?))
-        } else {
-            Ok(Action::User(input.parse::<syn::Expr>()?))
-        }
-    }
 }
 
 impl Parse for GrammarItem {

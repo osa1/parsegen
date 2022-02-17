@@ -1,5 +1,5 @@
-use crate::ast::{Conversion, FieldPattern, Name, Pattern, TokenEnum};
-use crate::grammar::{Grammar, NonTerminal, Production, Symbol, SymbolKind};
+use crate::ast::{Conversion, FieldPattern, Pattern, TokenEnum};
+use crate::grammar::{Grammar, NonTerminal, Production};
 
 use fxhash::FxHashMap;
 use proc_macro2::{Span, TokenStream};
@@ -43,19 +43,9 @@ pub fn generate_token_kind_type(tokens: &TokenEnum) -> (syn::Ident, TokenStream)
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub struct SemanticActionIdx(u16);
 
-impl SemanticActionIdx {
-    pub fn as_u16(&self) -> u16 {
-        self.0
-    }
-}
-
 /// Generates semantic action functions, semantic action table (array of semantic action functions)
 /// and replaces semantic actions in the grammar with their indices in the array.
-pub fn generate_semantic_action_table(
-    grammar: Grammar<syn::Expr>,
-    non_terminal_action_variant_name: &[usize],
-    token_lifetimes: &[syn::Lifetime],
-) -> (Vec<TokenStream>, Grammar<SemanticActionIdx>) {
+pub fn generate_semantic_action_table(grammar: Grammar) -> (Vec<TokenStream>, Grammar) {
     let Grammar {
         non_terminals,
         terminals,
@@ -65,7 +55,7 @@ pub fn generate_semantic_action_table(
     let mut decls: Vec<TokenStream> = vec![];
     let mut fn_names: Vec<syn::Ident> = vec![];
 
-    let non_terminals: Vec<NonTerminal<SemanticActionIdx>> = non_terminals
+    let non_terminals: Vec<NonTerminal> = non_terminals
         .into_iter()
         .enumerate()
         .map(
@@ -78,67 +68,35 @@ pub fn generate_semantic_action_table(
                     public,
                 },
             )| {
-                let productions: Vec<Production<SemanticActionIdx>> = productions
+                let productions: Vec<Production> = productions
                     .into_iter()
                     .enumerate()
-                    .map(|(p_i, Production { symbols, action })| {
+                    .map(|(p_i, Production { symbols })| {
                         // Statements to pop the values off the value stack and bind them, for the
                         // pruduction's RHS
-                        let mut pop_code: Vec<TokenStream> = vec![];
-
-                        for Symbol { binder, kind } in symbols.iter().rev() {
-                            match binder {
-                                None => {
-                                    pop_code.push(quote!(value_stack.pop()));
-                                }
-                                Some(Name {
-                                    mutable,
-                                    name,
-                                }) => {
-                                    let mut_ = if *mutable { quote!(mut) } else { quote!() };
-                                    let extract_method = match kind {
-                                        SymbolKind::NonTerminal(nt_idx) => syn::Ident::new(
-                                            &format!("non_terminal_{}", non_terminal_action_variant_name[nt_idx.as_usize()]),
-                                            Span::call_site()
-                                        ),
-                                        SymbolKind::Terminal(terminal_idx) => syn::Ident::new(
-                                            &format!("token_{}", terminal_idx.as_usize()),
-                                            Span::call_site(),
-                                        ),
-                                    };
-                                    pop_code.push(quote!(
-                                        let #mut_ #name = value_stack.pop().unwrap().#extract_method()
-                                    ));
-                                }
-                            }
-                        }
+                        let n_pops = symbols.len();
 
                         let fn_name = syn::Ident::new(
                             &format!("nt{}p{}_action", nt_i, p_i),
                             Span::call_site(),
                         );
-                        let fn_idx = decls.len();
-
-                        let non_terminal_variant = syn::Ident::new(
-                            &format!("NonTerminal{}", non_terminal_action_variant_name[nt_i]),
-                            Span::call_site()
-                        );
 
                         decls.push(quote!(
-                            fn #fn_name<#(#token_lifetimes),*>(
-                                value_stack: &mut Vec<SemanticActionResult<#(#token_lifetimes),*>>
-                            ) {
-                                #(#pop_code;)*
-                                value_stack.push(SemanticActionResult::#non_terminal_variant(#action));
+                            fn #fn_name(value_stack: &mut Vec<Node>) {
+                                let children: Vec<Node> =
+                                    value_stack.drain(value_stack.len() - #n_pops..).collect();
+
+                                value_stack.push(Node {
+                                    kind: Kind::NonTerminal(#nt_i),
+                                    span: (0, 0),
+                                    children,
+                                });
                             }
                         ));
 
                         fn_names.push(fn_name);
 
-                        Production {
-                            symbols,
-                            action: SemanticActionIdx(u16::try_from(fn_idx).unwrap()),
-                        }
+                        Production { symbols }
                     })
                     .collect();
 
@@ -295,8 +253,8 @@ fn pattern_ignore(pattern: &Pattern) -> TokenStream {
 /// each token with value. Used in the value stack for terminals and non-terminals.
 ///
 /// The `Vec` maps `NonTerminalIdx`s to their value extraction method names.
-pub fn semantic_action_result_type<A>(
-    grammar: &Grammar<A>,
+pub fn semantic_action_result_type(
+    grammar: &Grammar,
     tokens: &[Conversion],
     token_lifetimes: &[syn::Lifetime],
 ) -> (syn::Ident, TokenStream, Vec<usize>) {
