@@ -52,6 +52,8 @@ pub fn generate_lr1_parser(grammar: Grammar, tokens: &TokenEnum) -> TokenStream 
     let (token_kind_fn_name, token_kind_fn_decl) =
         crate::codegen::token_kind_fn(&token_kind_type_name, tokens);
 
+    let token_full_type = quote!(#token_type<#(#token_lifetimes,)*>);
+
     // struct NonTerminal;
     // impl NonTerminal { fn parse() { ... } }
     let parser_structs: Vec<TokenStream> = nt_state_indices
@@ -67,10 +69,12 @@ pub fn generate_lr1_parser(grammar: Grammar, tokens: &TokenEnum) -> TokenStream 
 
                 impl #non_terminal_name_id {
                     pub fn parse<#(#token_lifetimes,)* E: ::std::fmt::Debug + Clone>(
-                        mut input: impl Iterator<Item=Result<#token_type<#(#token_lifetimes,)*>, E>>
-                    ) -> Result<Node, ParseError_<E>>
+                        arena: &mut NodeArena<#token_full_type, usize>,
+                        mut input: impl Iterator<Item=Result<#token_full_type, E>>
+                    ) -> Result<::parsegen_util::NodeIdx, ParseError_<E>>
                     {
                         parse_generic(
+                            arena,
                             input,
                             #parser_state,
                         )
@@ -94,19 +98,6 @@ pub fn generate_lr1_parser(grammar: Grammar, tokens: &TokenEnum) -> TokenStream 
             Accept,
         }
 
-        #[derive(Debug)]
-        enum Kind<#(#token_lifetimes,)*> {
-            NonTerminal(usize),
-            Terminal(#token_type<#(#token_lifetimes,)*>),
-        }
-
-        #[derive(Debug)]
-        pub struct Node<#(#token_lifetimes,)*> {
-            kind: Kind<#(#token_lifetimes,)*>,
-            span: (usize, usize),
-            children: Vec<Node>,
-        }
-
         // static ACTION: [[Option<LRAction>; ...]; ...]
         #action_array_code
 
@@ -125,14 +116,15 @@ pub fn generate_lr1_parser(grammar: Grammar, tokens: &TokenEnum) -> TokenStream 
         #token_kind_fn_decl
 
         fn parse_generic<#(#token_lifetimes,)* E: ::std::fmt::Debug + Clone>(
-            mut input: impl Iterator<Item=Result<#token_type<#(#token_lifetimes,)*>, E>>,
+            arena: &mut ::parsegen_util::NodeArena<#token_full_type, usize>,
+            mut input: impl Iterator<Item=Result<#token_full_type, E>>,
             init_state: u32,
-        ) -> Result<Node, ParseError_<E>>
+        ) -> Result<::parsegen_util::NodeIdx, ParseError_<E>>
         {
             let mut state_stack: Vec<u32> = vec![init_state];
-            let mut value_stack: Vec<Node> = vec![];
+            let mut value_stack: Vec<::parsegen_util::NodeIdx> = vec![];
 
-            let mut token: Option<Result<#token_type<#(#token_lifetimes,)*>, E>> =
+            let mut token: Option<Result<#token_full_type, E>> =
                 input.next();
 
             loop {
@@ -147,11 +139,11 @@ pub fn generate_lr1_parser(grammar: Grammar, tokens: &TokenEnum) -> TokenStream 
                     Some(LRAction::Shift { next_state }) => {
                         state_stack.push(next_state);
                         let token_ = token.unwrap().unwrap();
-                        value_stack.push(Node {
-                            kind: Kind::Terminal(token_),
-                            span: (0, 0),
-                            children: Vec::new(),
-                        });
+                        let value =
+                            arena.new_node(::parsegen_util::NodeKind::Terminal(token_));
+
+                        value_stack.push(value);
+
                         token = input.next();
                     }
                     Some(LRAction::Reduce {
@@ -159,14 +151,29 @@ pub fn generate_lr1_parser(grammar: Grammar, tokens: &TokenEnum) -> TokenStream 
                         production_idx,
                         n_symbols,
                     }) => {
-                        let children: Vec<Node> =
-                            value_stack.drain(value_stack.len() - (n_symbols as usize)..).collect();
+                        let nt_value =
+                            arena.new_node(::parsegen_util::NodeKind::NonTerminal(
+                                non_terminal_idx as usize
+                            ));
 
-                        value_stack.push(Node {
-                            kind: Kind::NonTerminal(non_terminal_idx as usize),
-                            span: (0, 0),
-                            children,
-                        });
+                        let mut child_iter = value_stack.drain(value_stack.len() - (n_symbols as usize)..);
+
+                        if let Some(first_child) = child_iter.next() {
+                            arena.get_mut(nt_value).child = Some(first_child);
+                            arena.get_mut(first_child).parent = Some(nt_value);
+
+                            let mut last_child = first_child;
+
+                            for child in child_iter {
+                                arena.get_mut(last_child).next = Some(child);
+                                arena.get_mut(child).prev = Some(last_child);
+                                last_child = child;
+                            }
+                        } else {
+                            drop(child_iter);
+                        }
+
+                        value_stack.push(nt_value);
 
                         for _ in 0 .. n_symbols {
                             state_stack.pop();

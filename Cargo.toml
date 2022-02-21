@@ -1,21 +1,5 @@
-[package]
-name = "parsegen"
-version = "0.1.1"
-authors = ["Ömer Sinan Ağacan <omeragacan@gmail.com>"]
-description = "A parser generator implemented as a proc macro"
-edition = "2021"
-license = "MIT"
-homepage = "https://github.com/osa1/parsegen"
-
-[lib]
-name = "parsegen"
-proc_macro = true
-
-[dependencies]
-fxhash = "0.2"
-proc-macro2 = "1.0"
-quote = "1.0"
-syn = { version = "1.0", features = ["full", "derive", "parsing", "extra-traits"] }
-
-[dev-dependencies]
-lexgen = "0.2.2"
+[workspace]
+members = [
+    "crates/parsegen",
+    "crates/parsegen_util",
+]
