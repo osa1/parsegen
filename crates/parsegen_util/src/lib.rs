@@ -1,3 +1,7 @@
+mod iter;
+
+pub use iter::{ArenaTerminalIter, TerminalIter};
+
 use std::num::NonZeroU32;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
@@ -28,11 +32,8 @@ impl<T, NT> NodeArena<T, NT> {
         NodeArena { nodes: Vec::new() }
     }
 
-    pub fn iter_terminals(&self, root: NodeIdx) -> TerminalIter<T, NT> {
-        TerminalIter {
-            arena: self,
-            stack: vec![root],
-        }
+    pub fn iter_terminals(&self, root: NodeIdx) -> ArenaTerminalIter<T> {
+        ArenaTerminalIter::new(root)
     }
 
     pub fn new_node(&mut self, node: NodeKind<T, NT>) -> NodeIdx {
@@ -96,42 +97,12 @@ impl<T, NT> NodeInfo<T, NT> {
     }
 }
 
-pub struct TerminalIter<'a, T, NT> {
-    arena: &'a NodeArena<T, NT>,
-    stack: Vec<NodeIdx>,
-}
-
-impl<'a, T, NT> Iterator for TerminalIter<'a, T, NT> {
-    type Item = NodeIdx;
-
-    fn next(&mut self) -> Option<NodeIdx> {
-        let current_node = match self.stack.pop() {
-            Some(node_idx) => node_idx,
-            None => return None,
-        };
-
-        match self.arena.get(current_node).child {
-            Some(child) => {
-                debug_assert!(self.arena.get(current_node).is_non_terminal());
-                self.stack.push(child);
-                self.next()
-            }
-            None => {
-                if let Some(next) = self.arena.get(current_node).next {
-                    self.stack.push(next);
-                }
-                Some(current_node)
-            }
-        }
-    }
-}
-
 #[test]
 fn node_terminal_iter_1() {
     let mut arena: NodeArena<u32, u32> = NodeArena::new();
     let root = arena.new_node(NodeKind::Terminal(0));
 
-    let nts: Vec<NodeIdx> = arena.iter_terminals(root).collect();
+    let nts: Vec<NodeIdx> = arena.iter_terminals(root).collect(&mut arena);
     assert_eq!(nts, vec![root]);
 }
 
@@ -146,7 +117,7 @@ fn node_terminal_iter_2() {
     arena.get_mut(root).child = Some(node_1);
     arena.get_mut(node_1).next = Some(node_2);
 
-    let nts: Vec<NodeIdx> = arena.iter_terminals(root).collect();
+    let nts: Vec<NodeIdx> = arena.iter_terminals(root).collect(&mut arena);
     assert_eq!(nts, vec![node_1, node_2]);
 }
 
@@ -163,6 +134,6 @@ fn node_terminal_iter_3() {
     arena.get_mut(node_1).next = Some(node_2);
     arena.get_mut(node_2).child = Some(node_3);
 
-    let nts: Vec<NodeIdx> = arena.iter_terminals(root).collect();
+    let nts: Vec<NodeIdx> = arena.iter_terminals(root).collect(&mut arena);
     assert_eq!(nts, vec![node_1, node_3]);
 }
