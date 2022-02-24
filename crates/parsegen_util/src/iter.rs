@@ -1,5 +1,40 @@
 use crate::{NodeArena, NodeIdx, NodeKind};
 
+use std::marker::PhantomData;
+
+pub trait ArenaIter<T, NT> {
+    type Item;
+
+    fn next(&mut self, arena: &mut NodeArena<T, NT>) -> Option<Self::Item>;
+}
+
+/// Converts a lexer into an iterator that takes a `&mut NodeArena` argument and allocates
+/// non-terminals in the arena
+pub struct LexerArenaIterAdapter<T, E, I: Iterator<Item = Result<T, E>>> {
+    lexer: I,
+}
+
+impl<T, NT, E, I: Iterator<Item = Result<T, E>>> ArenaIter<T, NT>
+    for LexerArenaIterAdapter<T, E, I>
+{
+    type Item = Result<NodeIdx, E>;
+
+    fn next(&mut self, arena: &mut NodeArena<T, NT>) -> Option<Result<NodeIdx, E>> {
+        match self.lexer.next() {
+            Some(Ok(tok)) => Some(Ok(arena.new_node(NodeKind::Terminal(tok)))),
+            Some(Err(err)) => Some(Err(err)),
+            None => None,
+        }
+    }
+}
+
+pub fn lexer_to_arena_iter<T, NT, E, I>(lexer: I) -> LexerArenaIterAdapter<T, E, I>
+where
+    I: Iterator<Item = Result<T, E>>,
+{
+    LexerArenaIterAdapter { lexer }
+}
+
 pub trait TerminalIter {
     type Terminal;
 
@@ -45,7 +80,7 @@ impl<'a, T, NT, I: TerminalIter<Terminal = T>> Iterator for TerminalIterToIter<'
 
 pub struct ArenaTerminalIter<T> {
     stack: Vec<NodeIdx>,
-    _t: std::marker::PhantomData<T>,
+    _t: PhantomData<T>,
 }
 
 impl<T> ArenaTerminalIter<T> {
@@ -66,18 +101,47 @@ impl<T> TerminalIter for ArenaTerminalIter<T> {
             None => return None,
         };
 
-        match arena.get(current_node).child {
-            Some(child) => {
-                debug_assert!(arena.get(current_node).is_non_terminal());
+        if arena.get(current_node).is_terminal() {
+            debug_assert!(arena.get(current_node).child.is_none());
+            if let Some(next) = arena.get(current_node).next {
+                self.stack.push(next);
+            }
+            Some(current_node)
+        } else {
+            // Node is non-terminal
+            if let Some(next) = arena.get(current_node).next {
+                self.stack.push(next);
+            }
+
+            if let Some(child) = arena.get(current_node).child {
                 self.stack.push(child);
-                self.next(arena)
             }
-            None => {
-                if let Some(next) = arena.get(current_node).next {
-                    self.stack.push(next);
-                }
-                Some(current_node)
-            }
+
+            self.next(arena)
         }
+    }
+}
+
+pub struct ArenaTerminalIterToArenaIter<T, NT, E> {
+    iter: ArenaTerminalIter<T>,
+    _nt: PhantomData<NT>,
+    _e: PhantomData<E>,
+}
+
+pub fn arena_terminal_iter_to_arena_iter<T, NT, E>(
+    iter: ArenaTerminalIter<T>,
+) -> ArenaTerminalIterToArenaIter<T, NT, E> {
+    ArenaTerminalIterToArenaIter {
+        iter,
+        _nt: Default::default(),
+        _e: Default::default(),
+    }
+}
+
+impl<T, NT, E> ArenaIter<T, NT> for ArenaTerminalIterToArenaIter<T, NT, E> {
+    type Item = Result<NodeIdx, E>;
+
+    fn next(&mut self, arena: &mut NodeArena<T, NT>) -> Option<Result<NodeIdx, E>> {
+        self.iter.next(arena).map(Ok)
     }
 }

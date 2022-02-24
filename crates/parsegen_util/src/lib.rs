@@ -1,6 +1,9 @@
 mod iter;
 
-pub use iter::{ArenaTerminalIter, TerminalIter};
+pub use iter::{
+    arena_terminal_iter_to_arena_iter, lexer_to_arena_iter, ArenaIter, ArenaTerminalIter,
+    TerminalIter,
+};
 
 use std::num::NonZeroU32;
 
@@ -74,6 +77,17 @@ impl<T, NT> NodeArena<T, NT> {
         }
 
         self.get_mut(idx).prev = prev;
+    }
+}
+
+impl<T, NT: std::fmt::Debug> NodeArena<T, NT> {
+    pub fn get_terminal(&self, idx: NodeIdx) -> &T {
+        match &self.get(idx).kind {
+            NodeKind::NonTerminal(nt) => {
+                panic!("get_terminal: node index is for non-terminal {:?}", nt)
+            }
+            NodeKind::Terminal(token) => token,
+        }
     }
 }
 

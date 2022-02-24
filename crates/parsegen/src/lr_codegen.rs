@@ -70,7 +70,7 @@ pub fn generate_lr1_parser(grammar: Grammar, tokens: &TokenEnum) -> TokenStream 
                 impl #non_terminal_name_id {
                     pub fn parse<#(#token_lifetimes,)* E: ::std::fmt::Debug + Clone>(
                         arena: &mut NodeArena<#token_full_type, usize>,
-                        mut input: impl Iterator<Item=Result<#token_full_type, E>>
+                        mut input: impl ::parsegen_util::ArenaIter<#token_full_type, usize, Item=Result<::parsegen_util::NodeIdx, E>>
                     ) -> Result<::parsegen_util::NodeIdx, ParseError_<E>>
                     {
                         parse_generic(
@@ -117,34 +117,35 @@ pub fn generate_lr1_parser(grammar: Grammar, tokens: &TokenEnum) -> TokenStream 
 
         fn parse_generic<#(#token_lifetimes,)* E: ::std::fmt::Debug + Clone>(
             arena: &mut ::parsegen_util::NodeArena<#token_full_type, usize>,
-            mut input: impl Iterator<Item=Result<#token_full_type, E>>,
+            mut input: impl ::parsegen_util::ArenaIter<#token_full_type, usize, Item=Result<::parsegen_util::NodeIdx, E>>,
             init_state: u32,
         ) -> Result<::parsegen_util::NodeIdx, ParseError_<E>>
         {
             let mut state_stack: Vec<u32> = vec![init_state];
             let mut value_stack: Vec<::parsegen_util::NodeIdx> = vec![];
 
-            let mut token: Option<Result<#token_full_type, E>> =
-                input.next();
+            let mut node_idx: Option<Result<::parsegen_util::NodeIdx, E>> =
+                input.next(arena);
 
             loop {
                 let state = *state_stack.last().unwrap() as usize;
-                let terminal_idx = match &token {
+                let terminal_idx = match node_idx {
                     None => #n_terminals,
                     Some(Err(err)) => return Err(ParseError_::Other(err.clone())),
-                    Some(Ok(token)) => #token_kind_fn_name(&token) as usize,
+                    Some(Ok(node_idx)) => {
+                        let token = arena.get_terminal(node_idx);
+                        #token_kind_fn_name(token) as usize
+                    }
                 };
                 match ACTION[state][terminal_idx] {
                     None => panic!("Stuck! (1) state={}, terminal={}", state, terminal_idx),
                     Some(LRAction::Shift { next_state }) => {
                         state_stack.push(next_state);
-                        let token_ = token.unwrap().unwrap();
-                        let value =
-                            arena.new_node(::parsegen_util::NodeKind::Terminal(token_));
+                        let value = node_idx.unwrap().unwrap();
 
                         value_stack.push(value);
 
-                        token = input.next();
+                        node_idx = input.next(arena);
                     }
                     Some(LRAction::Reduce {
                         non_terminal_idx,
