@@ -1,5 +1,7 @@
+mod debug;
 mod iter;
 
+pub use debug::print_parse_tree;
 pub use iter::{
     arena_terminal_iter_to_arena_iter, lexer_to_arena_iter, ArenaIter, ArenaTerminalIter,
     TerminalIter,
