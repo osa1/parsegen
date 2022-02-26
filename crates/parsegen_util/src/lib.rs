@@ -78,6 +78,26 @@ impl<T, NT> NodeArena<T, NT> {
 
         self.get_mut(idx).prev = prev;
     }
+
+    pub fn leftmost_terminal(&self, idx: NodeIdx) -> Option<NodeIdx> {
+        let node = self.get(idx);
+        match node.kind {
+            NodeKind::NonTerminal(_) => match node.child {
+                Some(child) => match self.leftmost_terminal(child) {
+                    Some(node) => Some(node),
+                    None => match node.next {
+                        Some(node) => self.leftmost_terminal(node),
+                        None => None,
+                    },
+                },
+                None => match node.next {
+                    Some(node) => self.leftmost_terminal(node),
+                    None => None,
+                },
+            },
+            NodeKind::Terminal(_) => Some(idx),
+        }
+    }
 }
 
 impl<T, NT: std::fmt::Debug> NodeArena<T, NT> {
