@@ -6,6 +6,8 @@ pub trait ArenaIter<T, NT> {
     type Item;
 
     fn next(&mut self, arena: &mut NodeArena<T, NT>) -> Option<Self::Item>;
+
+    fn left_breakdown(&mut self, arena: &mut NodeArena<T, NT>, non_terminal_idx: NodeIdx);
 }
 
 /// Converts a lexer into an iterator that takes a `&mut NodeArena` argument and allocates
@@ -25,6 +27,10 @@ impl<T, NT, E, I: Iterator<Item = Result<T, E>>> ArenaIter<T, NT>
             Some(Err(err)) => Some(Err(err)),
             None => None,
         }
+    }
+
+    fn left_breakdown(&mut self, _arena: &mut NodeArena<T, NT>, _non_terminal_idx: NodeIdx) {
+        panic!("left_breakdown called on LexerArenaIterAdapter");
     }
 }
 
@@ -101,30 +107,11 @@ impl<T> TerminalIter for ArenaTerminalIter<T> {
             None => return None,
         };
 
-        if arena.get(current_node).is_terminal() {
-            debug_assert!(arena.get(current_node).child.is_none());
-            if let Some(next) = arena.get(current_node).next {
-                self.stack.push(next);
-            }
-            Some(current_node)
-        } else {
-            // Node is non-terminal
-            if arena.get(current_node).changed {
-                // Right breakdown
-                if let Some(next) = arena.get(current_node).next {
-                    self.stack.push(next);
-                }
-
-                if let Some(child) = arena.get(current_node).child {
-                    self.stack.push(child);
-                }
-
-                self.next(arena)
-            } else {
-                // Unchanged, will be shifted
-                Some(current_node)
-            }
+        if let Some(next) = arena.get(current_node).next {
+            self.stack.push(next);
         }
+
+        Some(current_node)
     }
 }
 
@@ -149,5 +136,12 @@ impl<T, NT, E> ArenaIter<T, NT> for ArenaTerminalIterToArenaIter<T, NT, E> {
 
     fn next(&mut self, arena: &mut NodeArena<T, NT>) -> Option<Result<NodeIdx, E>> {
         self.iter.next(arena).map(Ok)
+    }
+
+    fn left_breakdown(&mut self, arena: &mut NodeArena<T, NT>, non_terminal_idx: NodeIdx) {
+        debug_assert!(arena.get(non_terminal_idx).is_non_terminal());
+        if let Some(child) = arena.get(non_terminal_idx).child {
+            self.iter.stack.push(child);
+        }
     }
 }

@@ -134,9 +134,15 @@ pub fn generate_lr1_parser(grammar: Grammar, tokens: &TokenEnum) -> TokenStream 
                 let terminal_idx = match node_idx {
                     None => #n_terminals,
                     Some(Err(err)) => return Err(ParseError_::Other(err.clone())),
-                    Some(Ok(node_idx)) => {
-                        let token = arena.get_terminal(node_idx);
-                        #token_kind_fn_name(token) as usize
+                    Some(Ok(node_idx_)) => {
+                        if arena.get(node_idx_).is_terminal() {
+                            let token = arena.get_terminal(node_idx_);
+                            #token_kind_fn_name(token) as usize
+                        } else {
+                            input.left_breakdown(arena, node_idx_);
+                            node_idx = input.next(arena);
+                            continue;
+                        }
                     }
                 };
                 match ACTION[state][terminal_idx] {
