@@ -38,7 +38,7 @@ impl<T, NT> NodeArena<T, NT> {
         NodeArena { nodes: Vec::new() }
     }
 
-    pub fn iter_terminals(&self, root: NodeIdx) -> ArenaTerminalIter<T> {
+    pub fn iter(&self, root: NodeIdx) -> ArenaTerminalIter<T> {
         ArenaTerminalIter::new(root)
     }
 
@@ -147,7 +147,7 @@ fn node_terminal_iter_1() {
     let mut arena: NodeArena<u32, u32> = NodeArena::new();
     let root = arena.new_node(NodeKind::Terminal(0));
 
-    let nts: Vec<NodeIdx> = arena.iter_terminals(root).collect(&mut arena);
+    let nts: Vec<NodeIdx> = arena.iter(root).collect(&mut arena);
     assert_eq!(nts, vec![root]);
 }
 
@@ -162,8 +162,9 @@ fn node_terminal_iter_2() {
     arena.get_mut(root).child = Some(node_1);
     arena.get_mut(node_1).next = Some(node_2);
 
-    let nts: Vec<NodeIdx> = arena.iter_terminals(root).collect(&mut arena);
-    assert_eq!(nts, vec![node_1, node_2]);
+    // TODO: Test left_breakdown
+    let nts: Vec<NodeIdx> = arena.iter(root).collect(&mut arena);
+    assert_eq!(nts, vec![root]);
 }
 
 #[test]
@@ -179,6 +180,7 @@ fn node_terminal_iter_3() {
     arena.get_mut(node_1).next = Some(node_2);
     arena.get_mut(node_2).child = Some(node_3);
 
-    let nts: Vec<NodeIdx> = arena.iter_terminals(root).collect(&mut arena);
-    assert_eq!(nts, vec![node_1, node_3]);
+    // TODO: Test left_breakdown
+    let nts: Vec<NodeIdx> = arena.iter(root).collect(&mut arena);
+    assert_eq!(nts, vec![root]);
 }
