@@ -109,15 +109,21 @@ impl<T> TerminalIter for ArenaTerminalIter<T> {
             Some(current_node)
         } else {
             // Node is non-terminal
-            if let Some(next) = arena.get(current_node).next {
-                self.stack.push(next);
-            }
+            if arena.get(current_node).changed {
+                // Right breakdown
+                if let Some(next) = arena.get(current_node).next {
+                    self.stack.push(next);
+                }
 
-            if let Some(child) = arena.get(current_node).child {
-                self.stack.push(child);
-            }
+                if let Some(child) = arena.get(current_node).child {
+                    self.stack.push(child);
+                }
 
-            self.next(arena)
+                self.next(arena)
+            } else {
+                // Unchanged, will be shifted
+                Some(current_node)
+            }
         }
     }
 }

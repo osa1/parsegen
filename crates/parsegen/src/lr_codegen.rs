@@ -128,6 +128,8 @@ pub fn generate_lr1_parser(grammar: Grammar, tokens: &TokenEnum) -> TokenStream 
                 input.next(arena);
 
             loop {
+                debug_assert_eq!(state_stack.len(), value_stack.len() + 1);
+
                 let state = *state_stack.last().unwrap() as usize;
                 let terminal_idx = match node_idx {
                     None => #n_terminals,
@@ -157,6 +159,7 @@ pub fn generate_lr1_parser(grammar: Grammar, tokens: &TokenEnum) -> TokenStream 
                                 non_terminal_idx as usize
                             ));
 
+                        // Remove last `n_symbols` values
                         let mut child_iter = value_stack.drain(value_stack.len() - (n_symbols as usize)..);
 
                         if let Some(first_child) = child_iter.next() {
@@ -176,6 +179,7 @@ pub fn generate_lr1_parser(grammar: Grammar, tokens: &TokenEnum) -> TokenStream 
 
                         value_stack.push(nt_value);
 
+                        // Remove last `n_symbols` states
                         for _ in 0 .. n_symbols {
                             state_stack.pop();
                         }
@@ -191,6 +195,29 @@ pub fn generate_lr1_parser(grammar: Grammar, tokens: &TokenEnum) -> TokenStream 
             }
 
             Ok(value_stack.pop().unwrap())
+        }
+
+        fn right_breakdown<#(#token_lifetimes,)* E: ::std::fmt::Debug + Clone>(
+            arena: &::parsegen_util::NodeArena<#token_full_type, usize>,
+            state_stack: &mut Vec<u32>,
+            value_stack: &mut Vec<::parsegen_util::NodeIdx>,
+        ) -> Result<(), ParseError_<E>> {
+            let mut node = value_stack.pop().unwrap();
+            state_stack.pop().unwrap();
+
+            while arena.get(node).is_non_terminal() {
+                let node_info = arena.get(node);
+                let mut child = node_info.child;
+                while let Some(child_) = child {
+                    // TODO: need parse table with non-terminal keys
+                    child = arena.get(child_).next;
+                }
+                node = value_stack.pop().unwrap();
+                state_stack.pop();
+            }
+
+            // TODO: shift terminal
+            todo!()
         }
 
         #(#parser_structs)*

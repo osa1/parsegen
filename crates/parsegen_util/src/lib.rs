@@ -24,6 +24,7 @@ pub struct NodeInfo<T, NT> {
     pub prev: Option<NodeIdx>,
     pub parent: Option<NodeIdx>,
     pub child: Option<NodeIdx>,
+    pub changed: bool,
 }
 
 #[derive(Debug)]
@@ -121,6 +122,7 @@ impl<T, NT> NodeInfo<T, NT> {
             prev: None,
             parent: None,
             child: None,
+            changed: false,
         }
     }
 
