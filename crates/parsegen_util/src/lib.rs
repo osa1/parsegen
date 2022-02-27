@@ -103,13 +103,20 @@ impl<T, NT> NodeArena<T, NT> {
     }
 }
 
-impl<T, NT: std::fmt::Debug> NodeArena<T, NT> {
+impl<T: std::fmt::Debug, NT: std::fmt::Debug> NodeArena<T, NT> {
     pub fn get_terminal(&self, idx: NodeIdx) -> &T {
         match &self.get(idx).kind {
             NodeKind::NonTerminal(nt) => {
                 panic!("get_terminal: node index is for non-terminal {:?}", nt)
             }
             NodeKind::Terminal(token) => token,
+        }
+    }
+
+    pub fn get_non_terminal(&self, idx: NodeIdx) -> &NT {
+        match &self.get(idx).kind {
+            NodeKind::NonTerminal(nt) => nt,
+            NodeKind::Terminal(t) => panic!("get_non_terminal: node index is for terminal {:?}", t),
         }
     }
 }

@@ -127,10 +127,15 @@ pub fn generate_lr1_parser(grammar: Grammar, tokens: &TokenEnum) -> TokenStream 
             let mut node_idx: Option<Result<::parsegen_util::NodeIdx, E>> =
                 input.next(arena);
 
+            let mut verifying = false;
+
             loop {
                 debug_assert_eq!(state_stack.len(), value_stack.len() + 1);
 
-                let state = *state_stack.last().unwrap() as usize;
+                let mut state = *state_stack.last().unwrap() as usize;
+
+                println!("state = {}, node_idx = {:?}", state, node_idx);
+
                 let terminal_idx = match node_idx {
                     None => #n_terminals,
                     Some(Err(err)) => return Err(ParseError_::Other(err.clone())),
@@ -139,15 +144,90 @@ pub fn generate_lr1_parser(grammar: Grammar, tokens: &TokenEnum) -> TokenStream 
                             let token = arena.get_terminal(node_idx_);
                             #token_kind_fn_name(token) as usize
                         } else {
-                            input.left_breakdown(arena, node_idx_);
-                            node_idx = input.next(arena);
-                            continue;
+                            // Non-terminal
+                            if arena.get(node_idx_).changed {
+                                input.left_breakdown(arena, node_idx_);
+                                node_idx = input.next(arena);
+                                continue;
+                            } else {
+                                // Apply reductions first
+                                if let Some(lookahead) = arena.leftmost_terminal(node_idx_) {
+                                    let lookahead = arena.get_terminal(lookahead);
+                                    let lookahead_kind = #token_kind_fn_name(lookahead) as usize;
+                                    while let Some(LRAction::Reduce {
+                                        non_terminal_idx,
+                                        production_idx,
+                                        n_symbols
+                                    }) = ACTION[state][lookahead_kind]
+                                    {
+                                        let nt_value =
+                                            arena.new_node(::parsegen_util::NodeKind::NonTerminal(
+                                                non_terminal_idx as usize
+                                            ));
+
+                                        // Remove last `n_symbols` values
+                                        let mut child_iter = value_stack.drain(value_stack.len() - (n_symbols as usize)..);
+
+                                        if let Some(first_child) = child_iter.next() {
+                                            arena.get_mut(nt_value).child = Some(first_child);
+                                            arena.get_mut(first_child).parent = Some(nt_value);
+
+                                            let mut last_child = first_child;
+
+                                            for child in child_iter {
+                                                arena.get_mut(last_child).next = Some(child);
+                                                arena.get_mut(child).prev = Some(last_child);
+                                                last_child = child;
+                                            }
+                                        } else {
+                                            drop(child_iter);
+                                        }
+
+                                        value_stack.push(nt_value);
+
+                                        // Remove last `n_symbols` states
+                                        for _ in 0 .. n_symbols {
+                                            state_stack.pop();
+                                        }
+
+                                        state = *state_stack.last().unwrap() as usize;
+                                        match GOTO[state][non_terminal_idx as usize] {
+                                            None => panic!("Stuck! (2)"),
+                                            Some(next_state) => state_stack.push(next_state),
+                                        }
+                                    }
+                                }
+
+                                // Shift the non-terminal, enter verification mode
+                                let nt = *arena.get_non_terminal(node_idx_);
+
+                                match GOTO[state][nt] {
+                                    None => {
+                                        todo!();
+                                    }
+                                    Some(next_state) => {
+                                        state_stack.push(next_state);
+                                        value_stack.push(node_idx_);
+                                        verifying = true;
+                                        node_idx = input.next(arena);
+                                        println!("Shifted non-terminal {}", nt);
+                                        continue;
+                                    }
+                                }
+                            }
                         }
                     }
                 };
                 match ACTION[state][terminal_idx] {
-                    None => panic!("Stuck! (1) state={}, terminal={}", state, terminal_idx),
+                    None => {
+                        if verifying {
+                            todo!("right breakdown")
+                        }
+                        panic!("Stuck! (1) state={}, terminal={}", state, terminal_idx)
+                    }
                     Some(LRAction::Shift { next_state }) => {
+                        verifying = false;
+
                         state_stack.push(next_state);
                         let value = node_idx.unwrap().unwrap();
 
