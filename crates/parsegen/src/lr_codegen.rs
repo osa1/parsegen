@@ -117,6 +117,53 @@ pub fn generate_lr1_parser(grammar: Grammar, tokens: &TokenEnum) -> TokenStream 
         // fn token_kind(token: &Token) -> TokenKind { ... }
         #token_kind_fn_decl
 
+        fn reduce(
+            arena: &mut ::parsegen_util::NodeArena<#token_full_type, usize>,
+            state_stack: &mut Vec<u32>,
+            value_stack: &mut Vec<::parsegen_util::NodeIdx>,
+            non_terminal_idx: u16,
+            production_idx: u16,
+            n_symbols: u16,
+            state: usize,
+        ) -> usize {
+            let nt_value =
+                arena.new_node(::parsegen_util::NodeKind::NonTerminal(
+                    non_terminal_idx as usize
+                ));
+
+            // Remove last `n_symbols` values
+            let mut child_iter = value_stack.drain(value_stack.len() - (n_symbols as usize)..);
+
+            if let Some(first_child) = child_iter.next() {
+                arena.get_mut(nt_value).child = Some(first_child);
+                arena.get_mut(first_child).parent = Some(nt_value);
+
+                let mut last_child = first_child;
+
+                for child in child_iter {
+                    arena.get_mut(last_child).next = Some(child);
+                    arena.get_mut(child).prev = Some(last_child);
+                    last_child = child;
+                }
+            } else {
+                drop(child_iter);
+            }
+
+            value_stack.push(nt_value);
+
+            // Remove last `n_symbols` states
+            for _ in 0 .. n_symbols {
+                state_stack.pop();
+            }
+
+            let state = *state_stack.last().unwrap() as usize;
+            match GOTO[state][non_terminal_idx as usize] {
+                None => panic!("Stuck! (2)"),
+                Some(next_state) => state_stack.push(next_state),
+            }
+            state
+        }
+
         fn parse_generic<#(#token_lifetimes,)* E: ::std::fmt::Debug + Clone>(
             arena: &mut ::parsegen_util::NodeArena<#token_full_type, usize>,
             mut input: impl ::parsegen_util::ArenaIter<#token_full_type, usize, Item=Result<::parsegen_util::NodeIdx, E>>,
@@ -160,41 +207,15 @@ pub fn generate_lr1_parser(grammar: Grammar, tokens: &TokenEnum) -> TokenStream 
                                         n_symbols
                                     }) = ACTION[state][lookahead_kind]
                                     {
-                                        let nt_value =
-                                            arena.new_node(::parsegen_util::NodeKind::NonTerminal(
-                                                non_terminal_idx as usize
-                                            ));
-
-                                        // Remove last `n_symbols` values
-                                        let mut child_iter = value_stack.drain(value_stack.len() - (n_symbols as usize)..);
-
-                                        if let Some(first_child) = child_iter.next() {
-                                            arena.get_mut(nt_value).child = Some(first_child);
-                                            arena.get_mut(first_child).parent = Some(nt_value);
-
-                                            let mut last_child = first_child;
-
-                                            for child in child_iter {
-                                                arena.get_mut(last_child).next = Some(child);
-                                                arena.get_mut(child).prev = Some(last_child);
-                                                last_child = child;
-                                            }
-                                        } else {
-                                            drop(child_iter);
-                                        }
-
-                                        value_stack.push(nt_value);
-
-                                        // Remove last `n_symbols` states
-                                        for _ in 0 .. n_symbols {
-                                            state_stack.pop();
-                                        }
-
-                                        state = *state_stack.last().unwrap() as usize;
-                                        match GOTO[state][non_terminal_idx as usize] {
-                                            None => panic!("Stuck! (2)"),
-                                            Some(next_state) => state_stack.push(next_state),
-                                        }
+                                        state = reduce(
+                                            arena,
+                                            &mut state_stack,
+                                            &mut value_stack,
+                                            non_terminal_idx,
+                                            production_idx,
+                                            n_symbols,
+                                            state
+                                        );
                                     }
                                 }
 
@@ -221,9 +242,11 @@ pub fn generate_lr1_parser(grammar: Grammar, tokens: &TokenEnum) -> TokenStream 
                 match ACTION[state][terminal_idx] {
                     None => {
                         if verifying {
-                            todo!("right breakdown")
+                            right_breakdown::<E>(&arena, &mut state_stack, &mut value_stack).unwrap();
+                            todo!()
+                        } else {
+                            panic!("Stuck! (1) state={}, terminal={}", state, terminal_idx)
                         }
-                        panic!("Stuck! (1) state={}, terminal={}", state, terminal_idx)
                     }
                     Some(LRAction::Shift { next_state }) => {
                         if verifying {
@@ -243,41 +266,15 @@ pub fn generate_lr1_parser(grammar: Grammar, tokens: &TokenEnum) -> TokenStream 
                         production_idx,
                         n_symbols,
                     }) => {
-                        let nt_value =
-                            arena.new_node(::parsegen_util::NodeKind::NonTerminal(
-                                non_terminal_idx as usize
-                            ));
-
-                        // Remove last `n_symbols` values
-                        let mut child_iter = value_stack.drain(value_stack.len() - (n_symbols as usize)..);
-
-                        if let Some(first_child) = child_iter.next() {
-                            arena.get_mut(nt_value).child = Some(first_child);
-                            arena.get_mut(first_child).parent = Some(nt_value);
-
-                            let mut last_child = first_child;
-
-                            for child in child_iter {
-                                arena.get_mut(last_child).next = Some(child);
-                                arena.get_mut(child).prev = Some(last_child);
-                                last_child = child;
-                            }
-                        } else {
-                            drop(child_iter);
-                        }
-
-                        value_stack.push(nt_value);
-
-                        // Remove last `n_symbols` states
-                        for _ in 0 .. n_symbols {
-                            state_stack.pop();
-                        }
-
-                        let state = *state_stack.last().unwrap() as usize;
-                        match GOTO[state][non_terminal_idx as usize] {
-                            None => panic!("Stuck! (2)"),
-                            Some(next_state) => state_stack.push(next_state),
-                        }
+                        reduce(
+                            arena,
+                            &mut state_stack,
+                            &mut value_stack,
+                            non_terminal_idx,
+                            production_idx,
+                            n_symbols,
+                            state
+                        );
                     }
                     Some(LRAction::Accept) => break,
                 }
@@ -291,14 +288,14 @@ pub fn generate_lr1_parser(grammar: Grammar, tokens: &TokenEnum) -> TokenStream 
             state_stack: &mut Vec<u32>,
             value_stack: &mut Vec<::parsegen_util::NodeIdx>,
         ) -> Result<(), ParseError_<E>> {
-            let mut node = value_stack.pop().unwrap();
-            state_stack.pop().unwrap();
+            let mut node = value_stack.pop().expect("value_stack.pop()");
+            state_stack.pop().expect("state_stack.pop()");
 
             while arena.get(node).is_non_terminal() {
                 let node_info = arena.get(node);
                 let mut child = node_info.child;
                 while let Some(child_) = child {
-                    // TODO: need parse table with non-terminal keys
+                    // TODO: shift child nodes of non-terminal
                     child = arena.get(child_).next;
                 }
                 node = value_stack.pop().unwrap();

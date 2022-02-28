@@ -110,6 +110,15 @@ impl<T: std::fmt::Debug, NT: std::fmt::Debug> NodeArena<T, NT> {
         }
     }
 
+    pub fn get_terminal_mut(&mut self, idx: NodeIdx) -> &mut T {
+        match &mut self.get_mut(idx).kind {
+            NodeKind::NonTerminal(nt) => {
+                panic!("get_terminal: node index is for non-terminal {:?}", nt)
+            }
+            NodeKind::Terminal(token) => token,
+        }
+    }
+
     pub fn get_non_terminal(&self, idx: NodeIdx) -> &NT {
         match &self.get(idx).kind {
             NodeKind::NonTerminal(nt) => nt,
