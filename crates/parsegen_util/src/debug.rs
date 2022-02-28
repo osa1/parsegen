@@ -2,7 +2,11 @@ use crate::{NodeArena, NodeIdx, NodeKind};
 
 use std::fmt::Debug;
 
-pub fn print_parse_tree<T: Debug, NT: Debug>(arena: &NodeArena<T, NT>, node_idx: NodeIdx) {
+pub fn print_parse_tree<T: Debug>(
+    arena: &NodeArena<T, usize>,
+    node_idx: NodeIdx,
+    nt_names: &'static [&'static str],
+) {
     let mut stack: Vec<(NodeIdx, usize)> = vec![(node_idx, 0)];
 
     loop {
@@ -16,7 +20,7 @@ pub fn print_parse_tree<T: Debug, NT: Debug>(arena: &NodeArena<T, NT>, node_idx:
         match &node.kind {
             NodeKind::NonTerminal(nt) => {
                 print_indent(depth * 4);
-                println!("NT {:?}", nt);
+                println!("NT({}) {}", node_idx, nt_names[*nt]);
 
                 if let Some(next) = node.next {
                     stack.push((next, depth));
@@ -28,7 +32,7 @@ pub fn print_parse_tree<T: Debug, NT: Debug>(arena: &NodeArena<T, NT>, node_idx:
             }
             NodeKind::Terminal(t) => {
                 print_indent(depth * 4);
-                println!("T {:?}", t);
+                println!("T({}) {:?}", node_idx, t);
 
                 if let Some(next) = node.next {
                     stack.push((next, depth));

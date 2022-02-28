@@ -1,16 +1,13 @@
 mod debug;
 mod iter;
+mod node_idx;
 
 pub use debug::print_parse_tree;
 pub use iter::{
     arena_terminal_iter_to_arena_iter, lexer_to_arena_iter, ArenaIter, ArenaTerminalIter,
     TerminalIter,
 };
-
-use std::num::NonZeroU32;
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
-pub struct NodeIdx(NonZeroU32);
+pub use node_idx::NodeIdx;
 
 #[derive(Debug)]
 pub struct NodeArena<T, NT> {
@@ -43,17 +40,17 @@ impl<T, NT> NodeArena<T, NT> {
     }
 
     pub fn new_node(&mut self, node: NodeKind<T, NT>) -> NodeIdx {
-        let node_idx = self.nodes.len() + 1;
+        let node_idx = self.nodes.len();
         self.nodes.push(NodeInfo::new(node));
-        NodeIdx(NonZeroU32::new(node_idx as u32).unwrap())
+        NodeIdx::from_usize(node_idx)
     }
 
     pub fn get(&self, idx: NodeIdx) -> &NodeInfo<T, NT> {
-        &self.nodes[idx.0.get() as usize - 1]
+        &self.nodes[idx.as_usize()]
     }
 
     pub fn get_mut(&mut self, idx: NodeIdx) -> &mut NodeInfo<T, NT> {
-        &mut self.nodes[idx.0.get() as usize - 1]
+        &mut self.nodes[idx.as_usize()]
     }
 
     /// Updates `next` of `idx` and `prev` of `idx`'s `next`

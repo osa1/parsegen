@@ -1,13 +1,13 @@
 use crate::ast::TokenEnum;
 use crate::codegen::generate_token_kind_type;
 use crate::first::generate_first_table;
-use crate::grammar::{Grammar, NonTerminalIdx, TerminalIdx};
+use crate::grammar::{Grammar, NonTerminal, NonTerminalIdx, TerminalIdx};
 use crate::lr1::{build_lr1_table, generate_lr1_automaton};
 use crate::lr_common::{LRAction, StateIdx};
 
 use fxhash::FxHashMap;
 use proc_macro2::{Span, TokenStream};
-use quote::quote;
+use quote::{quote, ToTokens};
 
 pub fn generate_lr1_parser(grammar: Grammar, tokens: &TokenEnum) -> TokenStream {
     let (token_kind_type_name, token_kind_type_decl) = generate_token_kind_type(tokens);
@@ -84,6 +84,8 @@ pub fn generate_lr1_parser(grammar: Grammar, tokens: &TokenEnum) -> TokenStream 
         })
         .collect();
 
+    let nt_names_array = generate_non_terminal_names(&grammar.non_terminals);
+
     quote!(
         #[derive(Clone, Copy)]
         enum LRAction {
@@ -133,8 +135,6 @@ pub fn generate_lr1_parser(grammar: Grammar, tokens: &TokenEnum) -> TokenStream 
                 debug_assert_eq!(state_stack.len(), value_stack.len() + 1);
 
                 let mut state = *state_stack.last().unwrap() as usize;
-
-                println!("state = {}, node_idx = {:?}", state, node_idx);
 
                 let terminal_idx = match node_idx {
                     None => #n_terminals,
@@ -210,7 +210,7 @@ pub fn generate_lr1_parser(grammar: Grammar, tokens: &TokenEnum) -> TokenStream 
                                         value_stack.push(node_idx_);
                                         verifying = true;
                                         node_idx = input.next(arena);
-                                        println!("Shifted non-terminal {}", nt);
+                                        println!("Trying to reuse node {} for non-terminal {}", node_idx_, nt);
                                         continue;
                                     }
                                 }
@@ -226,7 +226,10 @@ pub fn generate_lr1_parser(grammar: Grammar, tokens: &TokenEnum) -> TokenStream 
                         panic!("Stuck! (1) state={}, terminal={}", state, terminal_idx)
                     }
                     Some(LRAction::Shift { next_state }) => {
-                        verifying = false;
+                        if verifying {
+                            println!("  (verification success)");
+                            verifying = false;
+                        }
 
                         state_stack.push(next_state);
                         let value = node_idx.unwrap().unwrap();
@@ -307,6 +310,8 @@ pub fn generate_lr1_parser(grammar: Grammar, tokens: &TokenEnum) -> TokenStream 
         }
 
         #(#parser_structs)*
+
+        #nt_names_array
     )
 }
 
@@ -459,6 +464,23 @@ fn generate_goto_array(
     quote!(
         static GOTO: [[Option<u32>; #n_non_terminals]; #n_states] = [
             #(#state_array),*
+        ];
+    )
+}
+
+/// Generates an array that maps non-terminal indices to non-terminal names
+fn generate_non_terminal_names(non_terminals: &[NonTerminal]) -> TokenStream {
+    let n_elems = non_terminals.len();
+    let mut elems: Vec<TokenStream> = Vec::with_capacity(n_elems);
+
+    for nt in non_terminals {
+        let nt_name = &nt.non_terminal;
+        elems.push(nt_name.to_owned().to_token_stream());
+    }
+
+    quote!(
+        static NT_NAMES: [&str; #n_elems] = [
+            #(#elems),*
         ];
     )
 }
