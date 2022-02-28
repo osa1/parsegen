@@ -174,13 +174,41 @@ pub fn generate_lr1_parser(grammar: Grammar, tokens: &TokenEnum) -> TokenStream 
             let nt = *arena.get_non_terminal(nt_node_idx);
             match GOTO[state][nt] {
                 None => {
-                    todo!()
+                    panic!("GOTO not defined for state {} nt {}", state, NT_NAMES[nt]);
                 }
                 Some(next_state) => {
                     state_stack.push(next_state);
                     value_stack.push(nt_node_idx);
                     println!("Trying to reuse node {} for non-terminal {}", nt_node_idx, NT_NAMES[nt]);
                 }
+            }
+        }
+
+        fn shift(
+            arena: &::parsegen_util::NodeArena<#token_full_type, usize>,
+            state_stack: &mut Vec<u32>,
+            value_stack: &mut Vec<::parsegen_util::NodeIdx>,
+            state: usize,
+            node_idx: NodeIdx,
+        ) {
+            if arena.get(node_idx).is_terminal() {
+                let token = arena.get_terminal(node_idx);
+                let terminal_idx = #token_kind_fn_name(token) as usize;
+                match ACTION[state][terminal_idx] {
+                    Some(LRAction::Shift { next_state }) => {
+                        state_stack.push(next_state);
+                        value_stack.push(node_idx);
+                    }
+                    _ => panic!("Unable to shift terminal {}", terminal_idx),
+                }
+            } else {
+                shift_non_terminal(
+                    arena,
+                    state_stack,
+                    value_stack,
+                    state,
+                    node_idx
+                );
             }
         }
 
@@ -257,8 +285,9 @@ pub fn generate_lr1_parser(grammar: Grammar, tokens: &TokenEnum) -> TokenStream 
                 match ACTION[state][terminal_idx] {
                     None => {
                         if verifying {
-                            right_breakdown::<E>(&arena, &mut state_stack, &mut value_stack).unwrap();
-                            todo!()
+                            right_breakdown(&arena, &mut state_stack, &mut value_stack);
+                            verifying = false;
+                            continue;
                         } else {
                             panic!("Stuck! (1) state={}, terminal={}", state, terminal_idx)
                         }
@@ -298,27 +327,43 @@ pub fn generate_lr1_parser(grammar: Grammar, tokens: &TokenEnum) -> TokenStream 
             Ok(value_stack.pop().unwrap())
         }
 
-        fn right_breakdown<#(#token_lifetimes,)* E: ::std::fmt::Debug + Clone>(
+        fn right_breakdown<#(#token_lifetimes,)*>(
             arena: &::parsegen_util::NodeArena<#token_full_type, usize>,
             state_stack: &mut Vec<u32>,
             value_stack: &mut Vec<::parsegen_util::NodeIdx>,
-        ) -> Result<(), ParseError_<E>> {
+        ) {
             let mut node = value_stack.pop().expect("value_stack.pop()");
             state_stack.pop().expect("state_stack.pop()");
 
             while arena.get(node).is_non_terminal() {
                 let node_info = arena.get(node);
+
+                // Shift child nodes of non-terminal
                 let mut child = node_info.child;
                 while let Some(child_) = child {
-                    // TODO: shift child nodes of non-terminal
+                    shift(
+                        arena,
+                        state_stack,
+                        value_stack,
+                        *state_stack.last().unwrap() as usize,
+                        child_,
+                    );
                     child = arena.get(child_).next;
                 }
+
+                // Pop right-most node
                 node = value_stack.pop().unwrap();
                 state_stack.pop();
             }
 
-            // TODO: shift terminal
-            todo!()
+            // Shift right-most terminal
+            shift(
+                arena,
+                state_stack,
+                value_stack,
+                *state_stack.last().unwrap() as usize,
+                node
+            );
         }
 
         #(#parser_structs)*
