@@ -164,6 +164,26 @@ pub fn generate_lr1_parser(grammar: Grammar, tokens: &TokenEnum) -> TokenStream 
             state
         }
 
+        fn shift_non_terminal(
+            arena: &::parsegen_util::NodeArena<#token_full_type, usize>,
+            state_stack: &mut Vec<u32>,
+            value_stack: &mut Vec<::parsegen_util::NodeIdx>,
+            state: usize,
+            nt_node_idx: NodeIdx,
+        ) {
+            let nt = *arena.get_non_terminal(nt_node_idx);
+            match GOTO[state][nt] {
+                None => {
+                    todo!()
+                }
+                Some(next_state) => {
+                    state_stack.push(next_state);
+                    value_stack.push(nt_node_idx);
+                    println!("Trying to reuse node {} for non-terminal {}", nt_node_idx, NT_NAMES[nt]);
+                }
+            }
+        }
+
         fn parse_generic<#(#token_lifetimes,)* E: ::std::fmt::Debug + Clone>(
             arena: &mut ::parsegen_util::NodeArena<#token_full_type, usize>,
             mut input: impl ::parsegen_util::ArenaIter<#token_full_type, usize, Item=Result<::parsegen_util::NodeIdx, E>>,
@@ -220,21 +240,16 @@ pub fn generate_lr1_parser(grammar: Grammar, tokens: &TokenEnum) -> TokenStream 
                                 }
 
                                 // Shift the non-terminal, enter verification mode
-                                let nt = *arena.get_non_terminal(node_idx_);
-
-                                match GOTO[state][nt] {
-                                    None => {
-                                        todo!();
-                                    }
-                                    Some(next_state) => {
-                                        state_stack.push(next_state);
-                                        value_stack.push(node_idx_);
-                                        verifying = true;
-                                        node_idx = input.next(arena);
-                                        println!("Trying to reuse node {} for non-terminal {}", node_idx_, nt);
-                                        continue;
-                                    }
-                                }
+                                shift_non_terminal(
+                                    arena,
+                                    &mut state_stack,
+                                    &mut value_stack,
+                                    state,
+                                    node_idx_
+                                );
+                                node_idx = input.next(arena);
+                                verifying = true;
+                                continue;
                             }
                         }
                     }
