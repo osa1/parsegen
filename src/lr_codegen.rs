@@ -184,10 +184,10 @@ pub fn generate_lr1_parser(grammar: Grammar<syn::Expr>, tokens: &TokenEnum) -> T
                     None => panic!("Stuck! (1) state={}, terminal={}", state, terminal_idx),
                     Some(LRAction::Shift { next_state }) => {
                         state_stack.push(next_state);
-                        if let Some(Ok(token)) = &token {
+                        let token_ = ::std::mem::replace(&mut token, input.next());
+                        if let Some(Ok(token)) = token_ {
                             value_stack.push(#token_value_fn_name(token));
                         }
-                        token = input.next();
                     }
                     Some(LRAction::Reduce { non_terminal_idx, n_symbols, semantic_action_idx }) => {
                         (SEMANTIC_ACTIONS[semantic_action_idx as usize])(&mut value_stack);

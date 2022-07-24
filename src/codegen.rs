@@ -225,15 +225,14 @@ pub fn token_value_fn(
         let variant_id = syn::Ident::new(&format!("Token{}", i), Span::call_site());
         variants.push(quote!(
             #pattern_code => {
-                // TODO: This clone needs to go
-                #action_result_type_name::#variant_id(#(#pattern_idents.clone()),*)
+                #action_result_type_name::#variant_id(#(#pattern_idents),*)
             }
         ));
     }
 
     let code = quote!(
         fn #fn_name<#(#user_token_type_lifetimes),*>(
-            token: &#user_token_type_name<#(#user_token_type_lifetimes),*>
+            token: #user_token_type_name<#(#user_token_type_lifetimes),*>
         ) -> #action_result_type_name<#(#user_token_type_lifetimes),*>
         {
             match token {

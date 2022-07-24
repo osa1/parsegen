@@ -453,3 +453,33 @@ fn expr_example() {
         Ok(Sub(Box::new(Id), Box::new(Neg(Box::new(Id)))))
     );
 }
+
+#[test]
+fn token_values() {
+    #[derive(Debug, PartialEq, Eq)]
+    pub struct Id;
+
+    pub enum Token {
+        Id(Id),
+    }
+
+    #[derive(Debug, PartialEq, Eq)]
+    pub enum Expr {
+        Id(Id),
+    }
+
+    parser! {
+        enum Token {
+            "id" => Token::Id(<Id>),
+        }
+
+        pub Entry: Expr = {
+            <id:"id"> => Expr::Id(id),
+        };
+    }
+
+    assert_eq!(
+        Entry::parse(vec![Token::Id(Id)].into_iter().map(|t| Ok::<Token, ()>(t))),
+        Ok(Expr::Id(Id))
+    );
+}
