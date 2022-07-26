@@ -364,6 +364,7 @@ impl<'a, 'b, A> fmt::Display for ProductionDisplay<'a, 'b, A> {
                     write!(f, "{}", nt.non_terminal)?;
                 }
                 SymbolKind::Terminal(t) => {
+                    let t = self.grammar.get_terminal(*t);
                     write!(f, "{:?}", t)?;
                 }
             }
