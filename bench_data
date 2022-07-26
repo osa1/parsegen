@@ -1,211 +1,334 @@
-    enum Token {
-        "(" => Token::LParen,
-        ")" => Token::RParen,
-        "bool" => Token::Bool(<bool>),
-        "not" => Token::Not,
-        "if" => Token::If,
-        "then" => Token::Then,
-        "else" => Token::Else,
-        "let" => Token::Let,
-        "rec" => Token::Rec,
-        "in" => Token::In,
-        "-" => Token::Minus,
-        "-." => Token::MinusDot,
-        "+" => Token::Plus,
-        "+." => Token::PlusDot,
-        "*." => Token::AstDot,
-        "/." => Token::SlashDot,
-        "=" => Token::Equal,
-        "<>" => Token::LessGreater,
-        "<=" => Token::LessEqual,
-        "<-" => Token::LessMinus,
-        "<" => Token::Less,
-        ">=" => Token::GreaterEqual,
-        ">" => Token::Greater,
-        "." => Token::Dot,
-        "," => Token::Comma,
-        ";" => Token::Semicolon,
-        "_" => Token::Underscore,
-        "Array.create" => Token::ArrayCreate,
-        "id" => Token::Id(<String>),
-        "int" => Token::Int(<i64>),
-        "float" => Token::Float(<f64>),
+enum Token {
+    "(" => Token::LParen, // 0
+    ")" => Token::RParen,
+    "bool" => Token::Bool(<bool>),
+    "not" => Token::Not,
+    "if" => Token::If,
+    "then" => Token::Then, // 5
+    "else" => Token::Else,
+    "let" => Token::Let,
+    "rec" => Token::Rec,
+    "in" => Token::In,
+    "-" => Token::Minus, // 10
+    "-." => Token::MinusDot,
+    "+" => Token::Plus,
+    "+." => Token::PlusDot,
+    "*." => Token::AstDot,
+    "/." => Token::SlashDot, // 15
+    "=" => Token::Equal,
+    "<>" => Token::LessGreater,
+    "<=" => Token::LessEqual,
+    "<-" => Token::LessMinus,
+    "<" => Token::Less, // 20
+    ">=" => Token::GreaterEqual,
+    ">" => Token::Greater,
+    "." => Token::Dot,
+    "," => Token::Comma,
+    ";" => Token::Semicolon, // 25
+    "_" => Token::Underscore,
+    "Array.create" => Token::ArrayCreate,
+    "id" => Token::Id(<String>), // 28
+    "int" => Token::Int(<i64>),
+    "float" => Token::Float(<f64>), // 30
+}
+
+// Entry point
+pub Expr: ParsedExpr = {
+    <expr:SeqExpr> =>
+        expr,
+};
+
+// `;`
+SeqExpr: ParsedExpr = {
+    <expr:LetExpr> =>
+        expr,
+
+    // Making it right associative. It works either way.
+    <expr1:LetExpr> ";" <expr2:SeqExpr> =>
+        // TODO: fix the binder
+        ParsedExpr::Let { bndr: "_".to_string(), rhs: Box::new(expr1), body: Box::new(expr2) },
+};
+
+// `let`, `let rec`, and `let (...)`
+LetExpr: ParsedExpr = {
+    <expr:IfExpr> =>
+        expr,
+
+    "let" <bndr:Binder> "=" <rhs:SeqExpr> "in" <body:SeqExpr> =>
+        ParsedExpr::Let { bndr, rhs: Box::new(rhs), body: Box::new(body) },
+
+    "let" "rec" <bndr:Binder> <args:Binders1> "=" <rhs:SeqExpr> "in" <body:SeqExpr> =>
+        ParsedExpr::LetRec { bndr, args, rhs: Box::new(rhs), body: Box::new(body) },
+
+    "let" "(" <bndr:Binder> <mut bndrs:CommaBinder1_Rev> ")" "=" <rhs:SeqExpr> "in" <body:SeqExpr> => {
+        bndrs.push(bndr);
+        bndrs.reverse();
+        ParsedExpr::LetTuple {
+            bndrs,
+            rhs: Box::new(rhs),
+            body: Box::new(body),
+        }
+    },
+};
+
+Binder: String = {
+    "_" =>
+        "_".to_owned(),
+
+    <id:"id"> =>
+        id,
+};
+
+// One or more ", id", returned in reverse
+CommaBinder1_Rev: Vec<String> = {
+    "," <bndr:Binder> <mut bndrs:CommaBinder0_Rev> => {
+        bndrs.push(bndr);
+        bndrs
+    }
+};
+
+CommaBinder0_Rev: Vec<String> = {
+    => vec![],
+
+    "," <bndr:Binder> <mut bndrs:CommaBinder0_Rev> => {
+        bndrs.push(bndr);
+        bndrs
+    }
+};
+
+// One or more identifiers
+Binders1: Vec<String> = {
+    <bndr:Binder> <mut bndrs:Binders0_Rev> => {
+        bndrs.push(bndr);
+        bndrs.reverse();
+        bndrs
+    }
+};
+
+// Zero or more identifiers
+Binders0_Rev: Vec<String> = {
+    => vec![],
+
+    // TODO: I don't understand why I have to inline Binder here.
+    <bndr:"id"> <mut bndrs:Binders0_Rev> => {
+        bndrs.push(bndr);
+        bndrs
     }
 
-    pub Expr_Semi: Expr = {
-        <expr1:Expr_Op0> ";" <expr2:Expr_Semi> =>
-            Expr::Let { bndr: "_".to_owned(), rhs: Box::new(expr1), body: Box::new(expr2) },
+    "_" <mut bndrs:Binders0_Rev> => {
+        bndrs.push("_".to_owned());
+        bndrs
+    }
+};
 
-        <expr:Expr_Op0> => expr,
-    };
+// if-then-else
+IfExpr: ParsedExpr = {
+    <expr:TupleExpr> =>
+        expr,
 
-    Expr_Unop: Expr = {
-        "-" <expr:Expr_Op0> =>
-            Expr::Neg(Box::new(expr)),
+    "if" <e1:SeqExpr> "then" <e2:SeqExpr> "else" <e3:LetExpr> =>
+        ParsedExpr::If(Box::new(e1), Box::new(e2), Box::new(e3)),
+};
 
-        <expr:Expr_Op0> =>
-            expr,
-    };
+TupleExpr: ParsedExpr = {
+    <expr:CmpOpExpr> =>
+        expr,
 
-    pub Expr_Op0: Expr = {
-        <left:Expr_Op1> "+" <right:Expr_Op1> =>
-            Expr::IntBinOp(Box::new(left), IntBinOp::Add, Box::new(right)),
+    <expr:CmpOpExpr> <mut exprs:CommaExpr1> => {
+        exprs.push(expr);
+        exprs.reverse();
+        ParsedExpr::Tuple(exprs)
+    },
+};
 
-        <left:Expr_Op1> "-" <right:Expr_Op1> =>
-            Expr::IntBinOp(Box::new(left), IntBinOp::Sub, Box::new(right)),
+// One or more ", <expr>"
+CommaExpr1: Vec<ParsedExpr> = {
+    "," <expr:CmpOpExpr> <mut exprs:CommaExpr0> => {
+        exprs.push(expr);
+        exprs
+    },
+};
 
-        <expr:Expr_Op1> => expr,
+// Zero or more ", <expr>"
+CommaExpr0: Vec<ParsedExpr> = {
+    => vec![],
 
-    };
+    "," <expr:CmpOpExpr> <mut exprs:CommaExpr0> => {
+        exprs.push(expr);
+        exprs
+    },
+};
 
-    Expr_Op1: Expr = {
-        <left:Expr_Op2> "+." <right:Expr_Op2> =>
-            Expr::FloatBinOp(Box::new(left), FloatBinOp::Add, Box::new(right)),
+// Comparison operators: `=`, `<>`, `<=` `<`, `>=`, `>`. These all have the same the same
+// precedence, and are all left associative.
+CmpOpExpr: ParsedExpr = {
+    <expr:BinOp1Expr> =>
+        expr,
 
-        <left:Expr_Op2> "-." <right:Expr_Op2> =>
-            Expr::FloatBinOp(Box::new(left), FloatBinOp::Sub, Box::new(right)),
+    <expr1:CmpOpExpr> <op:CmpOp> <expr2:BinOp1Expr> =>
+        ParsedExpr::Cmp(Box::new(expr1), op, Box::new(expr2)),
+};
 
-        <expr:Expr_Op2> => expr,
-    };
+CmpOp: Cmp = {
+    "=" => Cmp::Equal,
+    "<>" => Cmp::NotEqual,
+    "<" => Cmp::LessThan,
+    "<=" => Cmp::LessThanOrEqual,
+    ">" => Cmp::GreaterThan,
+    ">=" => Cmp::GreaterThanOrEqual,
+};
 
-    Expr_Op2: Expr = {
-        <left:Expr_> "*." <right:Expr_> =>
-            Expr::FloatBinOp(Box::new(left), FloatBinOp::Mul, Box::new(right)),
+// `+` and `-`
+BinOp1Expr: ParsedExpr = {
+    <expr:BinOp2Expr> =>
+        expr,
 
-        <left:Expr_> "/." <right:Expr_> =>
-            Expr::FloatBinOp(Box::new(left), FloatBinOp::Div, Box::new(right)),
+    // Left associative
+    <expr1:BinOp1Expr> "-" <expr2:BinOp2Expr> =>
+        ParsedExpr::IntBinOp(Box::new(expr1), IntBinOp::Sub, Box::new(expr2)),
 
-        <expr:Expr_> => expr,
-    };
+    // Left associative
+    <expr1:BinOp1Expr> "+" <expr2:BinOp2Expr> =>
+        ParsedExpr::IntBinOp(Box::new(expr1), IntBinOp::Add, Box::new(expr2)),
 
-    pub Expr_: Expr = {
-        <fun:Expr_NoApp> <args:Expr_NoApp1> =>
-            Expr::App { fun: Box::new(fun), args },
+    // Left associative
+    <expr1:BinOp1Expr> "+." <expr2:BinOp2Expr> =>
+        ParsedExpr::FloatBinOp(Box::new(expr1), FloatBinOp::Add, Box::new(expr2)),
 
-        <other:Expr_NoApp> =>
-            other,
-    };
+    // Left associative
+    <expr1:BinOp1Expr> "-." <expr2:BinOp2Expr> =>
+        ParsedExpr::FloatBinOp(Box::new(expr1), FloatBinOp::Sub, Box::new(expr2)),
+};
 
-    Expr_NoApp1: Vec<Expr> = {
-        <expr0:Expr_NoApp> <mut exprs:Expr_NoApp0> => {
-            exprs.push(expr0);
-            exprs.reverse();
-            exprs
-        },
-    };
+// `*.` and `/.`
+BinOp2Expr: ParsedExpr = {
+    <expr:UnOpExpr> =>
+        expr,
 
-    Expr_NoApp0: Vec<Expr> = {
-        => vec![],
+    // Left associative
+    <expr1:BinOp2Expr> "*." <expr2:UnOpExpr> =>
+        ParsedExpr::FloatBinOp(Box::new(expr1), FloatBinOp::Mul, Box::new(expr2)),
 
-        <expr0:Expr_NoApp> <mut exprs:Expr_NoApp0> => {
-            exprs.push(expr0);
-            exprs
-        }
-    };
+    // Left associative
+    <expr1:BinOp2Expr> "/." <expr2:UnOpExpr> =>
+        ParsedExpr::FloatBinOp(Box::new(expr1), FloatBinOp::Div, Box::new(expr2)),
+};
 
-    Expr_NoApp: Expr = {
-        "(" <expr:Expr_> ")" =>
-            expr,
-
-        "(" ")" =>
-            Expr::Unit,
-
-        <b:"bool"> =>
-            Expr::Bool(b),
-
-        <i:"int"> =>
-            Expr::Int(i),
-
-        <f:"float"> =>
-            Expr::Float(f),
-
-        "not" <e:Expr_> =>
-            Expr::Not(Box::new(e)),
-
-        <e1:Expr_NoApp> <cmp:Cmp_> <e2:Expr_> =>
-            Expr::Cmp(Box::new(e1), cmp, Box::new(e2)),
-
-        "if" <e1:Expr_> "then" <e2:Expr_> "else" <e3:Expr_> =>
-            Expr::If(Box::new(e1), Box::new(e2), Box::new(e3)),
-
-        "let" <bndr:"id"> "=" <rhs:Expr_> "in" <body:Expr_> =>
-            Expr::Let { bndr, rhs: Box::new(rhs), body: Box::new(body) },
-
-        <var:"id"> =>
-            Expr::Var(var),
-
-        "let" "rec" <bndr:"id"> <args:Vars> "=" <rhs:Expr_> "in" <body:Expr_> =>
-            Expr::LetRec { bndr, args, rhs: Box::new(rhs), body: Box::new(body) },
-
-        "(" <expr:Expr_> <mut exprs:CommaExprs> ")" => {
-            exprs.insert(0, expr); // TODO insert
-            Expr::Tuple(exprs)
+UnOpExpr: ParsedExpr = {
+    "-" <expr:AppExpr> =>
+        match expr {
+            ParsedExpr::Float(f) =>
+                ParsedExpr::FNeg(Box::new(ParsedExpr::Float(f))),
+            other =>
+                ParsedExpr::Neg(Box::new(other)),
         },
 
-        "let" "(" <var:"id"> <mut vars:CommaVars> ")" "=" <e1:Expr_> "in" <e2:Expr_> => {
-            vars.insert(0, var); // TODO insert
-            Expr::LetTuple {
-                bndrs: vars,
-                rhs: Box::new(e1),
-                body: Box::new(e2),
+    "-." <expr:AppExpr> =>
+        ParsedExpr::FNeg(Box::new(expr)),
+
+    "not" <expr:AppExpr> =>
+        ParsedExpr::Not(Box::new(expr)),
+
+    <expr:AppExpr> =>
+        expr,
+};
+
+AppExpr: ParsedExpr = {
+    <expr:GetPutExpr> =>
+        expr,
+
+    <expr1:GetPutExpr> <exprs:GetPutExprs1> =>
+        ParsedExpr::App { fun: Box::new(expr1), args: exprs },
+
+    "Array.create" <e1:GetPutExpr> <e2:GetPutExpr> =>
+        ParsedExpr::Array { len: Box::new(e1), elem: Box::new(e2) },
+};
+
+// Array get and put expressions: `<expr> . ( <expr> )`, `<expr> . ( <expr> ) <- `<expr>`
+GetPutExpr: ParsedExpr = {
+    <expr1:SimpleExpr> =>
+        expr1,
+
+    <expr1:SimpleExpr> <get_put_suffix:GetOrPutSuffix1_Rev> => {
+        let mut expr = expr1;
+        let (mut gets, put) = get_put_suffix;
+
+        match put {
+            None => {
+                for idx in gets.into_iter().rev() {
+                    expr = ParsedExpr::Get(Box::new(expr), Box::new(idx));
+                }
             }
-        },
+            Some(put) => {
+                let put_idx = gets.remove(0);
+                for idx in gets.into_iter().rev() {
+                    expr = ParsedExpr::Get(Box::new(expr), Box::new(idx));
+                }
+                expr = ParsedExpr::Put(Box::new(expr), Box::new(put_idx), Box::new(put));
+            }
+        }
 
-        "Array.create" <e1:Expr_> <e2:Expr_> =>
-            Expr::Array { len: Box::new(e1), elem: Box::new(e2) },
+        expr
+    }
+};
 
-        <e1:Expr_NoApp> "." "(" <e2:Expr_> ")" =>
-            Expr::Get(Box::new(e1), Box::new(e2)),
+GetOrPutSuffix1_Rev: (Vec<ParsedExpr>, Option<ParsedExpr>) = {
+    "." "(" <expr:SeqExpr> ")" <mut rest:GetOrPutSuffix0_Rev> => {
+        let (mut gets, put) = rest;
+        gets.push(expr);
+        (gets, put)
+    },
+};
 
-        <e1:Expr_NoApp> "." "(" <e2:Expr_> ")" "<-" <e3:Expr_> =>
-            Expr::Put(Box::new(e1), Box::new(e2), Box::new(e3)),
-    };
+GetOrPutSuffix0_Rev: (Vec<ParsedExpr>, Option<ParsedExpr>) = {
+    => (vec![], None),
 
-    Cmp_: Cmp = {
-        "=" => Cmp::Equal,
-        "<>" => Cmp::NotEqual,
-        "<" => Cmp::LessThan,
-        "<=" => Cmp::LessThanOrEqual,
-        ">" => Cmp::GreaterThan,
-        ">=" => Cmp::GreaterThanOrEqual,
-    };
+    "." "(" <expr:SeqExpr> ")" <mut rest:GetOrPutSuffix0_Rev> => {
+        let (mut gets, put) = rest;
+        gets.push(expr);
+        (gets, put)
+    },
 
-    Vars: Vec<String> = {
-        => vec![],
-        <var:"id"> <mut vars:Vars> => {
-            // FIXME: insert
-            vars.insert(0, var);
-            vars
-        },
-    };
+    "<-" <expr:LetExpr> =>
+        (vec![], Some(expr)),
+};
 
-    Exprs: Vec<Expr> = {
-        <expr:Expr_> => vec![expr],
-        <expr:Expr_> <mut exprs:Exprs> => {
-            exprs.insert(0, expr);
-            exprs
-        },
-    };
+// One or more exprs
+GetPutExprs1: Vec<ParsedExpr> = {
+    <expr:GetPutExpr> <mut exprs:GetPutExprs0> => {
+        exprs.push(expr);
+        exprs.reverse();
+        exprs
+    }
+};
 
-    // One or more `, <expr>`
-    CommaExprs: Vec<Expr> = {
-        "," <expr:Expr_> =>
-            vec![expr],
+// Zero or more exprs
+GetPutExprs0: Vec<ParsedExpr> = {
+    => vec![],
 
-        "," <expr:Expr_> <mut exprs:CommaExprs> => {
-            exprs.insert(0, expr); // TODO insert
-            exprs
-        },
-    };
+    <expr1:GetPutExpr> <mut exprs:GetPutExprs0> => {
+        exprs.push(expr1);
+        exprs
+    },
+};
 
-    // One or more `, <var>`
-    CommaVars: Vec<String> = {
-        "," <var:"id"> =>
-            vec![var],
 
-        "," <var:"id"> <mut vars:CommaVars> => {
-            vars.insert(0, var);
-            vars
-        },
-    };
+SimpleExpr: ParsedExpr = {
+    "(" ")" =>
+        ParsedExpr::Unit,
 
+    "(" <expr:SeqExpr> ")" =>
+        expr,
+
+    <b:"bool"> =>
+        ParsedExpr::Bool(b),
+
+    <i:"int"> =>
+        ParsedExpr::Int(i),
+
+    <f:"float"> =>
+        ParsedExpr::Float(f),
+
+    <var:"id"> =>
+        ParsedExpr::Var(var),
+};
