@@ -72,14 +72,15 @@ impl<A: fmt::Debug + Eq> LRTableBuilder<A> {
                         );
                     }
                 }
-                LRAction::Reduce(_nt_, _p_, _) => {
+                LRAction::Reduce(_nt_, p_, _) => {
                     // TODO: Allowing overriding reduce actions for shift for now
+                    // let production = grammar.get_production(nt_, p_);
                     // panic!(
-                    //     "({}, {:?}): Overriding Reduce({}, {}) action with Shift({})",
+                    //     "({}, {:?}): Overriding Reduce({} -> {}) action with Shift({})",
                     //     state.0,
                     //     grammar.get_terminal(token),
-                    //     nt_.0,
-                    //     p_.0,
+                    //     grammar.get_non_terminal(nt_).non_terminal,
+                    //     ProductionDisplay::new(production, grammar),
                     //     next_state.0,
                     // );
                 }
