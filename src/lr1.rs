@@ -458,11 +458,10 @@ impl<'a, 'b, A> fmt::Display for LR1ItemDisplay<'a, 'b, A> {
             write!(f, "|")?;
         }
 
-        write!(
-            f,
-            ", {:?}]",
-            self.item.lookahead.map(|t| self.grammar.get_terminal(t))
-        )
+        match self.item.lookahead {
+            Some(t) => write!(f, ", {:?}]", self.grammar.get_terminal(t)),
+            None => write!(f, ", $]"),
+        }
     }
 }
 
