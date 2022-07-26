@@ -24,8 +24,15 @@ pub enum GrammarItem {
 /// The `enum Token { ... }` declaration
 #[derive(Debug, Clone)]
 pub struct TokenEnum {
+    /// Name of the token type. The generated parser will take an iterator argument with this type
+    /// as the item type.
     pub type_name: syn::Ident,
+
+    /// Lifetimes of the token type, e.g. in `enum Token<'input> { Id(&'input str) }`.
     pub type_lifetimes: Vec<syn::Lifetime>,
+
+    /// Maps token strings (to be used in production left-hand sides) to Rust patterns that match
+    /// against the tokens being parsed.
     pub conversions: Vec<Conversion>,
 }
 
@@ -45,24 +52,32 @@ pub struct TypeSynonym {
 /// A pattern used in token definitions
 #[derive(Debug, Clone)]
 pub enum Pattern {
-    // `X::Y(<pat1>,...,<patN>)`
+    /// `X::Y(<pat1>,...,<patN>)`
     Enum(syn::Path, Vec<Pattern>),
-    // `X::Y { f1: <pat1>, ..., fN: <patN>, .. }`. The `..` part is optional (the `bool` field).
+
+    /// `X::Y { f1: <pat1>, ..., fN: <patN>, .. }`. The `..` part is optional (the `bool` field).
     Struct(syn::Path, Vec<FieldPattern>, bool),
-    // `(<pat1>, ..., <patN>)`
+
+    /// `(<pat1>, ..., <patN>)`
     Tuple(Vec<Pattern>),
-    // `X::Y::Z`
+
+    /// `X::Y::Z`
     Path(syn::Path),
-    // `_`
+
+    /// `_`
     Underscore,
-    // `..` in a struct pattern
+
+    /// `..` in a struct pattern
     DotDot,
-    // A literal
+
+    /// A literal
     Lit(syn::Lit),
-    // E.g. `<i64>`, `<String>`, ...
+
+    /// E.g. `<i64>`, `<String>`, ...
     Choose(syn::Type),
 }
 
+/// Field name and pattern pair
 #[derive(Debug, Clone)]
 pub struct FieldPattern {
     pub field_name: syn::Ident,

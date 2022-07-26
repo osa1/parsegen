@@ -17,7 +17,7 @@ pub fn lower(
     let t_indices = {
         let mut t_indices: FxHashMap<String, TerminalIdx> = Default::default();
         for conv in terminals {
-            let idx = grammar.next_terminal_idx();
+            let idx = grammar.new_terminal(conv.from.clone());
             let old = t_indices.insert(conv.from.clone(), idx);
             if old.is_some() {
                 panic!("Terminal {:?} defined multiple times", conv.from);

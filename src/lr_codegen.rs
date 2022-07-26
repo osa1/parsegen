@@ -8,8 +8,6 @@ use crate::grammar::{Grammar, NonTerminalIdx, ProductionIdx, TerminalIdx};
 use crate::lr1::{build_lr1_table, generate_lr1_automaton};
 use crate::lr_common::{LRAction, StateIdx};
 
-use std::convert::TryFrom;
-
 use fxhash::FxHashMap;
 use proc_macro2::{Span, TokenStream};
 use quote::quote;
@@ -17,7 +15,7 @@ use quote::quote;
 pub fn generate_lr1_parser(grammar: Grammar<syn::Expr>, tokens: &TokenEnum) -> TokenStream {
     let (token_kind_type_name, token_kind_type_decl) = generate_token_kind_type(tokens);
 
-    let n_terminals = grammar.n_terminals as usize;
+    let n_terminals = grammar.n_terminals();
     let token_type = &tokens.type_name;
 
     let first_table = generate_first_table(&grammar);
@@ -62,7 +60,7 @@ pub fn generate_lr1_parser(grammar: Grammar<syn::Expr>, tokens: &TokenEnum) -> T
     let goto_vec = generate_goto_vec(
         lr1_table.get_goto_table(),
         lr1_table.n_states(),
-        grammar.non_terminals.len(),
+        grammar.n_non_terminals(),
     );
 
     let goto_array_code =
@@ -186,10 +184,10 @@ pub fn generate_lr1_parser(grammar: Grammar<syn::Expr>, tokens: &TokenEnum) -> T
                     None => panic!("Stuck! (1) state={}, terminal={}", state, terminal_idx),
                     Some(LRAction::Shift { next_state }) => {
                         state_stack.push(next_state);
-                        if let Some(Ok(token)) = &token {
+                        let token_ = ::std::mem::replace(&mut token, input.next());
+                        if let Some(Ok(token)) = token_ {
                             value_stack.push(#token_value_fn_name(token));
                         }
-                        token = input.next();
                     }
                     Some(LRAction::Reduce { non_terminal_idx, n_symbols, semantic_action_idx }) => {
                         (SEMANTIC_ACTIONS[semantic_action_idx as usize])(&mut value_stack);
@@ -223,7 +221,7 @@ fn action_table_vec<A: Copy>(
     action_table: &FxHashMap<StateIdx, FxHashMap<Option<TerminalIdx>, LRAction<A>>>,
     n_states: usize,
 ) -> Vec<Vec<Option<LRAction<A>>>> {
-    let n_terminals = grammar.n_terminals as usize;
+    let n_terminals = grammar.n_terminals();
 
     let mut state_to_terminal_to_action: Vec<Vec<Option<LRAction<A>>>> =
         Vec::with_capacity(n_terminals);

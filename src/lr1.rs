@@ -119,6 +119,7 @@ fn compute_lr1_closure<A>(
                             SymbolKind::Terminal(t) => {
                                 end_allowed = false;
                                 first.add(*t);
+                                break;
                             }
                             SymbolKind::NonTerminal(nt) => {
                                 let nt_first = first_table.get_first(*nt);
@@ -144,9 +145,9 @@ fn compute_lr1_closure<A>(
 
             // println!(
             //     "LR1 closure item = {}, next = {}, first = {}",
-            //     LR1ItemDisplay { item, grammar },
+            //     LR1ItemDisplay { item: &item, grammar },
             //     grammar.get_non_terminal(next).non_terminal,
-            //     FirstSetDisplay { set: &first }
+            //     crate::first::FirstSetDisplay { set: &first, grammar }
             // );
 
             for (production_idx, _) in grammar.non_terminal_production_indices(next) {
@@ -373,7 +374,7 @@ pub fn build_lr1_table<A: Clone + fmt::Debug + Eq>(
             // Rule 2.a
             if let Some(next_terminal) = item.next_terminal(grammar) {
                 if let Some(next_state) = state.goto.get(&SymbolKind::Terminal(next_terminal)) {
-                    table.add_shift(state_idx, next_terminal, *next_state);
+                    table.add_shift(grammar, state_idx, next_terminal, *next_state);
                 }
             }
 
@@ -383,6 +384,7 @@ pub fn build_lr1_table<A: Clone + fmt::Debug + Eq>(
             if item.is_complete(grammar) && !non_terminal.public {
                 let production = grammar.get_production(item.non_terminal_idx, item.production_idx);
                 table.add_reduce(
+                    grammar,
                     state_idx,
                     item.lookahead,
                     item.non_terminal_idx,
@@ -456,7 +458,10 @@ impl<'a, 'b, A> fmt::Display for LR1ItemDisplay<'a, 'b, A> {
             write!(f, "|")?;
         }
 
-        write!(f, ", {:?}]", self.item.lookahead)
+        match self.item.lookahead {
+            Some(t) => write!(f, ", {:?}]", self.grammar.get_terminal(t)),
+            None => write!(f, ", $]"),
+        }
     }
 }
 
@@ -730,7 +735,7 @@ fn simulate4() {
 
     let lr1 = build_lr1_table(&grammar, &lr_automaton);
 
-    println!("{}", LRTableDisplay::new(&lr1, &grammar),);
+    println!("{}", LRTableDisplay::new(&lr1, &grammar));
 
     let n = test_grammar.t("n");
     let plus = test_grammar.t("+");
