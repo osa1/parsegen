@@ -81,7 +81,7 @@ pub fn generate_semantic_action_table(
                 let productions: Vec<Production<SemanticActionIdx>> = productions
                     .into_iter()
                     .enumerate()
-                    .map(|(p_i, Production { symbols, action })| {
+                    .map(|(p_i, Production { symbols, action, assoc })| {
                         // Statements to pop the values off the value stack and bind them, for the
                         // pruduction's RHS
                         let mut pop_code: Vec<TokenStream> = vec![];
@@ -138,6 +138,7 @@ pub fn generate_semantic_action_table(
                         Production {
                             symbols,
                             action: SemanticActionIdx(u16::try_from(fn_idx).unwrap()),
+                            assoc,
                         }
                     })
                     .collect();

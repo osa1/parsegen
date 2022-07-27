@@ -66,6 +66,7 @@ pub fn lower(
                         }]),
                     },
                 }),
+                None,
             );
         } else {
             let nt_name = nt.name.to_string();
@@ -97,7 +98,7 @@ pub fn lower(
                 ast::Action::Fallible(_) => todo!("Fallible actions not supported yet"),
             };
 
-            grammar.add_production(*nt_idx, symbols, action);
+            grammar.add_production(*nt_idx, symbols, action, prod.assoc);
         }
     }
 

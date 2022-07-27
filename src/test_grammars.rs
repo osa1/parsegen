@@ -44,7 +44,8 @@ impl<A> TestGrammar<A> {
     }
 
     fn add_p(&mut self, non_terminal: NonTerminalIdx, symbols: Vec<Symbol>, action: A) {
-        self.grammar.add_production(non_terminal, symbols, action);
+        self.grammar
+            .add_production(non_terminal, symbols, action, None);
     }
 }
 

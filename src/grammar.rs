@@ -63,13 +63,14 @@ pub struct NonTerminal<A> {
 pub struct Production<A> {
     pub symbols: Vec<Symbol>,
     pub action: A,
+    pub assoc: Option<ast::Assoc>,
 }
 
 impl<A> std::fmt::Debug for Production<A> {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         f.debug_struct("Production")
             .field("symbols", &self.symbols)
-            .field("action", &"...")
+            .field("assoc", &self.assoc)
             .finish()
     }
 }
@@ -153,12 +154,15 @@ impl<A> Grammar<A> {
         non_terminal: NonTerminalIdx,
         symbols: Vec<Symbol>,
         action: A,
+        assoc: Option<ast::Assoc>,
     ) -> ProductionIdx {
         let non_terminal = &mut self.non_terminals[non_terminal.0 as usize];
         let prod_idx = non_terminal.productions.len();
-        non_terminal
-            .productions
-            .push(Production { symbols, action });
+        non_terminal.productions.push(Production {
+            symbols,
+            action,
+            assoc,
+        });
         ProductionIdx(prod_idx as u32)
     }
 
