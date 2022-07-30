@@ -113,9 +113,37 @@ pub fn generate_first_table<A>(grammar: &Grammar<A>) -> FirstTable {
 
 use std::fmt;
 
+pub struct FirstTableDisplay<'a, 'b, A> {
+    pub table: &'b FirstTable,
+    pub grammar: &'a Grammar<A>,
+}
+
 pub struct FirstSetDisplay<'a, 'b, A> {
     pub set: &'a FirstSet,
     pub grammar: &'b Grammar<A>,
+}
+
+impl<'a, 'b, A> fmt::Display for FirstTableDisplay<'a, 'b, A> {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        writeln!(f, "{{")?;
+        for (nt_idx, set) in self.table.0.iter().enumerate() {
+            let non_terminal = &self
+                .grammar
+                .get_non_terminal(NonTerminalIdx::from_usize(nt_idx))
+                .non_terminal;
+            write!(
+                f,
+                "    {}: {}",
+                non_terminal,
+                FirstSetDisplay {
+                    set,
+                    grammar: self.grammar,
+                }
+            )?;
+            writeln!(f)?;
+        }
+        writeln!(f, "}}")
+    }
 }
 
 impl<'a, 'b, A> fmt::Display for FirstSetDisplay<'a, 'b, A> {

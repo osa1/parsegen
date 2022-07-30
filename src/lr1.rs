@@ -97,47 +97,37 @@ fn compute_lr1_closure<A>(
             let first = {
                 let production = item.get_production(grammar);
                 let mut first: FirstSet = Default::default();
-                if item.cursor + 1 == production.symbols().len() {
-                    // `B` is the last symbol in the production, so the first set is just `t`
+                let mut end_allowed = true;
+                for symbol in &production.symbols()[item.cursor + 1..] {
+                    // println!(
+                    //     "Checking symbol {}",
+                    //     SymbolKindDisplay {
+                    //         symbol: &symbol.kind,
+                    //         grammar
+                    //     }
+                    // );
+                    match &symbol.kind {
+                        SymbolKind::Terminal(t) => {
+                            end_allowed = false;
+                            first.add(*t);
+                            break;
+                        }
+                        SymbolKind::NonTerminal(nt) => {
+                            let nt_first = first_table.get_first(*nt);
+                            for t in nt_first.terminals() {
+                                first.add(*t);
+                            }
+                            if !nt_first.has_empty() {
+                                end_allowed = false;
+                                break;
+                            }
+                        }
+                    }
+                }
+                if end_allowed {
                     match &item.lookahead {
                         Some(lookahead) => first.add(*lookahead),
                         None => first.set_empty(),
-                    }
-                } else {
-                    // Otherwise scan through symbols after `B`. The process is the same as follow set
-                    // computation
-                    let mut end_allowed = true;
-                    for symbol in &production.symbols()[item.cursor + 1..] {
-                        // println!(
-                        //     "Checking symbol {}",
-                        //     SymbolKindDisplay {
-                        //         symbol: &symbol.kind,
-                        //         grammar
-                        //     }
-                        // );
-                        match &symbol.kind {
-                            SymbolKind::Terminal(t) => {
-                                end_allowed = false;
-                                first.add(*t);
-                                break;
-                            }
-                            SymbolKind::NonTerminal(nt) => {
-                                let nt_first = first_table.get_first(*nt);
-                                for t in nt_first.terminals() {
-                                    first.add(*t);
-                                }
-                                if !nt_first.has_empty() {
-                                    end_allowed = false;
-                                    break;
-                                }
-                            }
-                        }
-                    }
-                    if end_allowed {
-                        match &item.lookahead {
-                            Some(lookahead) => first.add(*lookahead),
-                            None => first.set_empty(),
-                        }
                     }
                 }
                 first
