@@ -294,7 +294,10 @@ impl<'a, 'b, A> fmt::Display for LRTableDisplay<'a, 'b, A> {
             if let Some(actions) = actions {
                 for (terminal, action) in actions {
                     match terminal {
-                        Some(t) => write!(f, "  {:?} -> ", t)?,
+                        Some(t) => {
+                            let t = self.grammar.get_terminal(*t);
+                            write!(f, "  {:?} -> ", t)?
+                        }
                         None => write!(f, "  EOF -> ")?,
                     }
                     writeln!(
