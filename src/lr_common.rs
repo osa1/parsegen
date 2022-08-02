@@ -1,3 +1,4 @@
+use crate::ast::Assoc;
 use crate::grammar::{Grammar, NonTerminalIdx, ProductionIdx, TerminalIdx};
 
 use fxhash::FxHashMap;
@@ -55,43 +56,56 @@ impl<A: fmt::Debug + Eq> LRTableBuilder<A> {
         token: TerminalIdx,
         next_state: StateIdx,
     ) {
-        let action = self.table.action.entry(state).or_default();
+        let action_tbl = self.table.action.entry(state).or_default();
 
-        let old_action = action.insert(Some(token), LRAction::Shift(next_state));
-
-        if let Some(old_action) = old_action {
-            match old_action {
-                LRAction::Shift(s) => {
-                    if s != next_state {
+        match action_tbl.get(&Some(token)) {
+            None => {
+                action_tbl.insert(Some(token), LRAction::Shift(next_state));
+            }
+            Some(LRAction::Shift(s)) => {
+                // shift-shift conflicts cannot happen, this must be a bug in parsegen
+                // TODO: When do we add shift to the same state?
+                if *s != next_state {
+                    panic!(
+                        "({}, {:?}): Overriding Shift({}) with Shift({})\n\
+                             This is a parsegen bug, please file a bug report",
+                        state.0,
+                        grammar.get_terminal(token),
+                        s.0,
+                        next_state.0,
+                    );
+                }
+            }
+            Some(LRAction::Reduce(nt_, p_, _)) => {
+                let assoc = grammar.get_production(*nt_, *p_).assoc;
+                match assoc {
+                    Some(Assoc::Left) => {
+                        // Production in reduce action is left associative; do not override it
+                    }
+                    Some(Assoc::Right) => {
+                        // Production in reduce action is right associative; replace with shift
+                        action_tbl.insert(Some(token), LRAction::Shift(next_state));
+                    }
+                    None => {
+                        let production = grammar.get_production(*nt_, *p_);
                         panic!(
-                            "({}, {:?}): Overriding Shift({}) with Shift({})",
+                            "({}, {:?}): Overriding Reduce({} -> {}) action with Shift({})",
                             state.0,
                             grammar.get_terminal(token),
-                            s.0,
+                            grammar.get_non_terminal(*nt_).non_terminal,
+                            ProductionDisplay::new(production, grammar),
                             next_state.0,
                         );
                     }
                 }
-                LRAction::Reduce(_nt_, _p_, _) => {
-                    // TODO: Allowing overriding reduce actions for shift for now
-                    // let production = grammar.get_production(nt_, p_);
-                    // panic!(
-                    //     "({}, {:?}): Overriding Reduce({} -> {}) action with Shift({})",
-                    //     state.0,
-                    //     grammar.get_terminal(token),
-                    //     grammar.get_non_terminal(nt_).non_terminal,
-                    //     ProductionDisplay::new(production, grammar),
-                    //     next_state.0,
-                    // );
-                }
-                LRAction::Accept => {
-                    panic!(
-                        "({}, {:?}): Overriding Accept action with Shift({})",
-                        state.0,
-                        grammar.get_terminal(token),
-                        next_state.0,
-                    );
-                }
+            }
+            Some(LRAction::Accept) => {
+                panic!(
+                    "({}, {:?}): Overriding Accept action with Shift({})",
+                    state.0,
+                    grammar.get_terminal(token),
+                    next_state.0,
+                );
             }
         }
     }
@@ -105,45 +119,61 @@ impl<A: fmt::Debug + Eq> LRTableBuilder<A> {
         production_idx: ProductionIdx,
         semantic_action: A,
     ) {
-        let action = self.table.action.entry(state).or_default();
+        let action_tbl = self.table.action.entry(state).or_default();
 
-        let old_action = action.insert(
-            token,
-            LRAction::Reduce(non_terminal_idx, production_idx, semantic_action),
-        );
-
-        if let Some(old_action) = old_action {
-            match old_action {
-                LRAction::Shift(s) => {
-                    panic!(
-                        "({}, {:?}): Overriding Shift({}) with Reduce({}, {})",
-                        state.0,
-                        token.map(|t| grammar.get_terminal(t)),
-                        s.0,
-                        non_terminal_idx.0,
-                        production_idx.0
-                    )
+        match action_tbl.get(&token) {
+            None => {
+                action_tbl.insert(
+                    token,
+                    LRAction::Reduce(non_terminal_idx, production_idx, semantic_action),
+                );
+            }
+            Some(LRAction::Shift(s)) => {
+                let assoc = grammar
+                    .get_production(non_terminal_idx, production_idx)
+                    .assoc;
+                match assoc {
+                    Some(Assoc::Left) => {
+                        // Production in reduce action is left associative, replace shift
+                        action_tbl.insert(
+                            token,
+                            LRAction::Reduce(non_terminal_idx, production_idx, semantic_action),
+                        );
+                    }
+                    Some(Assoc::Right) => {
+                        // Production in reduce action is right associative, do not override shift
+                    }
+                    None => {
+                        panic!(
+                            "({}, {:?}): Overriding Shift({}) with Reduce({}, {})",
+                            state.0,
+                            token.map(|t| grammar.get_terminal(t)),
+                            s.0,
+                            non_terminal_idx.0,
+                            production_idx.0
+                        )
+                    }
                 }
-                LRAction::Reduce(nt_, p_, _) => {
-                    panic!(
-                        "({}, {:?}): Overriding Reduce({}, {}) action with Reduce({}, {})",
-                        state.0,
-                        token.map(|t| grammar.get_terminal(t)),
-                        nt_.0,
-                        p_.0,
-                        non_terminal_idx.0,
-                        production_idx.0
-                    );
-                }
-                LRAction::Accept => {
-                    panic!(
-                        "({}, {:?}): Overriding Accept action with Reduce({}, {})",
-                        state.0,
-                        token.map(|t| grammar.get_terminal(t)),
-                        non_terminal_idx.0,
-                        production_idx.0
-                    );
-                }
+            }
+            Some(LRAction::Reduce(nt_, p_, _)) => {
+                panic!(
+                    "({}, {:?}): Overriding Reduce({}, {}) action with Reduce({}, {})",
+                    state.0,
+                    token.map(|t| grammar.get_terminal(t)),
+                    nt_.0,
+                    p_.0,
+                    non_terminal_idx.0,
+                    production_idx.0
+                );
+            }
+            Some(LRAction::Accept) => {
+                panic!(
+                    "({}, {:?}): Overriding Accept action with Reduce({}, {})",
+                    state.0,
+                    token.map(|t| grammar.get_terminal(t)),
+                    non_terminal_idx.0,
+                    production_idx.0
+                );
             }
         }
     }
@@ -266,7 +296,6 @@ pub struct LRTableDisplay<'a, 'b, A> {
 }
 
 impl<'a, 'b, A> LRTableDisplay<'a, 'b, A> {
-    #[cfg(test)]
     pub fn new(table: &'a LRTable<A>, grammar: &'b Grammar<A>) -> Self {
         Self { table, grammar }
     }

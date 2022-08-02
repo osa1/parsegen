@@ -483,3 +483,83 @@ fn token_values() {
         Ok(Expr::Id(Id))
     );
 }
+
+#[test]
+fn associativity_right() {
+    pub enum Token {
+        A,
+    }
+
+    #[derive(Debug, PartialEq, Eq)]
+    pub enum Expr {
+        A,
+        Bin(Box<Expr>, Box<Expr>),
+    }
+
+    parser! {
+        enum Token {
+            "a" => Token::A,
+        }
+
+        pub Entry : Expr = {
+            #[assoc(right)]
+            <left:Entry> <right:Entry> =>
+                Expr::Bin(Box::new(left), Box::new(right)),
+
+            "a" =>
+                Expr::A,
+        };
+    }
+
+    assert_eq!(
+        Entry::parse(
+            vec![Token::A, Token::A, Token::A]
+                .into_iter()
+                .map(|t| Ok::<Token, ()>(t))
+        ),
+        Ok(Expr::Bin(
+            Box::new(Expr::A),
+            Box::new(Expr::Bin(Box::new(Expr::A), Box::new(Expr::A)))
+        ))
+    );
+}
+
+#[test]
+fn associativity_left() {
+    pub enum Token {
+        A,
+    }
+
+    #[derive(Debug, PartialEq, Eq)]
+    pub enum Expr {
+        A,
+        Bin(Box<Expr>, Box<Expr>),
+    }
+
+    parser! {
+        enum Token {
+            "a" => Token::A,
+        }
+
+        pub Entry : Expr = {
+            #[assoc(left)]
+            <left:Entry> <right:Entry> =>
+                Expr::Bin(Box::new(left), Box::new(right)),
+
+            "a" =>
+                Expr::A,
+        };
+    }
+
+    assert_eq!(
+        Entry::parse(
+            vec![Token::A, Token::A, Token::A]
+                .into_iter()
+                .map(|t| Ok::<Token, ()>(t))
+        ),
+        Ok(Expr::Bin(
+            Box::new(Expr::Bin(Box::new(Expr::A), Box::new(Expr::A))),
+            Box::new(Expr::A),
+        ))
+    );
+}

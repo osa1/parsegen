@@ -286,9 +286,8 @@ pub fn generate_lr1_automaton<A>(
         }
     }
 
-    let mut updated = true;
-    while updated {
-        updated = false;
+    loop {
+        let mut updated = false;
 
         let mut next_state_idx: StateIdx = StateIdx(automaton.states.len());
 
@@ -347,6 +346,10 @@ pub fn generate_lr1_automaton<A>(
             updated |= old.is_none();
             // TODO: I don't understand why this doesn't hold.. needs debugging.
             // assert_eq!(old, None, "trying to insert {}", next.0);
+        }
+
+        if !updated {
+            break;
         }
     }
 
