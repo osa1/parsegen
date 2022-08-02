@@ -502,7 +502,7 @@ fn associativity_right() {
         }
 
         pub Entry : Expr = {
-            #[assoc(right)]
+            #[shift]
             <left:Entry> <right:Entry> =>
                 Expr::Bin(Box::new(left), Box::new(right)),
 
@@ -542,7 +542,7 @@ fn associativity_left() {
         }
 
         pub Entry : Expr = {
-            #[assoc(left)]
+            #[reduce]
             <left:Entry> <right:Entry> =>
                 Expr::Bin(Box::new(left), Box::new(right)),
 

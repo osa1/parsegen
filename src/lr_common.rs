@@ -1,4 +1,4 @@
-use crate::ast::Assoc;
+use crate::ast::ShiftReduce;
 use crate::grammar::{Grammar, NonTerminalIdx, ProductionIdx, TerminalIdx};
 
 use fxhash::FxHashMap;
@@ -77,12 +77,12 @@ impl<A: fmt::Debug + Eq> LRTableBuilder<A> {
                 }
             }
             Some(LRAction::Reduce(nt_, p_, _)) => {
-                let assoc = grammar.get_production(*nt_, *p_).assoc;
-                match assoc {
-                    Some(Assoc::Left) => {
+                let sr = grammar.get_production(*nt_, *p_).shift_reduce_attr;
+                match sr {
+                    Some(ShiftReduce::Reduce) => {
                         // Production in reduce action is left associative; do not override it
                     }
-                    Some(Assoc::Right) => {
+                    Some(ShiftReduce::Shift) => {
                         // Production in reduce action is right associative; replace with shift
                         action_tbl.insert(Some(token), LRAction::Shift(next_state));
                     }
@@ -129,19 +129,19 @@ impl<A: fmt::Debug + Eq> LRTableBuilder<A> {
                 );
             }
             Some(LRAction::Shift(s)) => {
-                let assoc = grammar
+                let sr = grammar
                     .get_production(non_terminal_idx, production_idx)
-                    .assoc;
-                match assoc {
-                    Some(Assoc::Left) => {
+                    .shift_reduce_attr;
+                match sr {
+                    Some(ShiftReduce::Shift) => {
+                        // Production in reduce action is right associative, do not override shift
+                    }
+                    Some(ShiftReduce::Reduce) => {
                         // Production in reduce action is left associative, replace shift
                         action_tbl.insert(
                             token,
                             LRAction::Reduce(non_terminal_idx, production_idx, semantic_action),
                         );
-                    }
-                    Some(Assoc::Right) => {
-                        // Production in reduce action is right associative, do not override shift
                     }
                     None => {
                         panic!(

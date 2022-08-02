@@ -98,7 +98,7 @@ pub fn lower(
                 ast::Action::Fallible(_) => todo!("Fallible actions not supported yet"),
             };
 
-            grammar.add_production(*nt_idx, symbols, action, prod.assoc);
+            grammar.add_production(*nt_idx, symbols, action, prod.shift_reduce_attr);
         }
     }
 

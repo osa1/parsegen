@@ -1,5 +1,4 @@
 use proc_macro2::Span;
-use syn::parse::Parser as SynParser;
 use syn::parse::{Parse, ParseBuffer};
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -109,16 +108,16 @@ pub struct NonTerminal {
 #[derive(Debug)]
 pub struct Production {
     /// Optional associativity attribute
-    pub assoc: Option<Assoc>,
+    pub shift_reduce_attr: Option<ShiftReduce>,
     pub symbols: Vec<Symbol>,
     pub action: Action,
 }
 
-/// Associativity
+/// A `#[shift]` or `#[reduce]` attribution, attached to a production
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum Assoc {
-    Left,
-    Right,
+pub enum ShiftReduce {
+    Shift,
+    Reduce,
 }
 
 #[derive(Debug)]
@@ -350,18 +349,20 @@ impl Parse for NonTerminal {
 impl Parse for Production {
     fn parse(input: &ParseBuffer) -> syn::Result<Self> {
         let mut symbols: Vec<Symbol> = vec![];
-        let mut assoc: Option<Assoc> = None;
+        let mut shift_reduce: Option<ShiftReduce> = None;
         if input.peek(syn::token::Pound) {
             let attrs = syn::Attribute::parse_outer(input)?;
             if attrs.len() > 1 {
                 panic!("A production can have at most one attribute");
             }
             for attr in attrs {
-                if !attr.path.is_ident("assoc") {
+                if attr.path.is_ident("shift") {
+                    shift_reduce = Some(ShiftReduce::Shift);
+                } else if attr.path.is_ident("reduce") {
+                    shift_reduce = Some(ShiftReduce::Reduce);
+                } else {
                     panic!("Unknown attribute");
                 }
-                dbg!(&attr.tokens);
-                assoc = Some(Assoc::parse.parse(attr.tokens.into())?);
             }
         }
         while !input.peek(syn::token::FatArrow) {
@@ -369,23 +370,10 @@ impl Parse for Production {
         }
         let action = input.parse::<Action>()?;
         Ok(Production {
-            assoc,
+            shift_reduce_attr: shift_reduce,
             symbols,
             action,
         })
-    }
-}
-
-impl Parse for Assoc {
-    fn parse(input: &ParseBuffer) -> syn::Result<Self> {
-        let contents;
-        syn::parenthesized!(contents in input);
-        let ident = contents.parse::<syn::Ident>()?;
-        match ident.to_string().as_str() {
-            "left" => Ok(Assoc::Left),
-            "right" => Ok(Assoc::Right),
-            other => panic!("Unknown associativity: {}", other),
-        }
     }
 }
 

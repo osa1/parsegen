@@ -63,14 +63,14 @@ pub struct NonTerminal<A> {
 pub struct Production<A> {
     pub symbols: Vec<Symbol>,
     pub action: A,
-    pub assoc: Option<ast::Assoc>,
+    pub shift_reduce_attr: Option<ast::ShiftReduce>,
 }
 
 impl<A> std::fmt::Debug for Production<A> {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         f.debug_struct("Production")
             .field("symbols", &self.symbols)
-            .field("assoc", &self.assoc)
+            .field("shift_reduce_attr", &self.shift_reduce_attr)
             .finish()
     }
 }
@@ -154,14 +154,14 @@ impl<A> Grammar<A> {
         non_terminal: NonTerminalIdx,
         symbols: Vec<Symbol>,
         action: A,
-        assoc: Option<ast::Assoc>,
+        shift_reduce_attr: Option<ast::ShiftReduce>,
     ) -> ProductionIdx {
         let non_terminal = &mut self.non_terminals[non_terminal.0 as usize];
         let prod_idx = non_terminal.productions.len();
         non_terminal.productions.push(Production {
             symbols,
             action,
-            assoc,
+            shift_reduce_attr,
         });
         ProductionIdx(prod_idx as u32)
     }
