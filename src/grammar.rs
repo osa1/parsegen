@@ -34,6 +34,10 @@ impl TerminalIdx {
     pub fn as_usize(self) -> usize {
         self.0 as usize
     }
+
+    pub fn from_usize(i: usize) -> Self {
+        Self(u32::try_from(i).unwrap())
+    }
 }
 
 #[derive(Debug, PartialEq, Eq, Clone, Copy, PartialOrd, Ord, Hash)]

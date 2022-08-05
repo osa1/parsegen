@@ -1,7 +1,7 @@
 use crate::ast::TokenEnum;
 use crate::codegen::{
-    generate_semantic_action_table, generate_token_kind_type, semantic_action_result_type,
-    token_value_fn, SemanticActionIdx,
+    generate_expected_state_tokens, generate_semantic_action_table, generate_token_kind_type,
+    generate_token_to_text, semantic_action_result_type, token_value_fn, SemanticActionIdx,
 };
 use crate::first::generate_first_table;
 use crate::grammar::{Grammar, NonTerminalIdx, ProductionIdx, TerminalIdx};
@@ -106,7 +106,7 @@ pub fn generate_lr1_parser(grammar: Grammar<syn::Expr>, tokens: &TokenEnum) -> T
                 impl #non_terminal_name_id {
                     pub fn parse<#(#token_lifetimes,)* E: Clone>(
                         mut input: impl Iterator<Item=Result<#token_type<#(#token_lifetimes,)*>, E>>
-                    ) -> Result<#non_terminal_return_type, ParseError_<E>>
+                    ) -> Result<#non_terminal_return_type, ParseError<E>>
                     {
                         parse_generic(
                             input,
@@ -119,6 +119,9 @@ pub fn generate_lr1_parser(grammar: Grammar<syn::Expr>, tokens: &TokenEnum) -> T
             )
         })
         .collect();
+
+    let expected_state_tokens = generate_expected_state_tokens(&grammar, &lr1_table);
+    let token_to_text_table = generate_token_to_text(&grammar);
 
     quote!(
         #[derive(Clone, Copy)]
@@ -141,8 +144,12 @@ pub fn generate_lr1_parser(grammar: Grammar<syn::Expr>, tokens: &TokenEnum) -> T
         #goto_array_code
 
         #[derive(Debug, Clone, PartialEq, Eq)]
-        pub enum ParseError_<E> {
-            Other(E),
+        pub enum ParseError<E> {
+            LexerError(E),
+            ParserError {
+                found: &'static str,
+                expected: &'static str,
+            }
         }
 
         // enum TokenKind { ... }
@@ -161,12 +168,20 @@ pub fn generate_lr1_parser(grammar: Grammar<syn::Expr>, tokens: &TokenEnum) -> T
         // + the functions
         #(#semantic_action_table)*
 
+        // static EXPECTED_TERMINALS: [&str; n_states] = [ ... ]
+        // Maps a state index to terminals expected in that state: "',', '.', 'my_keyword'"
+        #expected_state_tokens
+
+        // static TOKEN_STRS: [&str, n_terminals] = [ ... ]
+        // Maps terminals to their strings to be used in error messages
+        #token_to_text_table
+
         fn parse_generic<#(#token_lifetimes,)* R, E: Clone>(
             mut input: impl Iterator<Item=Result<#token_type<#(#token_lifetimes),*>, E>>,
             extract_value: fn(SemanticActionResult<#(#token_lifetimes),*>) -> R,
             init_state: u32,
             action_idx: usize,
-        ) -> Result<R, ParseError_<E>>
+        ) -> Result<R, ParseError<E>>
         {
             let mut state_stack: Vec<u32> = vec![init_state];
             let mut value_stack: Vec<SemanticActionResult<#(#token_lifetimes),*>> = vec![];
@@ -177,11 +192,17 @@ pub fn generate_lr1_parser(grammar: Grammar<syn::Expr>, tokens: &TokenEnum) -> T
                 let state = *state_stack.last().unwrap() as usize;
                 let terminal_idx = match &token {
                     None => #n_terminals,
-                    Some(Err(err)) => return Err(ParseError_::Other(err.clone())),
+                    Some(Err(err)) => return Err(ParseError::LexerError(err.clone())),
                     Some(Ok(token)) => #token_kind_fn_name(&token) as usize,
                 };
                 match ACTION[state][terminal_idx] {
-                    None => panic!("Stuck! (1) state={}, terminal={}", state, terminal_idx),
+                    None => {
+                        let found = TERMINAL_STRS[terminal_idx];
+                        let expected = EXPECTED_TERMINALS[state];
+                        return Err(ParseError::ParserError {
+                            found, expected
+                        });
+                    }
                     Some(LRAction::Shift { next_state }) => {
                         state_stack.push(next_state);
                         let token_ = ::std::mem::replace(&mut token, input.next());

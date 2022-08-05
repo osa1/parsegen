@@ -1,5 +1,6 @@
 use crate::ast::{Conversion, FieldPattern, Name, Pattern, TokenEnum};
-use crate::grammar::{Grammar, NonTerminal, Production, Symbol, SymbolKind};
+use crate::grammar::{Grammar, NonTerminal, Production, Symbol, SymbolKind, TerminalIdx};
+use crate::lr_common::{LRTable, StateIdx};
 
 use fxhash::FxHashMap;
 use proc_macro2::{Span, TokenStream};
@@ -479,4 +480,65 @@ fn generate_pattern_syn_with_idents_(pat: &Pattern, idents: &mut Vec<syn::Ident>
 
         Pattern::Lit(lit) => quote!(#lit),
     }
+}
+
+/// Generate a mapping from states to tokens expected in that state:
+///
+/// ```text
+/// static STATE_TOKENS: [&'static str; ...] = ...;
+/// ```
+///
+/// Strings in the table list expected tokens, e.g. "`,` `.`, `some_keyword`".
+pub fn generate_expected_state_tokens<A>(
+    grammar: &Grammar<A>,
+    lr_table: &LRTable<A>,
+) -> TokenStream {
+    let n_terminals = grammar.n_terminals();
+    let n_states = lr_table.n_states();
+
+    let mut strs: Vec<String> = vec![];
+
+    for state_idx in 0..n_states {
+        let mut expected_terminals: Vec<&str> = vec![];
+
+        for terminal_idx in 0..n_terminals {
+            let terminal_idx = TerminalIdx::from_usize(terminal_idx);
+            if lr_table
+                .get_action(StateIdx(state_idx), Some(terminal_idx))
+                .is_some()
+            {
+                expected_terminals.push(grammar.get_terminal(terminal_idx));
+            }
+        }
+
+        strs.push(expected_terminals.join(", "));
+    }
+
+    quote!(
+        static EXPECTED_TERMINALS: [&str; #n_states] = [
+            #(#strs),*
+        ];
+    )
+}
+
+/// Generate a mapping form tokens to their strings used in error messages.
+///
+/// The strings are the same as the strings in `enum Token { ... }` type.
+///
+/// ```text
+/// static TOKEN_STRS: [&'static str; n_tokens] = ...;
+/// ```
+pub fn generate_token_to_text<A>(grammar: &Grammar<A>) -> TokenStream {
+    let n_terminals = grammar.n_terminals();
+    let array_length = n_terminals + 1;
+
+    let strs = (0..n_terminals)
+        .map(|terminal_idx| grammar.get_terminal(TerminalIdx::from_usize(terminal_idx)))
+        .chain(std::iter::once("end-of-input"));
+
+    quote!(
+        static TERMINAL_STRS: [&str; #array_length] = [
+            #(#strs),*
+        ];
+    )
 }

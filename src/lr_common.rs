@@ -171,7 +171,6 @@ impl<A: fmt::Debug + Eq> LRTableBuilder<A> {
 }
 
 impl<A> LRTable<A> {
-    #[cfg(test)]
     pub fn get_action(
         &self,
         state: StateIdx,
