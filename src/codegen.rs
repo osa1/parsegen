@@ -6,41 +6,6 @@ use fxhash::FxHashMap;
 use proc_macro2::{Span, TokenStream};
 use quote::quote;
 
-/// Generates an `enum #{token}Kind { T0, T1, ... }` type with a variant for each token described
-/// in the `enum Token { ... }`.
-///
-/// Return values are:
-///
-/// - Name of the enum type for token kinds
-/// - The definition of the enum
-/// - A map from token names (as written by the user in `enum Token { ... }`) to the their token
-///   kind enum variants
-///
-pub fn generate_token_kind_type(tokens: &TokenEnum) -> (syn::Ident, TokenStream) {
-    let TokenEnum {
-        type_name,
-        type_lifetimes: _,
-        conversions,
-    } = tokens;
-
-    let token_kind_name = syn::Ident::new(&(type_name.to_string() + "Kind"), type_name.span());
-
-    let enum_alts: Vec<syn::Ident> = conversions
-        .iter()
-        .enumerate()
-        .map(|(i, conv)| syn::Ident::new(&format!("T{}", i), conv.span))
-        .collect();
-
-    let code = quote!(
-        #[derive(Clone, Copy, PartialEq, Eq, Debug)]
-        enum #token_kind_name {
-            #(#enum_alts,)*
-        }
-    );
-
-    (token_kind_name, code)
-}
-
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub struct SemanticActionIdx(u16);
 
@@ -169,11 +134,12 @@ pub fn generate_semantic_action_table(
     )
 }
 
-/// Generates a `fn token_kind(& #token_type) -> #token_kind_type` that returns kind of a token.
-pub fn token_kind_fn(
-    token_kind_type_name: &syn::Ident,
-    tokens: &TokenEnum,
-) -> (syn::Ident, TokenStream) {
+/// Generates a `fn token_terminal_idx(& #token_type) -> usize` that returns terminal index of a
+/// token.
+///
+/// Terminal index is used to index tables like action table or the table that maps terminals to
+/// their strings used in error messages.
+pub fn token_terminal_idx_fn(tokens: &TokenEnum) -> (syn::Ident, TokenStream) {
     let TokenEnum {
         type_name,
         type_lifetimes,
@@ -181,7 +147,7 @@ pub fn token_kind_fn(
     } = tokens;
 
     let fn_name = syn::Ident::new(
-        &(type_name.to_string().to_lowercase() + "_kind"),
+        &(type_name.to_string().to_lowercase() + "_terminal_idx"),
         type_name.span(),
     );
     let arg_name = syn::Ident::new("token", type_name.span());
@@ -189,17 +155,16 @@ pub fn token_kind_fn(
     let match_alts: Vec<TokenStream> = conversions
         .iter()
         .enumerate()
-        .map(|(i, Conversion { to, span, .. })| {
+        .map(|(i, Conversion { to, .. })| {
             let pattern_code = pattern_ignore(to);
-            let alt_name = syn::Ident::new(&format!("T{}", i), *span);
-            quote!(#pattern_code => #token_kind_type_name::#alt_name)
+            quote!(#pattern_code => #i)
         })
         .collect();
 
     let code = quote!(
         fn #fn_name<#(#type_lifetimes),*>(
             #arg_name: &#type_name<#(#type_lifetimes),*>
-        ) -> #token_kind_type_name
+        ) -> usize
         {
             match #arg_name {
                 #(#match_alts,)*
@@ -230,6 +195,8 @@ pub fn token_value_fn(
             }
         ));
     }
+
+    // variants.push(quote!(_ => unreachable!()));
 
     let code = quote!(
         fn #fn_name<#(#user_token_type_lifetimes),*>(

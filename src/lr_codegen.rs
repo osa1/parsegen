@@ -1,7 +1,7 @@
 use crate::ast::TokenEnum;
 use crate::codegen::{
-    generate_expected_state_tokens, generate_semantic_action_table, generate_token_kind_type,
-    generate_token_to_text, semantic_action_result_type, token_value_fn, SemanticActionIdx,
+    generate_expected_state_tokens, generate_semantic_action_table, generate_token_to_text,
+    semantic_action_result_type, token_value_fn, SemanticActionIdx,
 };
 use crate::first::generate_first_table;
 use crate::grammar::{Grammar, NonTerminalIdx, ProductionIdx, TerminalIdx};
@@ -13,8 +13,6 @@ use proc_macro2::{Span, TokenStream};
 use quote::quote;
 
 pub fn generate_lr1_parser(grammar: Grammar<syn::Expr>, tokens: &TokenEnum) -> TokenStream {
-    let (token_kind_type_name, token_kind_type_decl) = generate_token_kind_type(tokens);
-
     let n_terminals = grammar.n_terminals();
     let token_type = &tokens.type_name;
 
@@ -66,8 +64,8 @@ pub fn generate_lr1_parser(grammar: Grammar<syn::Expr>, tokens: &TokenEnum) -> T
     let goto_array_code =
         generate_goto_array(&goto_vec, lr1_table.n_states(), grammar.non_terminals.len());
 
-    let (token_kind_fn_name, token_kind_fn_decl) =
-        crate::codegen::token_kind_fn(&token_kind_type_name, tokens);
+    let (token_terminal_idx_fn_name, token_terminal_idx_fn_decl) =
+        crate::codegen::token_terminal_idx_fn(tokens);
 
     let (token_value_fn_name, token_value_fn_decl) = token_value_fn(
         &tokens.conversions,
@@ -152,11 +150,8 @@ pub fn generate_lr1_parser(grammar: Grammar<syn::Expr>, tokens: &TokenEnum) -> T
             }
         }
 
-        // enum TokenKind { ... }
-        #token_kind_type_decl
-
-        // fn token_kind(token: &Token) -> TokenKind { ... }
-        #token_kind_fn_decl
+        // fn token_terminal_idx(token: &Token) -> usize { ... }
+        #token_terminal_idx_fn_decl
 
         // fn token_value(token: &Token) -> SemanticActionResult { ... }
         #token_value_fn_decl
@@ -193,7 +188,7 @@ pub fn generate_lr1_parser(grammar: Grammar<syn::Expr>, tokens: &TokenEnum) -> T
                 let terminal_idx = match &token {
                     None => #n_terminals,
                     Some(Err(err)) => return Err(ParseError::LexerError(err.clone())),
-                    Some(Ok(token)) => #token_kind_fn_name(&token) as usize,
+                    Some(Ok(token)) => #token_terminal_idx_fn_name(&token),
                 };
                 match ACTION[state][terminal_idx] {
                     None => {
