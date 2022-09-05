@@ -483,3 +483,145 @@ fn token_values() {
         Ok(Expr::Id(Id))
     );
 }
+
+#[test]
+fn lookahead_example_1() {
+    // G0 from http://smallcultfollowing.com/babysteps/blog/2017/03/17/the-lane-table-algorithm/
+    // This grammar is LALR(1) (not LR(0))
+
+    #[derive(Debug)]
+    pub enum Token {
+        E,
+        C,
+        D,
+    }
+
+    #[derive(Debug, PartialEq, Eq)]
+    pub enum Expr {
+        C(usize),
+        D(usize),
+    }
+
+    parser! {
+        enum Token {
+            "e" => Token::E,
+            "c" => Token::C,
+            "d" => Token::D,
+        }
+
+        pub Entry: Expr = {
+            <x:X> "c" => Expr::C(x),
+            <y:Y> "d" => Expr::D(y),
+        };
+
+        X: usize = {
+            "e" <x:X> => x + 1,
+            "e" => 1,
+        };
+
+        Y: usize = {
+            "e" <y:Y> => y + 1,
+            "e" => 1,
+        };
+    }
+
+    assert_eq!(
+        Entry::parse(
+            vec![Token::E, Token::E, Token::C]
+                .into_iter()
+                .map(|t| Ok::<Token, ()>(t))
+        ),
+        Ok(Expr::C(2))
+    );
+    assert_eq!(
+        Entry::parse(
+            vec![Token::E, Token::E, Token::D]
+                .into_iter()
+                .map(|t| Ok::<Token, ()>(t))
+        ),
+        Ok(Expr::D(2))
+    );
+}
+
+#[test]
+fn lookahead_example_2() {
+    // G1 from http://smallcultfollowing.com/babysteps/blog/2017/03/17/the-lane-table-algorithm/
+    // This grammar is LR(1) (not LALR(1))
+
+    #[derive(Debug)]
+    pub enum Token {
+        A,
+        B,
+        C,
+        D,
+        E,
+    }
+
+    #[derive(Debug, PartialEq, Eq)]
+    pub enum Expr {
+        E1(usize),
+        E2(usize),
+        E3(usize),
+        E4(usize),
+    }
+
+    parser! {
+        enum Token {
+            "a" => Token::A,
+            "b" => Token::B,
+            "c" => Token::C,
+            "d" => Token::D,
+            "e" => Token::E,
+        }
+
+        pub Entry: Expr = {
+            "a" <x:X> "d" => Expr::E1(x),
+            "a" <y:Y> "c" => Expr::E2(y),
+            "b" <x:X> "c" => Expr::E3(x),
+            "b" <y:Y> "d" => Expr::E4(y),
+        };
+
+        X: usize = {
+            "e" <x:X> => x + 1,
+            "e" => 1,
+        };
+
+        Y: usize = {
+            "e" <y:Y> => y + 1,
+            "e" => 1,
+        };
+    }
+
+    assert_eq!(
+        Entry::parse(
+            vec![Token::A, Token::E, Token::E, Token::D]
+                .into_iter()
+                .map(|t| Ok::<Token, ()>(t))
+        ),
+        Ok(Expr::E1(2))
+    );
+    assert_eq!(
+        Entry::parse(
+            vec![Token::A, Token::E, Token::E, Token::C]
+                .into_iter()
+                .map(|t| Ok::<Token, ()>(t))
+        ),
+        Ok(Expr::E2(2))
+    );
+    assert_eq!(
+        Entry::parse(
+            vec![Token::B, Token::E, Token::E, Token::C]
+                .into_iter()
+                .map(|t| Ok::<Token, ()>(t))
+        ),
+        Ok(Expr::E3(2))
+    );
+    assert_eq!(
+        Entry::parse(
+            vec![Token::B, Token::E, Token::E, Token::D]
+                .into_iter()
+                .map(|t| Ok::<Token, ()>(t))
+        ),
+        Ok(Expr::E4(2))
+    );
+}
