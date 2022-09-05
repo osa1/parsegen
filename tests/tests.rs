@@ -416,23 +416,19 @@ fn expr_example() {
         BinOpExpr::parse(
             vec![Token::Id, Token::Minus, Token::Id]
                 .into_iter()
-                .map(|t| Ok::<Token, ()>(t))
+                .map(Ok::<Token, ()>)
         ),
         Ok(Sub(Box::new(Id), Box::new(Id)))
     );
     assert_eq!(
-        BinOpExpr::parse(
-            vec![Token::Id, Token::Id]
-                .into_iter()
-                .map(|t| Ok::<Token, ()>(t))
-        ),
+        BinOpExpr::parse(vec![Token::Id, Token::Id].into_iter().map(Ok::<Token, ()>)),
         Ok(App(Box::new(Id), Box::new(Id)))
     );
     assert_eq!(
         BinOpExpr::parse(
             vec![Token::Minus, Token::Id, Token::Id]
                 .into_iter()
-                .map(|t| Ok::<Token, ()>(t))
+                .map(Ok::<Token, ()>)
         ),
         Ok(Neg(Box::new(App(Box::new(Id), Box::new(Id)))))
     );
@@ -440,7 +436,7 @@ fn expr_example() {
         BinOpExpr::parse(
             vec![Token::Minus, Token::Id, Token::Minus, Token::Id]
                 .into_iter()
-                .map(|t| Ok::<Token, ()>(t))
+                .map(Ok::<Token, ()>)
         ),
         Ok(Sub(Box::new(Neg(Box::new(Id))), Box::new(Id)))
     );
@@ -448,7 +444,7 @@ fn expr_example() {
         BinOpExpr::parse(
             vec![Token::Id, Token::Minus, Token::Minus, Token::Id]
                 .into_iter()
-                .map(|t| Ok::<Token, ()>(t))
+                .map(Ok::<Token, ()>)
         ),
         Ok(Sub(Box::new(Id), Box::new(Neg(Box::new(Id)))))
     );
@@ -479,7 +475,7 @@ fn token_values() {
     }
 
     assert_eq!(
-        Entry::parse(vec![Token::Id(Id)].into_iter().map(|t| Ok::<Token, ()>(t))),
+        Entry::parse(vec![Token::Id(Id)].into_iter().map(Ok::<Token, ()>)),
         Ok(Expr::Id(Id))
     );
 }
@@ -529,7 +525,7 @@ fn lookahead_example_1() {
         Entry::parse(
             vec![Token::E, Token::E, Token::C]
                 .into_iter()
-                .map(|t| Ok::<Token, ()>(t))
+                .map(Ok::<Token, ()>)
         ),
         Ok(Expr::C(2))
     );
@@ -537,7 +533,7 @@ fn lookahead_example_1() {
         Entry::parse(
             vec![Token::E, Token::E, Token::D]
                 .into_iter()
-                .map(|t| Ok::<Token, ()>(t))
+                .map(Ok::<Token, ()>)
         ),
         Ok(Expr::D(2))
     );
@@ -596,7 +592,7 @@ fn lookahead_example_2() {
         Entry::parse(
             vec![Token::A, Token::E, Token::E, Token::D]
                 .into_iter()
-                .map(|t| Ok::<Token, ()>(t))
+                .map(Ok::<Token, ()>)
         ),
         Ok(Expr::E1(2))
     );
@@ -604,7 +600,7 @@ fn lookahead_example_2() {
         Entry::parse(
             vec![Token::A, Token::E, Token::E, Token::C]
                 .into_iter()
-                .map(|t| Ok::<Token, ()>(t))
+                .map(Ok::<Token, ()>)
         ),
         Ok(Expr::E2(2))
     );
@@ -612,7 +608,7 @@ fn lookahead_example_2() {
         Entry::parse(
             vec![Token::B, Token::E, Token::E, Token::C]
                 .into_iter()
-                .map(|t| Ok::<Token, ()>(t))
+                .map(Ok::<Token, ()>)
         ),
         Ok(Expr::E3(2))
     );
@@ -620,7 +616,7 @@ fn lookahead_example_2() {
         Entry::parse(
             vec![Token::B, Token::E, Token::E, Token::D]
                 .into_iter()
-                .map(|t| Ok::<Token, ()>(t))
+                .map(Ok::<Token, ()>)
         ),
         Ok(Expr::E4(2))
     );
