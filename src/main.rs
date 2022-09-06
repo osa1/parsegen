@@ -10,8 +10,8 @@ mod lr1;
 mod lr_codegen;
 mod lr_common;
 
-// mod follow;
-// mod lr0;
+mod follow;
+mod lr0;
 
 #[cfg(test)]
 mod test_grammars;

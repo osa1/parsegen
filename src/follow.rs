@@ -1,7 +1,7 @@
 //! Implementation of "follow" sets
 
 use crate::first::FirstTable;
-use crate::grammar::{Grammar, NonTerminalIdx, SymbolKind};
+use crate::grammar::{Grammar, NonTerminalIdx, SymbolKind, TerminalIdx};
 
 use std::hash::Hash;
 
@@ -9,15 +9,15 @@ use fxhash::FxHashSet;
 
 /// Maps non-terminals fo their follow sets
 #[derive(Debug)]
-pub struct FollowTable<T: Eq + Hash>(Vec<FollowSet<T>>);
+pub struct FollowTable(Vec<FollowSet>);
 
 #[derive(Debug, Clone)]
-pub struct FollowSet<T: Eq + Hash> {
+pub struct FollowSet {
     end: bool,
-    terminals: FxHashSet<T>,
+    terminals: FxHashSet<TerminalIdx>,
 }
 
-impl<T: Eq + Hash> Default for FollowSet<T> {
+impl Default for FollowSet {
     fn default() -> Self {
         FollowSet {
             end: false,
@@ -26,8 +26,8 @@ impl<T: Eq + Hash> Default for FollowSet<T> {
     }
 }
 
-impl<T: Eq + Hash> FollowSet<T> {
-    pub fn terminals(&self) -> &FxHashSet<T> {
+impl FollowSet {
+    pub fn terminals(&self) -> &FxHashSet<TerminalIdx> {
         &self.terminals
     }
 
@@ -36,8 +36,8 @@ impl<T: Eq + Hash> FollowSet<T> {
     }
 }
 
-impl<T: Eq + Hash> FollowTable<T> {
-    fn new(n_non_terminals: usize) -> FollowTable<T> {
+impl FollowTable {
+    fn new(n_non_terminals: usize) -> FollowTable {
         let mut sets = Vec::with_capacity(n_non_terminals);
         for _ in 0..n_non_terminals {
             sets.push(FollowSet::default());
@@ -46,7 +46,7 @@ impl<T: Eq + Hash> FollowTable<T> {
     }
 
     /// Returns whether the value is added
-    fn add_follow(&mut self, non_terminal_idx: NonTerminalIdx, terminal: T) -> bool {
+    fn add_follow(&mut self, non_terminal_idx: NonTerminalIdx, terminal: TerminalIdx) -> bool {
         self.0[non_terminal_idx.as_usize()]
             .terminals
             .insert(terminal)
@@ -60,15 +60,13 @@ impl<T: Eq + Hash> FollowTable<T> {
         old_value != true
     }
 
-    pub fn get_follow(&self, non_terminal_idx: NonTerminalIdx) -> &FollowSet<T> {
+    pub fn get_follow(&self, non_terminal_idx: NonTerminalIdx) -> &FollowSet {
         &self.0[non_terminal_idx.as_usize()]
     }
 }
 
-pub fn generate_follow_table<T: Eq + Hash + Copy, A>(
-    grammar: &Grammar<T, A>,
-    first_table: &FirstTable<T>,
-) -> FollowTable<T> {
+/*
+pub fn generate_follow_table<A>(grammar: &Grammar<A>, first_table: &FirstTable) -> FollowTable {
     let n_non_terminals = grammar.non_terminals().len();
     let mut table = FollowTable::new(grammar.non_terminals().len());
 
@@ -88,7 +86,7 @@ pub fn generate_follow_table<T: Eq + Hash + Copy, A>(
             for (non_terminal_idx_, _, production) in grammar.production_indices() {
                 // See if the non-terminal is in the RHS, and if it is, what's on the right
                 let mut symbol_iter = production.symbols().iter().map(|s| s.kind.clone());
-                let mut current_symbol: Option<SymbolKind<T>> = symbol_iter.next();
+                let mut current_symbol: Option<SymbolKind> = symbol_iter.next();
                 'symbol_loop_0: while let Some(symbol) = current_symbol.take() {
                     if symbol != SymbolKind::NonTerminal(non_terminal_idx) {
                         current_symbol = symbol_iter.next();
@@ -141,3 +139,4 @@ pub fn generate_follow_table<T: Eq + Hash + Copy, A>(
 
     table
 }
+*/
