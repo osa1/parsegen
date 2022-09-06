@@ -1,0 +1,24 @@
+enum Token {
+    "a" => Token::A,
+    "b" => Token::B,
+    "c" => Token::C,
+    "d" => Token::D,
+    "e" => Token::E,
+}
+
+pub Entry: Expr = {
+    "a" <x:X> "d" => Expr::E1(x),
+    "a" <y:Y> "c" => Expr::E2(y),
+    "b" <x:X> "c" => Expr::E3(x),
+    "b" <y:Y> "d" => Expr::E4(y),
+};
+
+X: usize = {
+    "e" <x:X> => x + 1,
+    "e" => 1,
+};
+
+Y: usize = {
+    "e" <y:Y> => y + 1,
+    "e" => 1,
+};

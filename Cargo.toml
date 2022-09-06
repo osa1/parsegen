@@ -7,10 +7,6 @@ edition = "2021"
 license = "MIT"
 homepage = "https://github.com/osa1/parsegen"
 
-[lib]
-name = "parsegen"
-proc_macro = true
-
 [dependencies]
 fxhash = "0.2"
 proc-macro2 = "1.0"

@@ -16,11 +16,16 @@ mod lr_common;
 #[cfg(test)]
 mod test_grammars;
 
-use proc_macro::TokenStream;
+use std::str::FromStr;
 
-#[proc_macro]
-pub fn parser(input: TokenStream) -> TokenStream {
-    let parser = syn::parse_macro_input!(input as ast::Parser);
+use proc_macro2::TokenStream;
+use syn::parse::Parser;
+
+pub fn main() {
+    let file = std::env::args().nth(1).unwrap();
+    let file_contents = std::fs::read_to_string(file).unwrap();
+    let token_stream = TokenStream::from_str(&file_contents).unwrap();
+    let parser = syn::parse2::<ast::Parser>(token_stream).unwrap();
 
     let mut non_terminals: Vec<ast::NonTerminal> = vec![];
     let mut token_enum: Option<ast::TokenEnum> = None;
@@ -43,8 +48,25 @@ pub fn parser(input: TokenStream) -> TokenStream {
     let token_enum = token_enum.expect("Token type (`enum Token`) is not defined");
 
     let grammar = lower::lower(non_terminals, &token_enum.conversions);
-    // println!("Grammar:");
-    // println!("{}", grammar);
+    println!("{}", grammar);
 
-    lr_codegen::generate_lr1_parser(grammar, &token_enum).into()
+    let n_terminals = grammar.n_terminals();
+    let first_table = crate::first::generate_first_table(&grammar);
+    let (lr1_automaton, nt_state_indices) =
+        crate::lr1::generate_lr1_automaton(&grammar, &first_table);
+
+    println!(
+        "{}",
+        crate::lr1::LR1AutomatonDisplay {
+            automaton: &lr1_automaton,
+            grammar: &grammar
+        }
+    );
+
+    let lr1_table = crate::lr1::build_lr1_table(&grammar, &lr1_automaton);
+
+    println!(
+        "{}",
+        crate::lr_common::LRTableDisplay::new(&lr1_table, &grammar)
+    );
 }
