@@ -48,8 +48,26 @@ pub fn main() {
     let token_enum = token_enum.expect("Token type (`enum Token`) is not defined");
 
     let grammar = lower::lower(non_terminals, &token_enum.conversions);
-    println!("{}", grammar);
 
+    println!("-- Grammar: ------------------------------------------------------");
+    print!("{}", grammar);
+    println!("------------------------------------------------------------------");
+    println!();
+
+    let lr0_automaton = lr0::compute_lr0_automaton(&grammar);
+
+    println!("-- LR0 automaton: ------------------------------------------------");
+    print!(
+        "{}",
+        lr0::LR0AutomatonDisplay {
+            grammar: &grammar,
+            automaton: &lr0_automaton
+        }
+    );
+    println!("------------------------------------------------------------------");
+    println!();
+
+    /*
     let n_terminals = grammar.n_terminals();
     let first_table = crate::first::generate_first_table(&grammar);
     let (lr1_automaton, nt_state_indices) =
@@ -69,4 +87,5 @@ pub fn main() {
         "{}",
         crate::lr_common::LRTableDisplay::new(&lr1_table, &grammar)
     );
+    */
 }

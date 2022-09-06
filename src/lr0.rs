@@ -65,6 +65,8 @@ impl LR0Item {
 }
 
 fn compute_lr0_closure<A>(grammar: &Grammar<A>, items: &BTreeSet<LR0Item>) -> BTreeSet<LR0Item> {
+    let items0 = items.clone();
+
     let mut closure: BTreeSet<LR0Item> = items.clone();
 
     let mut updated = true;
@@ -88,6 +90,26 @@ fn compute_lr0_closure<A>(grammar: &Grammar<A>, items: &BTreeSet<LR0Item>) -> BT
         closure.extend(new_items.into_iter());
     }
 
+    // println!(
+    //     "Closure of {:?}",
+    //     items0
+    //         .into_iter()
+    //         .map(|item| LR0ItemDisplay { item, grammar }.to_string())
+    //         .collect::<Vec<_>>()
+    // );
+
+    // println!(
+    //     "  == {:?}",
+    //     closure
+    //         .iter()
+    //         .map(|item| LR0ItemDisplay {
+    //             item: item.clone(),
+    //             grammar
+    //         }
+    //         .to_string())
+    //         .collect::<Vec<_>>()
+    // );
+
     closure
 }
 
@@ -110,7 +132,7 @@ fn compute_lr0_goto<A>(
 }
 
 #[derive(Debug)]
-struct LR0Automaton {
+pub struct LR0Automaton {
     states: Vec<LR0State>,
     // Maps existing item sets to their state indices, to maintain sharing.
     state_indices: FxHashMap<BTreeSet<LR0Item>, StateIdx>,
@@ -170,13 +192,24 @@ impl LR0Automaton {
 }
 
 // (sets, transitions indexed by set indices)
-fn compute_lr0_automaton<A>(grammar: &Grammar<A>) -> LR0Automaton {
+pub fn compute_lr0_automaton<A>(grammar: &Grammar<A>) -> LR0Automaton {
     let mut automaton: LR0Automaton = Default::default();
 
     let init = compute_lr0_closure(
         grammar,
-        &btreeset! { LR0Item::new(NonTerminalIdx(0), ProductionIdx(0)) },
+        &btreeset! { LR0Item::new(NonTerminalIdx(1), ProductionIdx(0)) },
     );
+
+    // println!(
+    //     "Initial state = {:?}",
+    //     init.iter()
+    //         .map(|item| LR0ItemDisplay {
+    //             item: item.clone(),
+    //             grammar
+    //         }
+    //         .to_string())
+    //         .collect::<Vec<_>>()
+    // );
 
     let (init_state_idx, _) = automaton.add_state_or_get_idx(init);
 
@@ -281,17 +314,17 @@ use crate::lr_common::LRTableDisplay;
 
 use std::fmt;
 
-struct ItemDisplay<'a, A> {
+struct LR0ItemDisplay<'a, A> {
     item: LR0Item,
     grammar: &'a Grammar<A>,
 }
 
-struct LR0AutomatonDisplay<'a, 'b, A> {
-    automaton: &'a LR0Automaton,
-    grammar: &'b Grammar<A>,
+pub struct LR0AutomatonDisplay<'a, 'b, A> {
+    pub automaton: &'a LR0Automaton,
+    pub grammar: &'b Grammar<A>,
 }
 
-impl<'a, A> fmt::Display for ItemDisplay<'a, A> {
+impl<'a, A> fmt::Display for LR0ItemDisplay<'a, A> {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         let non_terminal = self.grammar.get_non_terminal(self.item.non_terminal_idx);
         write!(f, "[{} -> ", non_terminal.non_terminal)?;
@@ -305,11 +338,10 @@ impl<'a, A> fmt::Display for ItemDisplay<'a, A> {
             }
             match &symbol.kind {
                 SymbolKind::NonTerminal(nt) => {
-                    let nt = self.grammar.get_non_terminal(*nt);
-                    write!(f, "{}", nt.non_terminal)?;
+                    write!(f, "{}", self.grammar.get_non_terminal(*nt).non_terminal)?;
                 }
                 SymbolKind::Terminal(t) => {
-                    write!(f, "{:?}", t)?;
+                    write!(f, "{}", self.grammar.get_terminal(*t))?;
                 }
             }
             if symbol_idx != production.symbols().len() - 1 {
@@ -333,7 +365,7 @@ impl<'a, 'b, A> fmt::Display for LR0AutomatonDisplay<'a, 'b, A> {
                 writeln!(
                     f,
                     "  {}",
-                    ItemDisplay {
+                    LR0ItemDisplay {
                         item: *item,
                         grammar: self.grammar
                     }
@@ -350,8 +382,8 @@ impl<'a, 'b, A> fmt::Display for LR0AutomatonDisplay<'a, 'b, A> {
                             next.0
                         )?;
                     }
-                    SymbolKind::Terminal(token) => {
-                        writeln!(f, "  {:?} -> {}", token, next.0)?;
+                    SymbolKind::Terminal(t) => {
+                        writeln!(f, "  {} -> {}", self.grammar.get_terminal(*t), next.0)?;
                     }
                 }
             }
@@ -362,6 +394,7 @@ impl<'a, 'b, A> fmt::Display for LR0AutomatonDisplay<'a, 'b, A> {
     }
 }
 
+/*
 #[test]
 fn closure_1() {
     let grammar = crate::test_grammars::grammar6();
@@ -598,4 +631,5 @@ fn simulate1() {
         vec![Grammar6Token::Id, Grammar6Token::Plus, Grammar6Token::Id].into_iter(),
     );
 }
+*/
 */
