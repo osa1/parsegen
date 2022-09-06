@@ -17,7 +17,6 @@ mod lr_common;
 mod test_grammars;
 
 use proc_macro::TokenStream;
-use quote::quote;
 
 #[proc_macro]
 pub fn parser(input: TokenStream) -> TokenStream {
@@ -47,10 +46,5 @@ pub fn parser(input: TokenStream) -> TokenStream {
     // println!("Grammar:");
     // println!("{}", grammar);
 
-    let lr1_parser = lr_codegen::generate_lr1_parser(grammar, &token_enum);
-
-    quote!(
-        #lr1_parser
-    )
-    .into()
+    lr_codegen::generate_lr1_parser(grammar, &token_enum).into()
 }
