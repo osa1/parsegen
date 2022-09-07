@@ -150,7 +150,7 @@ impl<'a, 'b, A> fmt::Display for FirstSetDisplay<'a, 'b, A> {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(f, "{{")?;
         for (t_idx, t) in self.set.terminals.iter().enumerate() {
-            write!(f, "{:?}", self.grammar.get_terminal(*t))?;
+            write!(f, "{}", self.grammar.get_terminal(*t))?;
             if t_idx != self.set.terminals.len() - 1 {
                 write!(f, ", ")?;
             }

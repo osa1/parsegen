@@ -67,12 +67,12 @@ pub fn main() {
     println!("------------------------------------------------------------------");
     println!();
 
-    /*
     let n_terminals = grammar.n_terminals();
     let first_table = crate::first::generate_first_table(&grammar);
     let (lr1_automaton, nt_state_indices) =
         crate::lr1::generate_lr1_automaton(&grammar, &first_table);
 
+    println!("-- LR1 automaton: ------------------------------------------------");
     println!(
         "{}",
         crate::lr1::LR1AutomatonDisplay {
@@ -80,7 +80,10 @@ pub fn main() {
             grammar: &grammar
         }
     );
+    println!("------------------------------------------------------------------");
+    println!();
 
+    /*
     let lr1_table = crate::lr1::build_lr1_table(&grammar, &lr1_automaton);
 
     println!(

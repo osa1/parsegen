@@ -369,7 +369,7 @@ impl<'a, 'b, A> fmt::Display for ProductionDisplay<'a, 'b, A> {
                 }
                 SymbolKind::Terminal(t) => {
                     let t = self.grammar.get_terminal(*t);
-                    write!(f, "{:?}", t)?;
+                    write!(f, "{}", t)?;
                 }
             }
             if symbol_idx != self.production.symbols().len() - 1 {
@@ -389,7 +389,7 @@ impl<'a, 'b, A> fmt::Display for SymbolKindDisplay<'a, 'b, A> {
             }
             SymbolKind::Terminal(t) => {
                 let t = &self.grammar.terminals[t.0 as usize];
-                write!(f, "{:?}", t)
+                write!(f, "{}", t)
             }
         }
     }
