@@ -78,7 +78,7 @@ impl LR0Item {
 }
 
 fn compute_lr0_closure<A>(grammar: &Grammar<A>, items: &BTreeSet<LR0Item>) -> BTreeSet<LR0Item> {
-    let items0 = items.clone();
+    // let items0 = items.clone();
 
     let mut closure: BTreeSet<LR0Item> = items.clone();
 
