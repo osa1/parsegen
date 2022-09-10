@@ -394,6 +394,83 @@ impl<'a, 'b, A> fmt::Display for LR0AutomatonDisplay<'a, 'b, A> {
     }
 }
 
+pub fn lr0_dot<A>(automaton: &LR0Automaton, grammar: &Grammar<A>) -> String {
+    use std::fmt::Write;
+
+    let mut dot = String::new();
+
+    dot.push_str("digraph G {\n");
+    dot.push_str("    rankdir=LR;\n");
+    dot.push_str("    node [shape=record];\n");
+
+    // Generate nodes
+    for (state_idx, state) in automaton.states.iter().enumerate() {
+        write!(&mut dot, "    S{} [label=\"", state_idx).unwrap();
+
+        for (item_idx, item) in state.items.iter().enumerate() {
+            write!(
+                &mut dot,
+                "{} ➔ ",
+                grammar.get_non_terminal(item.non_terminal_idx).non_terminal
+            )
+            .unwrap();
+
+            let production = grammar.get_production(item.non_terminal_idx, item.production_idx);
+
+            for (symbol_idx, symbol) in production.symbols().iter().enumerate() {
+                if symbol_idx == item.cursor {
+                    dot.push_str("• ");
+                }
+                match &symbol.kind {
+                    SymbolKind::NonTerminal(nt) => {
+                        dot.push_str(&grammar.get_non_terminal(*nt).non_terminal);
+                    }
+                    SymbolKind::Terminal(t) => {
+                        dot.push_str(grammar.get_terminal(*t));
+                    }
+                }
+                if symbol_idx != production.symbols().len() - 1 {
+                    dot.push(' ');
+                }
+            }
+
+            if item_idx != state.items.len() - 1 {
+                dot.push_str("|");
+            }
+        }
+
+        dot.push_str("\"];\n");
+    }
+
+    // Generate edges
+    for (state_idx, state) in automaton.states.iter().enumerate() {
+        for (symbol, next_state) in &state.goto {
+            write!(
+                &mut dot,
+                "    S{} -> S{} [label=\"",
+                state_idx,
+                next_state.as_usize(),
+            )
+            .unwrap();
+
+            match symbol {
+                SymbolKind::NonTerminal(nt) => {
+                    dot.push_str(&grammar.get_non_terminal(*nt).non_terminal);
+                }
+                SymbolKind::Terminal(t) => {
+                    dot.push_str(grammar.get_terminal(*t));
+                }
+            }
+
+            dot.push_str("\"];\n");
+        }
+    }
+
+    dot.push_str("}\n");
+
+    dot
+}
+
 /*
 #[test]
 fn closure_1() {

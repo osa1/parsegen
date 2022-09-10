@@ -67,9 +67,16 @@ pub fn main() {
     println!("------------------------------------------------------------------");
     println!();
 
-    let n_terminals = grammar.n_terminals();
+    let dot = lr0::lr0_dot(&lr0_automaton, &grammar);
+    std::fs::write("test.dot", dot).unwrap();
+    // println!("-- LR0 automaton graphviz: ---------------------------------------");
+    // print!("{}", lr0::lr0_dot(&lr0_automaton, &grammar));
+    // println!("------------------------------------------------------------------");
+    // println!();
+
+    // let n_terminals = grammar.n_terminals();
     let first_table = crate::first::generate_first_table(&grammar);
-    let (lr1_automaton, nt_state_indices) =
+    let (lr1_automaton, _nt_state_indices) =
         crate::lr1::generate_lr1_automaton(&grammar, &first_table);
 
     println!("-- LR1 automaton: ------------------------------------------------");
