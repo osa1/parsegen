@@ -67,7 +67,8 @@ pub fn main() {
     println!("------------------------------------------------------------------");
     println!();
 
-    let dot = lr0::lr0_dot(&lr0_automaton, &grammar);
+    let lr0_conflicts = lr0::find_conflicts(&lr0_automaton, &grammar);
+    let dot = lr0::lr0_dot(&lr0_automaton, &grammar, &lr0_conflicts);
     std::fs::write("lr0.dot", dot).unwrap();
     // println!("-- LR0 automaton graphviz: ---------------------------------------");
     // print!("{}", lr0::lr0_dot(&lr0_automaton, &grammar));

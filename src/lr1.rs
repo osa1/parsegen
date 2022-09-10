@@ -530,7 +530,7 @@ pub fn lr1_dot<A>(automaton: &LR1Automaton, grammar: &Grammar<A>) -> String {
                 .insert(lookahead);
         }
 
-        write!(&mut dot, "    S{} [label=\"S{}|", state_idx, state_idx).unwrap();
+        write!(&mut dot, "    S{} [label=<S{}|", state_idx, state_idx).unwrap();
 
         for (item_idx, (item, la)) in item_lookaheads.iter().enumerate() {
             write!(
@@ -572,7 +572,7 @@ pub fn lr1_dot<A>(automaton: &LR1Automaton, grammar: &Grammar<A>) -> String {
             }
         }
 
-        dot.push_str("\"];\n");
+        dot.push_str(">];\n");
     }
 
     // Generate edges
@@ -580,7 +580,7 @@ pub fn lr1_dot<A>(automaton: &LR1Automaton, grammar: &Grammar<A>) -> String {
         for (symbol, next_state) in &state.goto {
             write!(
                 &mut dot,
-                "    S{} -> S{} [label=\"",
+                "    S{} -> S{} [label=<",
                 state_idx,
                 next_state.as_usize(),
             )
@@ -595,7 +595,7 @@ pub fn lr1_dot<A>(automaton: &LR1Automaton, grammar: &Grammar<A>) -> String {
                 }
             }
 
-            dot.push_str("\"];\n");
+            dot.push_str(">];\n");
         }
     }
 
@@ -611,7 +611,7 @@ fn lookahead_string<A>(la: &FxHashSet<Option<TerminalIdx>>, grammar: &Grammar<A>
     for (t_idx, t) in la.iter().enumerate() {
         match t {
             Some(t) => str.push_str(grammar.get_terminal(*t)),
-            None => str.push_str("\\$"),
+            None => str.push_str("$"),
         }
         if t_idx != la.len() - 1 {
             str.push(',');

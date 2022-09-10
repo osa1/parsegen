@@ -1,5 +1,5 @@
 use crate::ast::{Conversion, FieldPattern, Name, Pattern, TokenEnum};
-use crate::grammar::{Grammar, NonTerminal, Production, BoundSymbol, Symbol, TerminalIdx};
+use crate::grammar::{BoundSymbol, Grammar, NonTerminal, Production, Symbol, TerminalIdx};
 use crate::lr_common::{LRTable, StateIdx};
 
 use fxhash::FxHashMap;

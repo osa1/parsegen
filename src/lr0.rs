@@ -1,5 +1,5 @@
 use crate::follow::FollowTable;
-use crate::grammar::{Grammar, NonTerminalIdx, ProductionIdx, BoundSymbol, Symbol};
+use crate::grammar::{BoundSymbol, Grammar, NonTerminalIdx, ProductionIdx, Symbol};
 use crate::lr_common::{LRTable, LRTableBuilder, StateIdx};
 
 use std::collections::BTreeSet;
@@ -35,10 +35,7 @@ impl LR0Item {
         }
     }
 
-    fn next_symbol<'grammar, A>(
-        &self,
-        grammar: &'grammar Grammar<A>,
-    ) -> Option<&'grammar Symbol> {
+    fn next_symbol<'grammar, A>(&self, grammar: &'grammar Grammar<A>) -> Option<&'grammar Symbol> {
         let production = grammar.get_production(self.non_terminal_idx, self.production_idx);
         let symbols = production.symbols();
         symbols.get(self.cursor).map(|s| &s.symbol)
@@ -407,7 +404,11 @@ impl<'a, 'b, A> fmt::Display for LR0AutomatonDisplay<'a, 'b, A> {
     }
 }
 
-pub fn lr0_dot<A>(automaton: &LR0Automaton, grammar: &Grammar<A>) -> String {
+pub fn lr0_dot<A>(
+    automaton: &LR0Automaton,
+    grammar: &Grammar<A>,
+    conflicts: &FxHashSet<(StateIdx, usize)>,
+) -> String {
     use std::fmt::Write;
 
     let mut dot = String::new();
@@ -418,9 +419,15 @@ pub fn lr0_dot<A>(automaton: &LR0Automaton, grammar: &Grammar<A>) -> String {
 
     // Generate nodes
     for (state_idx, state) in automaton.states.iter().enumerate() {
-        write!(&mut dot, "    S{} [label=\"S{}|", state_idx, state_idx).unwrap();
+        write!(&mut dot, "    S{} [label=<S{}|", state_idx, state_idx).unwrap();
 
         for (item_idx, item) in state.items.iter().enumerate() {
+            let conflict = conflicts.contains(&(StateIdx(state_idx), item_idx));
+
+            if conflict {
+                dot.push_str("<FONT COLOR=\"red\">");
+            }
+
             write!(
                 &mut dot,
                 "{}: {} ➔ ",
@@ -452,12 +459,16 @@ pub fn lr0_dot<A>(automaton: &LR0Automaton, grammar: &Grammar<A>) -> String {
                 dot.push_str(" •");
             }
 
+            if conflict {
+                dot.push_str("</FONT>");
+            }
+
             if item_idx != state.items.len() - 1 {
                 dot.push_str("|");
             }
         }
 
-        dot.push_str("\"];\n");
+        dot.push_str(">];\n");
     }
 
     // Generate edges
