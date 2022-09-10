@@ -1,5 +1,5 @@
 use crate::ast::{Conversion, FieldPattern, Name, Pattern, TokenEnum};
-use crate::grammar::{Grammar, NonTerminal, Production, Symbol, SymbolKind, TerminalIdx};
+use crate::grammar::{Grammar, NonTerminal, Production, BoundSymbol, Symbol, TerminalIdx};
 use crate::lr_common::{LRTable, StateIdx};
 
 use fxhash::FxHashMap;
@@ -52,7 +52,7 @@ pub fn generate_semantic_action_table(
                         // pruduction's RHS
                         let mut pop_code: Vec<TokenStream> = vec![];
 
-                        for Symbol { binder, kind } in symbols.iter().rev() {
+                        for BoundSymbol { binder, symbol: kind } in symbols.iter().rev() {
                             match binder {
                                 None => {
                                     pop_code.push(quote!(value_stack.pop()));
@@ -63,11 +63,11 @@ pub fn generate_semantic_action_table(
                                 }) => {
                                     let mut_ = if *mutable { quote!(mut) } else { quote!() };
                                     let extract_method = match kind {
-                                        SymbolKind::NonTerminal(nt_idx) => syn::Ident::new(
+                                        Symbol::NonTerminal(nt_idx) => syn::Ident::new(
                                             &format!("non_terminal_{}", non_terminal_action_variant_name[nt_idx.as_usize()]),
                                             Span::call_site()
                                         ),
-                                        SymbolKind::Terminal(terminal_idx) => syn::Ident::new(
+                                        Symbol::Terminal(terminal_idx) => syn::Ident::new(
                                             &format!("token_{}", terminal_idx.as_usize()),
                                             Span::call_site(),
                                         ),

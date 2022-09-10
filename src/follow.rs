@@ -1,7 +1,7 @@
 //! Implementation of "follow" sets
 
 use crate::first::FirstTable;
-use crate::grammar::{Grammar, NonTerminalIdx, SymbolKind, TerminalIdx};
+use crate::grammar::{Grammar, NonTerminalIdx, Symbol, TerminalIdx};
 
 use std::hash::Hash;
 

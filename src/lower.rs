@@ -1,5 +1,5 @@
 use crate::ast;
-use crate::grammar::{Grammar, NonTerminalIdx, Symbol, SymbolKind, TerminalIdx};
+use crate::grammar::{Grammar, NonTerminalIdx, BoundSymbol, Symbol, TerminalIdx};
 
 use std::iter::FromIterator;
 
@@ -48,12 +48,12 @@ pub fn lower(
             let binder_ident = syn::Ident::new("x", Span::call_site());
             grammar.add_production(
                 nt_idx,
-                vec![Symbol {
+                vec![BoundSymbol {
                     binder: Some(ast::Name {
                         mutable: false,
                         name: binder_ident.clone(),
                     }),
-                    kind: SymbolKind::NonTerminal(nt1_idx),
+                    symbol: Symbol::NonTerminal(nt1_idx),
                 }],
                 syn::Expr::Path(syn::ExprPath {
                     attrs: vec![],
@@ -79,7 +79,7 @@ pub fn lower(
     } in non_terminals
     {
         for prod in productions {
-            let mut symbols: Vec<Symbol> = vec![];
+            let mut symbols: Vec<BoundSymbol> = vec![];
             for sym in prod.symbols {
                 add_symbol(
                     &mut grammar,
@@ -108,7 +108,7 @@ fn add_symbol<A>(
     grammar: &mut Grammar<A>,
     nt_indices: &FxHashMap<String, NonTerminalIdx>,
     t_indices: &FxHashMap<String, TerminalIdx>,
-    symbols: &mut Vec<Symbol>,
+    symbols: &mut Vec<BoundSymbol>,
     binder: Option<ast::Name>,
     symbol: ast::Symbol,
 ) {
@@ -119,9 +119,9 @@ fn add_symbol<A>(
                 None => panic!("Non-terminal not defined: {}", nt_name),
                 Some(nt_idx) => nt_idx,
             };
-            symbols.push(Symbol {
+            symbols.push(BoundSymbol {
                 binder,
-                kind: SymbolKind::NonTerminal(*nt_idx),
+                symbol: Symbol::NonTerminal(*nt_idx),
             });
         }
         ast::Symbol::Terminal(str) => {
@@ -129,9 +129,9 @@ fn add_symbol<A>(
             let idx = t_indices
                 .get(&str)
                 .unwrap_or_else(|| panic!("Unknown non-terminal: {:?}", str));
-            symbols.push(Symbol {
+            symbols.push(BoundSymbol {
                 binder,
-                kind: SymbolKind::Terminal(*idx),
+                symbol: Symbol::Terminal(*idx),
             });
         }
         ast::Symbol::Repeat(_) => {

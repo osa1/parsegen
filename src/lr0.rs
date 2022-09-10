@@ -1,5 +1,5 @@
 use crate::follow::FollowTable;
-use crate::grammar::{Grammar, NonTerminalIdx, ProductionIdx, Symbol, SymbolKind};
+use crate::grammar::{Grammar, NonTerminalIdx, ProductionIdx, BoundSymbol, Symbol};
 use crate::lr_common::{LRTable, LRTableBuilder, StateIdx};
 
 use std::collections::BTreeSet;
@@ -38,15 +38,15 @@ impl LR0Item {
     fn next_symbol<'grammar, A>(
         &self,
         grammar: &'grammar Grammar<A>,
-    ) -> Option<&'grammar SymbolKind> {
+    ) -> Option<&'grammar Symbol> {
         let production = grammar.get_production(self.non_terminal_idx, self.production_idx);
         let symbols = production.symbols();
-        symbols.get(self.cursor).map(|s| &s.kind)
+        symbols.get(self.cursor).map(|s| &s.symbol)
     }
 
     fn next_non_terminal<A>(&self, grammar: &Grammar<A>) -> Option<NonTerminalIdx> {
         match self.next_symbol(grammar) {
-            Some(SymbolKind::NonTerminal(nt_idx)) => Some(*nt_idx),
+            Some(Symbol::NonTerminal(nt_idx)) => Some(*nt_idx),
             _ => None,
         }
     }
@@ -129,7 +129,7 @@ fn compute_lr0_closure<A>(grammar: &Grammar<A>, items: &BTreeSet<LR0Item>) -> BT
 fn compute_lr0_goto<A>(
     grammar: &Grammar<A>,
     items: &BTreeSet<LR0Item>,
-    symbol: &SymbolKind,
+    symbol: &Symbol,
 ) -> BTreeSet<LR0Item> {
     let mut goto: BTreeSet<LR0Item> = Default::default();
 
@@ -172,7 +172,7 @@ impl LR0Automaton {
 #[derive(Debug)]
 struct LR0State {
     items: BTreeSet<LR0Item>,
-    goto: FxHashMap<SymbolKind, StateIdx>,
+    goto: FxHashMap<Symbol, StateIdx>,
 }
 
 impl LR0Automaton {
@@ -199,7 +199,7 @@ impl LR0Automaton {
         &self.states[idx.0]
     }
 
-    fn add_goto(&mut self, from: StateIdx, to: StateIdx, symbol: SymbolKind) {
+    fn add_goto(&mut self, from: StateIdx, to: StateIdx, symbol: Symbol) {
         self.states[from.0].goto.insert(symbol, to);
     }
 }
@@ -230,7 +230,7 @@ pub fn compute_lr0_automaton<A>(grammar: &Grammar<A>) -> LR0Automaton {
 
     while let Some(state_idx) = work_list.pop() {
         let state = automaton.get_state_items(state_idx).clone();
-        let mut state_next_symbols: FxHashSet<SymbolKind> = Default::default();
+        let mut state_next_symbols: FxHashSet<Symbol> = Default::default();
         for item in &state {
             if let Some(item_next_symbol) = item.next_symbol(grammar) {
                 state_next_symbols.insert(item_next_symbol.clone());
@@ -250,8 +250,8 @@ pub fn compute_lr0_automaton<A>(grammar: &Grammar<A>) -> LR0Automaton {
     automaton
 }
 
-fn symbols_eq(ss1: &[Symbol], ss2: &[SymbolKind]) -> bool {
-    ss1.len() == ss2.len() && ss1.iter().zip(ss2).all(|(s1, s2)| s1.kind == *s2)
+fn symbols_eq(ss1: &[BoundSymbol], ss2: &[Symbol]) -> bool {
+    ss1.len() == ss2.len() && ss1.iter().zip(ss2).all(|(s1, s2)| s1.symbol == *s2)
 }
 
 fn build_slr_table<A: Clone + std::fmt::Debug + std::cmp::Eq>(
@@ -267,8 +267,8 @@ fn build_slr_table<A: Clone + std::fmt::Debug + std::cmp::Eq>(
             // let production = grammar.get_production(non_terminal_idx, production_idx);
 
             // Rule 2.a
-            if let Some(SymbolKind::Terminal(t)) = item.next_symbol(grammar) {
-                if let Some(next_state) = goto.get(&SymbolKind::Terminal(*t)) {
+            if let Some(Symbol::Terminal(t)) = item.next_symbol(grammar) {
+                if let Some(next_state) = goto.get(&Symbol::Terminal(*t)) {
                     table.add_shift(grammar, state_idx, *t, *next_state);
                 }
             }
@@ -313,7 +313,7 @@ fn build_slr_table<A: Clone + std::fmt::Debug + std::cmp::Eq>(
         }
 
         for (symbol_kind, next) in goto {
-            if let SymbolKind::NonTerminal(non_terminal_idx) = symbol_kind {
+            if let Symbol::NonTerminal(non_terminal_idx) = symbol_kind {
                 table.add_goto(state_idx, *non_terminal_idx, *next);
             }
         }
@@ -349,11 +349,11 @@ impl<'a, A> fmt::Display for LR0ItemDisplay<'a, A> {
             if symbol_idx == self.item.cursor {
                 write!(f, "|")?;
             }
-            match &symbol.kind {
-                SymbolKind::NonTerminal(nt) => {
+            match &symbol.symbol {
+                Symbol::NonTerminal(nt) => {
                     write!(f, "{}", self.grammar.get_non_terminal(*nt).non_terminal)?;
                 }
-                SymbolKind::Terminal(t) => {
+                Symbol::Terminal(t) => {
                     write!(f, "{}", self.grammar.get_terminal(*t))?;
                 }
             }
@@ -387,7 +387,7 @@ impl<'a, 'b, A> fmt::Display for LR0AutomatonDisplay<'a, 'b, A> {
 
             for (symbol, next) in state.goto.iter() {
                 match symbol {
-                    SymbolKind::NonTerminal(nt) => {
+                    Symbol::NonTerminal(nt) => {
                         writeln!(
                             f,
                             "  {} -> {}",
@@ -395,7 +395,7 @@ impl<'a, 'b, A> fmt::Display for LR0AutomatonDisplay<'a, 'b, A> {
                             next.0
                         )?;
                     }
-                    SymbolKind::Terminal(t) => {
+                    Symbol::Terminal(t) => {
                         writeln!(f, "  {} -> {}", self.grammar.get_terminal(*t), next.0)?;
                     }
                 }
@@ -435,11 +435,11 @@ pub fn lr0_dot<A>(automaton: &LR0Automaton, grammar: &Grammar<A>) -> String {
                 if symbol_idx == item.cursor {
                     dot.push_str("• ");
                 }
-                match &symbol.kind {
-                    SymbolKind::NonTerminal(nt) => {
+                match &symbol.symbol {
+                    Symbol::NonTerminal(nt) => {
                         dot.push_str(&grammar.get_non_terminal(*nt).non_terminal);
                     }
-                    SymbolKind::Terminal(t) => {
+                    Symbol::Terminal(t) => {
                         dot.push_str(grammar.get_terminal(*t));
                     }
                 }
@@ -472,10 +472,10 @@ pub fn lr0_dot<A>(automaton: &LR0Automaton, grammar: &Grammar<A>) -> String {
             .unwrap();
 
             match symbol {
-                SymbolKind::NonTerminal(nt) => {
+                Symbol::NonTerminal(nt) => {
                     dot.push_str(&grammar.get_non_terminal(*nt).non_terminal);
                 }
-                SymbolKind::Terminal(t) => {
+                Symbol::Terminal(t) => {
                     dot.push_str(grammar.get_terminal(*t));
                 }
             }
