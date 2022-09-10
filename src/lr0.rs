@@ -1,11 +1,10 @@
+use crate::collections::{Map, Set};
 use crate::follow::FollowTable;
 use crate::grammar::{Grammar, NonTerminalIdx, ProductionIdx, Symbol, SymbolKind};
 use crate::lr_common::{LRTable, LRTableBuilder, StateIdx};
 
 use std::collections::BTreeSet;
 use std::hash::Hash;
-
-use fxhash::{FxHashMap, FxHashSet};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
 struct LR0Item {
@@ -74,7 +73,7 @@ fn compute_lr0_closure<T, A>(
     while updated {
         updated = false;
 
-        let mut new_items: FxHashSet<LR0Item> = Default::default();
+        let mut new_items: Set<LR0Item> = Default::default();
 
         for item in &closure {
             if let Some(next_nt) = item.next_non_terminal(grammar) {
@@ -116,7 +115,7 @@ fn compute_lr0_goto<T: Eq, A>(
 struct LR0Automaton<T> {
     states: Vec<LR0State<T>>,
     // Maps existing item sets to their state indices, to maintain sharing.
-    state_indices: FxHashMap<BTreeSet<LR0Item>, StateIdx>,
+    state_indices: Map<BTreeSet<LR0Item>, StateIdx>,
 }
 
 impl<T> Default for LR0Automaton<T> {
@@ -140,7 +139,7 @@ impl<T> LR0Automaton<T> {
 #[derive(Debug)]
 struct LR0State<T> {
     items: BTreeSet<LR0Item>,
-    goto: FxHashMap<SymbolKind<T>, StateIdx>,
+    goto: Map<SymbolKind<T>, StateIdx>,
 }
 
 impl<T: Eq + Hash> LR0Automaton<T> {
@@ -187,7 +186,7 @@ fn compute_lr0_automaton<T: Eq + Hash + Clone, A>(grammar: &Grammar<T, A>) -> LR
 
     while let Some(state_idx) = work_list.pop() {
         let state = automaton.get_state_items(state_idx).clone();
-        let mut state_next_symbols: FxHashSet<SymbolKind<T>> = Default::default();
+        let mut state_next_symbols: Set<SymbolKind<T>> = Default::default();
         for item in &state {
             if let Some(item_next_symbol) = item.next_symbol(grammar) {
                 state_next_symbols.insert(item_next_symbol.clone());

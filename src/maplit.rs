@@ -65,7 +65,7 @@ macro_rules! btreeset {
 
 #[test]
 fn test_hashmap() {
-    use fxhash::FxHashMap;
+    use crate::collections::Map;
 
     let names = hashmap! {
         1 => "one",
@@ -76,7 +76,7 @@ fn test_hashmap() {
     assert_eq!(names[&2], "two");
     assert_eq!(names.get(&3), None);
 
-    let empty: FxHashMap<i32, i32> = hashmap! {};
+    let empty: Map<i32, i32> = hashmap! {};
     assert_eq!(empty.len(), 0);
 
     let _nested_compiles = hashmap! {

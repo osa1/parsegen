@@ -1,11 +1,10 @@
+use crate::collections::{Map, Set};
 use crate::first::{FirstSet, FirstTable};
 use crate::grammar::{Grammar, NonTerminalIdx, Production, ProductionIdx, Symbol, TerminalIdx};
 use crate::lr_common::{LRTable, LRTableBuilder, StateIdx};
 
 use std::collections::BTreeSet;
 use std::hash::Hash;
-
-use fxhash::{FxHashMap, FxHashSet};
 
 #[derive(Debug, PartialEq, Eq, PartialOrd, Ord, Hash, Clone)]
 struct LR1Item {
@@ -77,9 +76,9 @@ impl LR1Item {
 fn compute_lr1_closure<A>(
     grammar: &Grammar<A>,
     first_table: &FirstTable,
-    items: FxHashSet<LR1Item>,
+    items: Set<LR1Item>,
 ) -> BTreeSet<LR1Item> {
-    let mut closure: FxHashSet<LR1Item> = items;
+    let mut closure: Set<LR1Item> = items;
 
     let mut work_list: Vec<LR1Item> = closure.iter().cloned().collect();
     while let Some(item) = work_list.pop() {
@@ -173,7 +172,7 @@ fn compute_lr1_goto<A>(
     grammar: &Grammar<A>,
     first: &FirstTable,
 ) -> BTreeSet<LR1Item> {
-    let mut goto: FxHashSet<LR1Item> = Default::default();
+    let mut goto: Set<LR1Item> = Default::default();
 
     for item in state {
         if let Some(next_symbol) = item.next_symbol(grammar) {
@@ -189,7 +188,7 @@ fn compute_lr1_goto<A>(
 #[derive(Debug)]
 struct LR1State {
     items: BTreeSet<LR1Item>,
-    goto: FxHashMap<Symbol, StateIdx>,
+    goto: Map<Symbol, StateIdx>,
 }
 
 impl LR1State {
@@ -246,12 +245,12 @@ impl Default for LR1Automaton {
 pub fn generate_lr1_automaton<A>(
     grammar: &Grammar<A>,
     first_table: &FirstTable,
-) -> (LR1Automaton, FxHashMap<NonTerminalIdx, StateIdx>) {
+) -> (LR1Automaton, Map<NonTerminalIdx, StateIdx>) {
     // Maps existing item sets to their state indices, to maintain sharing.
-    let mut state_indices: FxHashMap<BTreeSet<LR1Item>, StateIdx> = Default::default();
+    let mut state_indices: Map<BTreeSet<LR1Item>, StateIdx> = Default::default();
 
     // Maps entry points to their state indices
-    let mut non_terminal_state_indices: FxHashMap<NonTerminalIdx, StateIdx> = Default::default();
+    let mut non_terminal_state_indices: Map<NonTerminalIdx, StateIdx> = Default::default();
 
     let mut automaton: LR1Automaton = Default::default();
 
@@ -259,7 +258,7 @@ pub fn generate_lr1_automaton<A>(
         if non_terminal.public {
             assert_eq!(non_terminal.productions().len(), 1);
 
-            let i0_items: FxHashSet<LR1Item> = hashset! {
+            let i0_items: Set<LR1Item> = hashset! {
                 LR1Item {
                     non_terminal_idx,
                     production_idx: ProductionIdx(0),
