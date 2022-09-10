@@ -1,6 +1,6 @@
 //! Implementation of "first" sets
 
-use crate::grammar::{Grammar, NonTerminalIdx, SymbolKind, TerminalIdx};
+use crate::grammar::{Grammar, NonTerminalIdx, Symbol, TerminalIdx};
 
 use fxhash::FxHashSet;
 
@@ -82,8 +82,8 @@ pub fn generate_first_table<A>(grammar: &Grammar<A>) -> FirstTable {
                     updated |= table.set_empty(non_terminal_idx);
                 }
                 for symbol in &production.symbols {
-                    match &symbol.kind {
-                        SymbolKind::NonTerminal(nt) => {
+                    match &symbol.symbol {
+                        Symbol::NonTerminal(nt) => {
                             let FirstSet { empty, terminals } = table.get_first(*nt);
                             if *empty {
                                 // Continue to the next symbol in the production
@@ -95,7 +95,7 @@ pub fn generate_first_table<A>(grammar: &Grammar<A>) -> FirstTable {
                             }
                             continue 'production_loop;
                         }
-                        SymbolKind::Terminal(terminal) => {
+                        Symbol::Terminal(terminal) => {
                             updated |= table.add_first(non_terminal_idx, *terminal);
                             continue 'production_loop;
                         }

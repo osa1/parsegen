@@ -1,4 +1,4 @@
-use crate::grammar::{Grammar, NonTerminalIdx, Symbol, SymbolKind, TerminalIdx};
+use crate::grammar::{BoundSymbol, Grammar, NonTerminalIdx, Symbol, TerminalIdx};
 
 use fxhash::FxHashMap;
 
@@ -43,22 +43,22 @@ impl<A> TestGrammar<A> {
         )
     }
 
-    fn add_p(&mut self, non_terminal: NonTerminalIdx, symbols: Vec<Symbol>, action: A) {
+    fn add_p(&mut self, non_terminal: NonTerminalIdx, symbols: Vec<BoundSymbol>, action: A) {
         self.grammar.add_production(non_terminal, symbols, action);
     }
 }
 
-fn nt(idx: NonTerminalIdx) -> Symbol {
-    Symbol {
+fn nt(idx: NonTerminalIdx) -> BoundSymbol {
+    BoundSymbol {
         binder: None,
-        kind: SymbolKind::NonTerminal(idx),
+        symbol: Symbol::NonTerminal(idx),
     }
 }
 
-fn t(token: TerminalIdx) -> Symbol {
-    Symbol {
+fn t(token: TerminalIdx) -> BoundSymbol {
+    BoundSymbol {
         binder: None,
-        kind: SymbolKind::Terminal(token),
+        symbol: Symbol::Terminal(token),
     }
 }
 

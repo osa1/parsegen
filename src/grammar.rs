@@ -65,7 +65,7 @@ pub struct NonTerminal<A> {
 
 #[derive(Clone)]
 pub struct Production<A> {
-    pub symbols: Vec<Symbol>,
+    pub symbols: Vec<BoundSymbol>,
     pub action: A,
 }
 
@@ -79,13 +79,13 @@ impl<A> std::fmt::Debug for Production<A> {
 }
 
 #[derive(Debug, Clone)]
-pub struct Symbol {
+pub struct BoundSymbol {
     pub binder: Option<ast::Name>,
-    pub kind: SymbolKind,
+    pub symbol: Symbol,
 }
 
 #[derive(Debug, PartialEq, Eq, PartialOrd, Ord, Hash, Clone)]
-pub enum SymbolKind {
+pub enum Symbol {
     NonTerminal(NonTerminalIdx),
     Terminal(TerminalIdx),
 }
@@ -155,7 +155,7 @@ impl<A> Grammar<A> {
     pub fn add_production(
         &mut self,
         non_terminal: NonTerminalIdx,
-        symbols: Vec<Symbol>,
+        symbols: Vec<BoundSymbol>,
         action: A,
     ) -> ProductionIdx {
         let non_terminal = &mut self.non_terminals[non_terminal.0 as usize];
@@ -193,7 +193,7 @@ impl<A> NonTerminal<A> {
 }
 
 impl<A> Production<A> {
-    pub fn symbols(&self) -> &[Symbol] {
+    pub fn symbols(&self) -> &[BoundSymbol] {
         &self.symbols
     }
 }
@@ -303,12 +303,12 @@ impl<A> Grammar<A> {
 }
 
 pub struct SymbolKindDisplay<'a, 'b, A> {
-    symbol: &'a SymbolKind,
+    symbol: &'a Symbol,
     grammar: &'b Grammar<A>,
 }
 
 impl<'a, 'b, A> SymbolKindDisplay<'a, 'b, A> {
-    pub fn new(symbol: &'a SymbolKind, grammar: &'b Grammar<A>) -> Self {
+    pub fn new(symbol: &'a Symbol, grammar: &'b Grammar<A>) -> Self {
         Self { symbol, grammar }
     }
 }
@@ -362,12 +362,12 @@ impl<A> fmt::Display for Grammar<A> {
 impl<'a, 'b, A> fmt::Display for ProductionDisplay<'a, 'b, A> {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         for (symbol_idx, symbol) in self.production.symbols().iter().enumerate() {
-            match &symbol.kind {
-                SymbolKind::NonTerminal(nt) => {
+            match &symbol.symbol {
+                Symbol::NonTerminal(nt) => {
                     let nt = self.grammar.get_non_terminal(*nt);
                     write!(f, "{}", nt.non_terminal)?;
                 }
-                SymbolKind::Terminal(t) => {
+                Symbol::Terminal(t) => {
                     let t = self.grammar.get_terminal(*t);
                     write!(f, "{:?}", t)?;
                 }
@@ -383,11 +383,11 @@ impl<'a, 'b, A> fmt::Display for ProductionDisplay<'a, 'b, A> {
 impl<'a, 'b, A> fmt::Display for SymbolKindDisplay<'a, 'b, A> {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self.symbol {
-            SymbolKind::NonTerminal(nt) => {
+            Symbol::NonTerminal(nt) => {
                 let nt = self.grammar.get_non_terminal(*nt);
                 write!(f, "{}", nt.non_terminal)
             }
-            SymbolKind::Terminal(t) => {
+            Symbol::Terminal(t) => {
                 let t = &self.grammar.terminals[t.0 as usize];
                 write!(f, "{:?}", t)
             }

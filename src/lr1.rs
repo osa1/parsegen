@@ -1,5 +1,5 @@
 use crate::first::{FirstSet, FirstTable};
-use crate::grammar::{Grammar, NonTerminalIdx, Production, ProductionIdx, SymbolKind, TerminalIdx};
+use crate::grammar::{Grammar, NonTerminalIdx, Production, ProductionIdx, Symbol, TerminalIdx};
 use crate::lr_common::{LRTable, LRTableBuilder, StateIdx};
 
 use std::collections::BTreeSet;
@@ -32,19 +32,16 @@ impl LR1Item {
         }
     }
 
-    fn next_symbol<'grammar, A>(
-        &self,
-        grammar: &'grammar Grammar<A>,
-    ) -> Option<&'grammar SymbolKind> {
+    fn next_symbol<'grammar, A>(&self, grammar: &'grammar Grammar<A>) -> Option<&'grammar Symbol> {
         let production = grammar.get_production(self.non_terminal_idx, self.production_idx);
-        production.symbols().get(self.cursor).map(|s| &s.kind)
+        production.symbols().get(self.cursor).map(|s| &s.symbol)
     }
 
     /// Returns non-terminal expected by the item, if the next expected symbol is a non-terminal.
     /// Otherwise returns `None`.
     fn next_non_terminal<A>(&self, grammar: &Grammar<A>) -> Option<NonTerminalIdx> {
         match self.next_symbol(grammar) {
-            Some(SymbolKind::NonTerminal(nt_idx)) => Some(*nt_idx),
+            Some(Symbol::NonTerminal(nt_idx)) => Some(*nt_idx),
             _ => None,
         }
     }
@@ -53,7 +50,7 @@ impl LR1Item {
     /// returns `None`.
     fn next_terminal<A>(&self, grammar: &Grammar<A>) -> Option<TerminalIdx> {
         match self.next_symbol(grammar) {
-            Some(SymbolKind::Terminal(t)) => Some(*t),
+            Some(Symbol::Terminal(t)) => Some(*t),
             _ => None,
         }
     }
@@ -106,13 +103,13 @@ fn compute_lr1_closure<A>(
                     //         grammar
                     //     }
                     // );
-                    match &symbol.kind {
-                        SymbolKind::Terminal(t) => {
+                    match &symbol.symbol {
+                        Symbol::Terminal(t) => {
                             end_allowed = false;
                             first.add(*t);
                             break;
                         }
-                        SymbolKind::NonTerminal(nt) => {
+                        Symbol::NonTerminal(nt) => {
                             let nt_first = first_table.get_first(*nt);
                             for t in nt_first.terminals() {
                                 first.add(*t);
@@ -172,7 +169,7 @@ fn compute_lr1_closure<A>(
 
 fn compute_lr1_goto<A>(
     state: &BTreeSet<LR1Item>,
-    symbol: &SymbolKind,
+    symbol: &Symbol,
     grammar: &Grammar<A>,
     first: &FirstTable,
 ) -> BTreeSet<LR1Item> {
@@ -192,7 +189,7 @@ fn compute_lr1_goto<A>(
 #[derive(Debug)]
 struct LR1State {
     items: BTreeSet<LR1Item>,
-    goto: FxHashMap<SymbolKind, StateIdx>,
+    goto: FxHashMap<Symbol, StateIdx>,
 }
 
 impl LR1State {
@@ -200,7 +197,7 @@ impl LR1State {
         self.items.iter()
     }
 
-    fn gotos(&self) -> impl Iterator<Item = (&SymbolKind, &StateIdx)> {
+    fn gotos(&self) -> impl Iterator<Item = (&Symbol, &StateIdx)> {
         self.goto.iter()
     }
 }
@@ -296,13 +293,13 @@ pub fn generate_lr1_automaton<A>(
         let mut new_states: Vec<LR1State> = vec![];
 
         // New GOTOs added in this iteration
-        let mut new_gotos: Vec<(StateIdx, SymbolKind, StateIdx)> = Default::default();
+        let mut new_gotos: Vec<(StateIdx, Symbol, StateIdx)> = Default::default();
 
         for (state_idx, state) in automaton.state_indices() {
             for symbol in grammar
                 .non_terminal_indices()
-                .map(|(nt, _)| SymbolKind::NonTerminal(nt))
-                .chain(grammar.terminal_indices().map(SymbolKind::Terminal))
+                .map(|(nt, _)| Symbol::NonTerminal(nt))
+                .chain(grammar.terminal_indices().map(Symbol::Terminal))
             {
                 let goto = compute_lr1_goto(&state.items, &symbol, grammar, first_table);
 
@@ -363,7 +360,7 @@ pub fn build_lr1_table<A: Clone + fmt::Debug + Eq>(
         for item in state.items() {
             // Rule 2.a
             if let Some(next_terminal) = item.next_terminal(grammar) {
-                if let Some(next_state) = state.goto.get(&SymbolKind::Terminal(next_terminal)) {
+                if let Some(next_state) = state.goto.get(&Symbol::Terminal(next_terminal)) {
                     table.add_shift(grammar, state_idx, next_terminal, *next_state);
                 }
             }
@@ -393,7 +390,7 @@ pub fn build_lr1_table<A: Clone + fmt::Debug + Eq>(
 
             // Add gotos
             for (symbol, next) in state.gotos() {
-                if let SymbolKind::NonTerminal(nt) = symbol {
+                if let Symbol::NonTerminal(nt) = symbol {
                     table.add_goto(state_idx, *nt, *next);
                 }
             }
@@ -437,7 +434,7 @@ impl<'a, 'b, A> fmt::Display for LR1ItemDisplay<'a, 'b, A> {
             write!(
                 f,
                 "{}",
-                crate::grammar::SymbolKindDisplay::new(&symbol.kind, self.grammar),
+                crate::grammar::SymbolKindDisplay::new(&symbol.symbol, self.grammar),
             )?;
             if symbol_idx != production.symbols().len() - 1 {
                 write!(f, " ")?;
