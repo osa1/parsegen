@@ -1,10 +1,9 @@
+use crate::collections::Map;
 use crate::grammar::{BoundSymbol, Grammar, NonTerminalIdx, Symbol, TerminalIdx};
-
-use fxhash::FxHashMap;
 
 pub struct TestGrammar<A> {
     grammar: Grammar<A>,
-    terminals: FxHashMap<&'static str, TerminalIdx>,
+    terminals: Map<&'static str, TerminalIdx>,
 }
 
 impl<A> TestGrammar<A> {

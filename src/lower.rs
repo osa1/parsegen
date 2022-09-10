@@ -1,9 +1,9 @@
 use crate::ast;
+use crate::collections::Map;
 use crate::grammar::{BoundSymbol, Grammar, NonTerminalIdx, Symbol, TerminalIdx};
 
 use std::iter::FromIterator;
 
-use fxhash::FxHashMap;
 use proc_macro2::Span;
 
 pub fn lower(
@@ -12,10 +12,10 @@ pub fn lower(
 ) -> Grammar<syn::Expr> {
     let mut grammar = Grammar::new();
 
-    let mut nt_indices: FxHashMap<String, NonTerminalIdx> = Default::default();
+    let mut nt_indices: Map<String, NonTerminalIdx> = Default::default();
 
     let t_indices = {
-        let mut t_indices: FxHashMap<String, TerminalIdx> = Default::default();
+        let mut t_indices: Map<String, TerminalIdx> = Default::default();
         for conv in terminals {
             let idx = grammar.new_terminal(conv.from.clone());
             let old = t_indices.insert(conv.from.clone(), idx);
@@ -106,8 +106,8 @@ pub fn lower(
 
 fn add_symbol<A>(
     grammar: &mut Grammar<A>,
-    nt_indices: &FxHashMap<String, NonTerminalIdx>,
-    t_indices: &FxHashMap<String, TerminalIdx>,
+    nt_indices: &Map<String, NonTerminalIdx>,
+    t_indices: &Map<String, TerminalIdx>,
     symbols: &mut Vec<BoundSymbol>,
     binder: Option<ast::Name>,
     symbol: ast::Symbol,

@@ -1,11 +1,10 @@
+use crate::collections::{Map, Set};
 use crate::follow::FollowTable;
 use crate::grammar::{BoundSymbol, Grammar, NonTerminalIdx, ProductionIdx, Symbol};
 use crate::lr_common::{LRTable, LRTableBuilder, StateIdx};
 
 use std::collections::BTreeSet;
 use std::hash::Hash;
-
-use fxhash::{FxHashMap, FxHashSet};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub struct LR0Item {
@@ -83,7 +82,7 @@ fn compute_lr0_closure<A>(grammar: &Grammar<A>, items: &BTreeSet<LR0Item>) -> BT
     while updated {
         updated = false;
 
-        let mut new_items: FxHashSet<LR0Item> = Default::default();
+        let mut new_items: Set<LR0Item> = Default::default();
 
         for item in &closure {
             if let Some(next_nt) = item.next_non_terminal(grammar) {
@@ -145,7 +144,7 @@ fn compute_lr0_goto<A>(
 pub struct LR0Automaton {
     states: Vec<LR0State>,
     // Maps existing item sets to their state indices, to maintain sharing.
-    state_indices: FxHashMap<BTreeSet<LR0Item>, StateIdx>,
+    state_indices: Map<BTreeSet<LR0Item>, StateIdx>,
 }
 
 impl Default for LR0Automaton {
@@ -169,7 +168,7 @@ impl LR0Automaton {
 #[derive(Debug)]
 struct LR0State {
     items: BTreeSet<LR0Item>,
-    goto: FxHashMap<Symbol, StateIdx>,
+    goto: Map<Symbol, StateIdx>,
 }
 
 impl LR0Automaton {
@@ -227,7 +226,7 @@ pub fn compute_lr0_automaton<A>(grammar: &Grammar<A>) -> LR0Automaton {
 
     while let Some(state_idx) = work_list.pop() {
         let state = automaton.get_state_items(state_idx).clone();
-        let mut state_next_symbols: FxHashSet<Symbol> = Default::default();
+        let mut state_next_symbols: Set<Symbol> = Default::default();
         for item in &state {
             if let Some(item_next_symbol) = item.next_symbol(grammar) {
                 state_next_symbols.insert(item_next_symbol.clone());
@@ -407,7 +406,7 @@ impl<'a, 'b, A> fmt::Display for LR0AutomatonDisplay<'a, 'b, A> {
 pub fn lr0_dot<A>(
     automaton: &LR0Automaton,
     grammar: &Grammar<A>,
-    conflicts: &FxHashSet<(StateIdx, usize)>,
+    conflicts: &Set<(StateIdx, usize)>,
 ) -> String {
     use std::fmt::Write;
 
@@ -500,11 +499,8 @@ pub fn lr0_dot<A>(
     dot
 }
 
-pub fn find_conflicts<A>(
-    automaton: &LR0Automaton,
-    grammar: &Grammar<A>,
-) -> FxHashSet<(StateIdx, usize)> {
-    let mut conflicts: FxHashSet<(StateIdx, usize)> = Default::default();
+pub fn find_conflicts<A>(automaton: &LR0Automaton, grammar: &Grammar<A>) -> Set<(StateIdx, usize)> {
+    let mut conflicts: Set<(StateIdx, usize)> = Default::default();
 
     for (state_idx, state) in automaton.states.iter().enumerate() {
         let mut reduce_items: Vec<(usize, LR0Item)> = Vec::with_capacity(state.items.len());

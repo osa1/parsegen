@@ -3,6 +3,7 @@ mod maplit;
 
 mod ast;
 mod codegen;
+mod collections;
 mod first;
 mod grammar;
 mod lower;

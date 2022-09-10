@@ -1,8 +1,8 @@
 use crate::ast::{Conversion, FieldPattern, Name, Pattern, TokenEnum};
+use crate::collections::Map;
 use crate::grammar::{BoundSymbol, Grammar, NonTerminal, Production, Symbol, TerminalIdx};
 use crate::lr_common::{LRTable, StateIdx};
 
-use fxhash::FxHashMap;
 use proc_macro2::{Span, TokenStream};
 use quote::quote;
 
@@ -303,7 +303,7 @@ pub fn semantic_action_result_type<A>(
     // Generate variants for non-terminals. Non-terminals with same type use the same enum variant.
     let mut non_terminal_action_variant_names: Vec<usize> = vec![];
 
-    let mut non_terminal_ty_indices: FxHashMap<syn::Type, usize> = Default::default();
+    let mut non_terminal_ty_indices: Map<syn::Type, usize> = Default::default();
     let mut i: usize = 0;
 
     for non_terminal in grammar.non_terminals().iter() {

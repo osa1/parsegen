@@ -3,12 +3,12 @@ use crate::codegen::{
     generate_expected_state_tokens, generate_semantic_action_table, generate_token_to_text,
     semantic_action_result_type, token_value_fn, SemanticActionIdx,
 };
+use crate::collections::Map;
 use crate::first::generate_first_table;
 use crate::grammar::{Grammar, NonTerminalIdx, ProductionIdx, TerminalIdx};
 use crate::lr1::{build_lr1_table, generate_lr1_automaton};
 use crate::lr_common::{LRAction, StateIdx};
 
-use fxhash::FxHashMap;
 use proc_macro2::{Span, TokenStream};
 use quote::quote;
 
@@ -234,7 +234,7 @@ pub fn generate_lr1_parser(grammar: Grammar<syn::Expr>, tokens: &TokenEnum) -> T
 /// Generates array representation of the action table. Reminder: EOF = last terminal.
 fn action_table_vec<A: Copy>(
     grammar: &Grammar<A>,
-    action_table: &FxHashMap<StateIdx, FxHashMap<Option<TerminalIdx>, LRAction<A>>>,
+    action_table: &Map<StateIdx, Map<Option<TerminalIdx>, LRAction<A>>>,
     n_states: usize,
 ) -> Vec<Vec<Option<LRAction<A>>>> {
     let n_terminals = grammar.n_terminals();
@@ -267,7 +267,7 @@ fn action_table_vec<A: Copy>(
 
 /// Generates array representation of the goto table.
 fn generate_goto_vec(
-    goto_table: &FxHashMap<StateIdx, FxHashMap<NonTerminalIdx, StateIdx>>,
+    goto_table: &Map<StateIdx, Map<NonTerminalIdx, StateIdx>>,
     n_states: usize,
     n_non_terminals: usize,
 ) -> Vec<Vec<Option<StateIdx>>> {

@@ -1,6 +1,5 @@
+use crate::collections::Map;
 use crate::grammar::{Grammar, NonTerminalIdx, ProductionIdx, TerminalIdx};
-
-use fxhash::FxHashMap;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub struct StateIdx(pub usize);
@@ -24,8 +23,8 @@ pub enum LRAction<A> {
 }
 
 pub struct LRTable<A> {
-    action: FxHashMap<StateIdx, FxHashMap<Option<TerminalIdx>, LRAction<A>>>,
-    goto: FxHashMap<StateIdx, FxHashMap<NonTerminalIdx, StateIdx>>,
+    action: Map<StateIdx, Map<Option<TerminalIdx>, LRAction<A>>>,
+    goto: Map<StateIdx, Map<NonTerminalIdx, StateIdx>>,
     n_states: usize,
 }
 
@@ -189,13 +188,11 @@ impl<A> LRTable<A> {
             .copied()
     }
 
-    pub fn get_action_table(
-        &self,
-    ) -> &FxHashMap<StateIdx, FxHashMap<Option<TerminalIdx>, LRAction<A>>> {
+    pub fn get_action_table(&self) -> &Map<StateIdx, Map<Option<TerminalIdx>, LRAction<A>>> {
         &self.action
     }
 
-    pub fn get_goto_table(&self) -> &FxHashMap<StateIdx, FxHashMap<NonTerminalIdx, StateIdx>> {
+    pub fn get_goto_table(&self) -> &Map<StateIdx, Map<NonTerminalIdx, StateIdx>> {
         &self.goto
     }
 
