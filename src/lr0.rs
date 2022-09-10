@@ -405,7 +405,7 @@ pub fn lr0_dot<A>(automaton: &LR0Automaton, grammar: &Grammar<A>) -> String {
 
     // Generate nodes
     for (state_idx, state) in automaton.states.iter().enumerate() {
-        write!(&mut dot, "    S{} [label=\"", state_idx).unwrap();
+        write!(&mut dot, "    S{} [label=\"S{}|", state_idx, state_idx).unwrap();
 
         for (item_idx, item) in state.items.iter().enumerate() {
             write!(
