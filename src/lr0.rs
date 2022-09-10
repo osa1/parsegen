@@ -388,36 +388,9 @@ pub fn lr0_dot<A>(
                 dot.push_str("<FONT COLOR=\"red\">");
             }
 
-            write!(
-                &mut dot,
-                "{}: {} ➔ ",
-                item_idx,
-                grammar.get_non_terminal(item.non_terminal_idx).non_terminal
-            )
-            .unwrap();
-
-            let production = grammar.get_production(item.non_terminal_idx, item.production_idx);
-
-            for (symbol_idx, symbol) in production.symbols().iter().enumerate() {
-                if symbol_idx == item.cursor {
-                    dot.push_str("• ");
-                }
-                match &symbol.symbol {
-                    Symbol::NonTerminal(nt) => {
-                        dot.push_str(&grammar.get_non_terminal(*nt).non_terminal);
-                    }
-                    Symbol::Terminal(t) => {
-                        dot.push_str(grammar.get_terminal(*t));
-                    }
-                }
-                if symbol_idx != production.symbols().len() - 1 {
-                    dot.push(' ');
-                }
-            }
-
-            if item.cursor == production.symbols().len() {
-                dot.push_str(" •");
-            }
+            ItemDisplay { item, grammar }
+                .fmt_dot(item_idx, &mut dot)
+                .unwrap();
 
             if conflict {
                 dot.push_str("</FONT>");

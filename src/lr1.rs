@@ -490,39 +490,17 @@ pub fn lr1_dot<A>(automaton: &LR1Automaton, grammar: &Grammar<A>) -> String {
         write!(&mut dot, "    S{} [label=<S{}|", state_idx, state_idx).unwrap();
 
         for (item_idx, (item, la)) in item_lookaheads.iter().enumerate() {
-            write!(
-                &mut dot,
-                "{}: {} ➔ ",
-                item_idx,
-                grammar.get_non_terminal(item.non_terminal_idx).non_terminal
-            )
+            ItemDisplay {
+                item: &Item {
+                    non_terminal_idx: item.non_terminal_idx,
+                    production_idx: item.production_idx,
+                    cursor: item.cursor,
+                    lookahead: la.clone(),
+                },
+                grammar,
+            }
+            .fmt_dot(item_idx, &mut dot)
             .unwrap();
-
-            let production = grammar.get_production(item.non_terminal_idx, item.production_idx);
-
-            for (symbol_idx, symbol) in production.symbols().iter().enumerate() {
-                if symbol_idx == item.cursor {
-                    dot.push_str("• ");
-                }
-                match &symbol.symbol {
-                    Symbol::NonTerminal(nt) => {
-                        dot.push_str(&grammar.get_non_terminal(*nt).non_terminal);
-                    }
-                    Symbol::Terminal(t) => {
-                        dot.push_str(grammar.get_terminal(*t));
-                    }
-                }
-                if symbol_idx != production.symbols().len() - 1 {
-                    dot.push(' ');
-                }
-            }
-
-            if item.cursor == production.symbols().len() {
-                dot.push_str(" •");
-            }
-
-            dot.push(' ');
-            dot.push_str(&lookahead_string(la, grammar));
 
             if item_idx != state.items.len() - 1 {
                 dot.push_str("|");
@@ -559,24 +537,6 @@ pub fn lr1_dot<A>(automaton: &LR1Automaton, grammar: &Grammar<A>) -> String {
     dot.push_str("}\n");
 
     dot
-}
-
-fn lookahead_string<A>(la: &Set<Option<TerminalIdx>>, grammar: &Grammar<A>) -> String {
-    let mut str = String::new();
-    str.push_str("\\{");
-
-    for (t_idx, t) in la.iter().enumerate() {
-        match t {
-            Some(t) => str.push_str(grammar.get_terminal(*t)),
-            None => str.push_str("$"),
-        }
-        if t_idx != la.len() - 1 {
-            str.push(',');
-        }
-    }
-
-    str.push_str("\\}");
-    str
 }
 
 #[test]
