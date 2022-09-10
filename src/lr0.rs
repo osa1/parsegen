@@ -434,6 +434,10 @@ pub fn lr0_dot<A>(automaton: &LR0Automaton, grammar: &Grammar<A>) -> String {
                 }
             }
 
+            if item.cursor == production.symbols().len() {
+                dot.push_str(" •");
+            }
+
             if item_idx != state.items.len() - 1 {
                 dot.push_str("|");
             }
