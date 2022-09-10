@@ -90,6 +90,15 @@ pub enum SymbolKind {
     Terminal(TerminalIdx),
 }
 
+impl Symbol {
+    pub fn is_terminal(&self) -> bool {
+        match self.kind {
+            SymbolKind::NonTerminal(_) => false,
+            SymbolKind::Terminal(_) => true,
+        }
+    }
+}
+
 impl<A> Grammar<A> {
     pub fn new() -> Self {
         Grammar {

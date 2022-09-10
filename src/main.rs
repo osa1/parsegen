@@ -74,6 +74,10 @@ pub fn main() {
     // println!("------------------------------------------------------------------");
     // println!();
 
+    let conflicts = lr0::find_conflicts(&lr0_automaton, &grammar);
+    println!("{:#?}", conflicts);
+
+    /*
     // let n_terminals = grammar.n_terminals();
     let first_table = crate::first::generate_first_table(&grammar);
     let (lr1_automaton, _nt_state_indices) =
@@ -89,6 +93,7 @@ pub fn main() {
     );
     println!("------------------------------------------------------------------");
     println!();
+    */
 
     /*
     let lr1_table = crate::lr1::build_lr1_table(&grammar, &lr1_automaton);

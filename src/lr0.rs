@@ -62,6 +62,19 @@ impl LR0Item {
             cursor: self.cursor + 1,
         }
     }
+
+    fn is_reduce_item<A>(&self, grammar: &Grammar<A>) -> bool {
+        let production = grammar.get_production(self.non_terminal_idx, self.production_idx);
+        self.cursor == production.symbols().len()
+    }
+
+    fn is_shift_item<A>(&self, grammar: &Grammar<A>) -> bool {
+        let production = grammar.get_production(self.non_terminal_idx, self.production_idx);
+        match production.symbols().get(self.cursor) {
+            Some(symbol) => symbol.is_terminal(),
+            None => false,
+        }
+    }
 }
 
 fn compute_lr0_closure<A>(grammar: &Grammar<A>, items: &BTreeSet<LR0Item>) -> BTreeSet<LR0Item> {
@@ -410,7 +423,8 @@ pub fn lr0_dot<A>(automaton: &LR0Automaton, grammar: &Grammar<A>) -> String {
         for (item_idx, item) in state.items.iter().enumerate() {
             write!(
                 &mut dot,
-                "{} ➔ ",
+                "{}: {} ➔ ",
+                item_idx,
                 grammar.get_non_terminal(item.non_terminal_idx).non_terminal
             )
             .unwrap();
@@ -473,6 +487,36 @@ pub fn lr0_dot<A>(automaton: &LR0Automaton, grammar: &Grammar<A>) -> String {
     dot.push_str("}\n");
 
     dot
+}
+
+pub fn find_conflicts<A>(
+    automaton: &LR0Automaton,
+    grammar: &Grammar<A>,
+) -> FxHashSet<(StateIdx, usize)> {
+    let mut conflicts: FxHashSet<(StateIdx, usize)> = Default::default();
+
+    for (state_idx, state) in automaton.states.iter().enumerate() {
+        let mut reduce_items: Vec<(usize, LR0Item)> = Vec::with_capacity(state.items.len());
+        let mut shift_items: Vec<(usize, LR0Item)> = Vec::with_capacity(state.items.len());
+
+        for (item_idx, item) in state.items.iter().enumerate() {
+            if item.is_reduce_item(grammar) {
+                reduce_items.push((item_idx, *item));
+            }
+
+            if item.is_shift_item(grammar) {
+                shift_items.push((item_idx, *item));
+            }
+        }
+
+        if reduce_items.len() > 1 || !shift_items.is_empty() {
+            for (reduce_item_idx, _) in reduce_items {
+                conflicts.insert((StateIdx(state_idx), reduce_item_idx));
+            }
+        }
+    }
+
+    conflicts
 }
 
 /*
