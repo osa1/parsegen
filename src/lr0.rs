@@ -1,17 +1,13 @@
 use crate::collections::{Map, Set};
 use crate::follow::FollowTable;
 use crate::grammar::{BoundSymbol, Grammar, NonTerminalIdx, ProductionIdx, Symbol};
+use crate::item::{Item, ItemDisplay};
 use crate::lr_common::{LRTable, LRTableBuilder, StateIdx};
 
 use std::collections::BTreeSet;
 use std::hash::Hash;
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
-pub struct LR0Item {
-    pub non_terminal_idx: NonTerminalIdx,
-    pub production_idx: ProductionIdx,
-    pub cursor: usize,
-}
+pub type LR0Item = Item<()>;
 
 impl LR0Item {
     fn new(non_terminal_idx: NonTerminalIdx, production_idx: ProductionIdx) -> LR0Item {
@@ -19,6 +15,7 @@ impl LR0Item {
             non_terminal_idx,
             production_idx,
             cursor: 0,
+            lookahead: (),
         }
     }
 
@@ -31,6 +28,7 @@ impl LR0Item {
             non_terminal_idx,
             production_idx,
             cursor,
+            lookahead: (),
         }
     }
 
@@ -56,6 +54,7 @@ impl LR0Item {
             non_terminal_idx: self.non_terminal_idx,
             production_idx: self.production_idx,
             cursor: self.cursor + 1,
+            lookahead: (),
         }
     }
 
@@ -323,47 +322,9 @@ use crate::lr_common::LRTableDisplay;
 
 use std::fmt;
 
-struct LR0ItemDisplay<'a, A> {
-    item: LR0Item,
-    grammar: &'a Grammar<A>,
-}
-
 pub struct LR0AutomatonDisplay<'a, 'b, A> {
     pub automaton: &'a LR0Automaton,
     pub grammar: &'b Grammar<A>,
-}
-
-impl<'a, A> fmt::Display for LR0ItemDisplay<'a, A> {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        let non_terminal = self.grammar.get_non_terminal(self.item.non_terminal_idx);
-        write!(f, "[{} -> ", non_terminal.non_terminal)?;
-
-        let production = self
-            .grammar
-            .get_production(self.item.non_terminal_idx, self.item.production_idx);
-        for (symbol_idx, symbol) in production.symbols().iter().enumerate() {
-            if symbol_idx == self.item.cursor {
-                write!(f, "|")?;
-            }
-            match &symbol.symbol {
-                Symbol::NonTerminal(nt) => {
-                    write!(f, "{}", self.grammar.get_non_terminal(*nt).non_terminal)?;
-                }
-                Symbol::Terminal(t) => {
-                    write!(f, "{}", self.grammar.get_terminal(*t))?;
-                }
-            }
-            if symbol_idx != production.symbols().len() - 1 {
-                write!(f, " ")?;
-            }
-        }
-
-        if self.item.cursor == production.symbols().len() {
-            write!(f, "|")?;
-        }
-
-        write!(f, "]")
-    }
 }
 
 impl<'a, 'b, A> fmt::Display for LR0AutomatonDisplay<'a, 'b, A> {
@@ -374,8 +335,8 @@ impl<'a, 'b, A> fmt::Display for LR0AutomatonDisplay<'a, 'b, A> {
                 writeln!(
                     f,
                     "  {}",
-                    LR0ItemDisplay {
-                        item: *item,
+                    ItemDisplay {
+                        item: item,
                         grammar: self.grammar
                     }
                 )?;

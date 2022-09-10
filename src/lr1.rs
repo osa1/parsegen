@@ -1,19 +1,14 @@
 use crate::collections::{Map, Set};
 use crate::first::{FirstSet, FirstTable};
 use crate::grammar::{Grammar, NonTerminalIdx, Production, ProductionIdx, Symbol, TerminalIdx};
+use crate::item::{Item, ItemDisplay};
 use crate::lr_common::{LRTable, LRTableBuilder, StateIdx};
 
 use std::collections::BTreeSet;
 use std::hash::Hash;
 
-#[derive(Debug, PartialEq, Eq, PartialOrd, Ord, Hash, Clone)]
-struct LR1Item {
-    non_terminal_idx: NonTerminalIdx,
-    production_idx: ProductionIdx,
-    cursor: usize,
-    // None => EOF
-    lookahead: Option<TerminalIdx>,
-}
+// None as lookahead = EOF
+type LR1Item = Item<Option<TerminalIdx>>;
 
 impl LR1Item {
     #[cfg(test)]
@@ -414,50 +409,13 @@ struct LR1StateDisplay<'a, 'b, A> {
     grammar: &'b Grammar<A>,
 }
 
-struct LR1ItemDisplay<'a, 'b, A> {
-    item: &'a LR1Item,
-    grammar: &'b Grammar<A>,
-}
-
-impl<'a, 'b, A> fmt::Display for LR1ItemDisplay<'a, 'b, A> {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        let non_terminal = self.grammar.get_non_terminal(self.item.non_terminal_idx);
-        let production = non_terminal.get_production(self.item.production_idx);
-
-        write!(f, "[{} -> ", &non_terminal.non_terminal)?;
-
-        for (symbol_idx, symbol) in production.symbols().iter().enumerate() {
-            if symbol_idx == self.item.cursor {
-                write!(f, "|")?;
-            }
-            write!(
-                f,
-                "{}",
-                crate::grammar::SymbolKindDisplay::new(&symbol.symbol, self.grammar),
-            )?;
-            if symbol_idx != production.symbols().len() - 1 {
-                write!(f, " ")?;
-            }
-        }
-
-        if self.item.cursor == production.symbols().len() {
-            write!(f, "|")?;
-        }
-
-        match self.item.lookahead {
-            Some(t) => write!(f, ", {}]", self.grammar.get_terminal(t)),
-            None => write!(f, ", $]"),
-        }
-    }
-}
-
 impl<'a, 'b, A> fmt::Display for LR1StateDisplay<'a, 'b, A> {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         for item in &self.state.items {
             writeln!(
                 f,
                 "  {}",
-                LR1ItemDisplay {
+                ItemDisplay {
                     item,
                     grammar: self.grammar
                 }
@@ -523,6 +481,7 @@ pub fn lr1_dot<A>(automaton: &LR1Automaton, grammar: &Grammar<A>) -> String {
                     non_terminal_idx,
                     production_idx,
                     cursor,
+                    lookahead: (),
                 })
                 .or_default()
                 .insert(lookahead);

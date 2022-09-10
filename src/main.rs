@@ -6,6 +6,7 @@ mod codegen;
 mod collections;
 mod first;
 mod grammar;
+mod item;
 mod lower;
 mod lr1;
 mod lr_codegen;
