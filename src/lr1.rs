@@ -32,10 +32,7 @@ impl LR1Item {
         }
     }
 
-    fn next_symbol<'grammar, A>(
-        &self,
-        grammar: &'grammar Grammar<A>,
-    ) -> Option<&'grammar Symbol> {
+    fn next_symbol<'grammar, A>(&self, grammar: &'grammar Grammar<A>) -> Option<&'grammar Symbol> {
         let production = grammar.get_production(self.non_terminal_idx, self.production_idx);
         production.symbols().get(self.cursor).map(|s| &s.symbol)
     }
@@ -498,6 +495,131 @@ impl<'a, 'b, A> fmt::Display for LR1AutomatonDisplay<'a, 'b, A> {
 
         Ok(())
     }
+}
+
+pub fn lr1_dot<A>(automaton: &LR1Automaton, grammar: &Grammar<A>) -> String {
+    use crate::lr0::LR0Item;
+
+    use std::fmt::Write;
+
+    let mut dot = String::new();
+
+    dot.push_str("digraph G {\n");
+    dot.push_str("    rankdir=LR;\n");
+    dot.push_str("    node [shape=record];\n");
+
+    // Generate nodes
+    for (state_idx, state) in automaton.states.iter().enumerate() {
+        let mut item_lookaheads: FxHashMap<LR0Item, FxHashSet<Option<TerminalIdx>>> =
+            Default::default();
+
+        for LR1Item {
+            non_terminal_idx,
+            production_idx,
+            cursor,
+            lookahead,
+        } in state.items.iter().cloned()
+        {
+            item_lookaheads
+                .entry(LR0Item {
+                    non_terminal_idx,
+                    production_idx,
+                    cursor,
+                })
+                .or_default()
+                .insert(lookahead);
+        }
+
+        write!(&mut dot, "    S{} [label=\"S{}|", state_idx, state_idx).unwrap();
+
+        for (item_idx, (item, la)) in item_lookaheads.iter().enumerate() {
+            write!(
+                &mut dot,
+                "{}: {} ➔ ",
+                item_idx,
+                grammar.get_non_terminal(item.non_terminal_idx).non_terminal
+            )
+            .unwrap();
+
+            let production = grammar.get_production(item.non_terminal_idx, item.production_idx);
+
+            for (symbol_idx, symbol) in production.symbols().iter().enumerate() {
+                if symbol_idx == item.cursor {
+                    dot.push_str("• ");
+                }
+                match &symbol.symbol {
+                    Symbol::NonTerminal(nt) => {
+                        dot.push_str(&grammar.get_non_terminal(*nt).non_terminal);
+                    }
+                    Symbol::Terminal(t) => {
+                        dot.push_str(grammar.get_terminal(*t));
+                    }
+                }
+                if symbol_idx != production.symbols().len() - 1 {
+                    dot.push(' ');
+                }
+            }
+
+            if item.cursor == production.symbols().len() {
+                dot.push_str(" •");
+            }
+
+            dot.push(' ');
+            dot.push_str(&lookahead_string(la, grammar));
+
+            if item_idx != state.items.len() - 1 {
+                dot.push_str("|");
+            }
+        }
+
+        dot.push_str("\"];\n");
+    }
+
+    // Generate edges
+    for (state_idx, state) in automaton.states.iter().enumerate() {
+        for (symbol, next_state) in &state.goto {
+            write!(
+                &mut dot,
+                "    S{} -> S{} [label=\"",
+                state_idx,
+                next_state.as_usize(),
+            )
+            .unwrap();
+
+            match symbol {
+                Symbol::NonTerminal(nt) => {
+                    dot.push_str(&grammar.get_non_terminal(*nt).non_terminal);
+                }
+                Symbol::Terminal(t) => {
+                    dot.push_str(grammar.get_terminal(*t));
+                }
+            }
+
+            dot.push_str("\"];\n");
+        }
+    }
+
+    dot.push_str("}\n");
+
+    dot
+}
+
+fn lookahead_string<A>(la: &FxHashSet<Option<TerminalIdx>>, grammar: &Grammar<A>) -> String {
+    let mut str = String::new();
+    str.push_str("\\{");
+
+    for (t_idx, t) in la.iter().enumerate() {
+        match t {
+            Some(t) => str.push_str(grammar.get_terminal(*t)),
+            None => str.push_str("\\$"),
+        }
+        if t_idx != la.len() - 1 {
+            str.push(',');
+        }
+    }
+
+    str.push_str("\\}");
+    str
 }
 
 #[test]

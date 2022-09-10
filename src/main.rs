@@ -68,7 +68,7 @@ pub fn main() {
     println!();
 
     let dot = lr0::lr0_dot(&lr0_automaton, &grammar);
-    std::fs::write("test.dot", dot).unwrap();
+    std::fs::write("lr0.dot", dot).unwrap();
     // println!("-- LR0 automaton graphviz: ---------------------------------------");
     // print!("{}", lr0::lr0_dot(&lr0_automaton, &grammar));
     // println!("------------------------------------------------------------------");
@@ -77,12 +77,15 @@ pub fn main() {
     let conflicts = lr0::find_conflicts(&lr0_automaton, &grammar);
     println!("{:#?}", conflicts);
 
-    /*
     // let n_terminals = grammar.n_terminals();
     let first_table = crate::first::generate_first_table(&grammar);
     let (lr1_automaton, _nt_state_indices) =
         crate::lr1::generate_lr1_automaton(&grammar, &first_table);
 
+    let dot = lr1::lr1_dot(&lr1_automaton, &grammar);
+    std::fs::write("lr1.dot", dot).unwrap();
+
+    /*
     println!("-- LR1 automaton: ------------------------------------------------");
     println!(
         "{}",

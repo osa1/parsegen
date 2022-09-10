@@ -8,10 +8,10 @@ use std::hash::Hash;
 use fxhash::{FxHashMap, FxHashSet};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
-struct LR0Item {
-    non_terminal_idx: NonTerminalIdx,
-    production_idx: ProductionIdx,
-    cursor: usize,
+pub struct LR0Item {
+    pub non_terminal_idx: NonTerminalIdx,
+    pub production_idx: ProductionIdx,
+    pub cursor: usize,
 }
 
 impl LR0Item {
