@@ -93,8 +93,15 @@ pub fn lower(
             let nt_idx = nt_indices.get(&name.to_string()).unwrap();
 
             let action = match prod.action {
-                ast::Action::User(expr) => expr,
-                ast::Action::Fallible(_) => todo!("Fallible actions not supported yet"),
+                None => syn::Expr::Tuple(syn::ExprTuple {
+                    attrs: vec![],
+                    paren_token: syn::token::Paren {
+                        span: Span::call_site(),
+                    },
+                    elems: syn::punctuated::Punctuated::new(),
+                }),
+                Some(ast::Action::User(expr)) => expr,
+                Some(ast::Action::Fallible(_)) => todo!("Fallible actions not supported yet"),
             };
 
             grammar.add_production(*nt_idx, symbols, action);

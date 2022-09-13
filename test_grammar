@@ -30,18 +30,18 @@ enum Token {
 }
 
 pub Entry: Expr = {
-    "a" <x:X> "d" => Expr::E1(x),
-    "a" <y:Y> "c" => Expr::E2(y),
-    "b" <y:Y> "d" => Expr::E3(y),
-    "b" <x:X> "c" => Expr::E4(x),
+    "a" X "d",
+    "a" Y "c",
+    "b" Y "d",
+    "b" X "c",
 };
 
 X: usize = {
-    "e" <x:X> => x + 1,
-    "e" => 1,
+    "e" X,
+    "e",
 };
 
 Y: usize = {
-    "e" <y:Y> => y + 1,
-    "e" => 1,
+    "e" Y,
+    "e",
 };

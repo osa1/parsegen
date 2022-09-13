@@ -108,7 +108,7 @@ pub struct NonTerminal {
 #[derive(Debug)]
 pub struct Production {
     pub symbols: Vec<Symbol>,
-    pub action: Action,
+    pub action: Option<Action>,
 }
 
 #[derive(Debug)]
@@ -321,7 +321,7 @@ impl Parse for NonTerminal {
             syn::braced!(contents in input);
             while !contents.is_empty() {
                 productions.push(contents.parse::<Production>()?);
-                let _ = contents.parse::<syn::token::Comma>();
+                let _ = contents.parse::<syn::token::Comma>()?;
             }
             input.parse::<syn::token::Semi>()?;
         } else {
@@ -340,10 +340,14 @@ impl Parse for NonTerminal {
 impl Parse for Production {
     fn parse(input: &ParseBuffer) -> syn::Result<Self> {
         let mut symbols: Vec<Symbol> = vec![];
-        while !input.peek(syn::token::FatArrow) {
+        while !input.peek(syn::token::FatArrow) && !input.peek(syn::token::Comma) {
             symbols.push(input.parse::<Symbol>()?);
         }
-        let action = input.parse::<Action>()?;
+        let action = if input.peek(syn::token::FatArrow) {
+            Some(input.parse::<Action>()?)
+        } else {
+            None
+        };
         Ok(Production { symbols, action })
     }
 }
