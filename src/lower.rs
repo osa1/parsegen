@@ -26,6 +26,18 @@ pub fn lower(
         t_indices
     };
 
+    fn non_terminal_ty(nt: &ast::NonTerminal) -> syn::Type {
+        match &nt.type_decl {
+            Some(ty) => ty.clone(),
+            None => syn::Type::Tuple(syn::TypeTuple {
+                paren_token: syn::token::Paren {
+                    span: Span::call_site(),
+                },
+                elems: syn::punctuated::Punctuated::new(),
+            }),
+        }
+    }
+
     for nt in &non_terminals {
         if nt.visibility.is_pub() {
             // For a `pub` non-terminal:
@@ -38,12 +50,12 @@ pub fn lower(
             //
             //   This new terminal will be used as an entry point to the parser.
             let nt1_name = nt.name.to_string() + "1";
-            let nt1_idx = grammar.add_non_terminal(nt1_name, nt.type_decl.clone(), false);
+            let nt1_idx = grammar.add_non_terminal(nt1_name, non_terminal_ty(nt), false);
             // Original name mapped to the new name with "1" suffix
             nt_indices.insert(nt.name.to_string(), nt1_idx);
 
             // Create the entry point
-            let nt_idx = grammar.add_non_terminal(nt.name.to_string(), nt.type_decl.clone(), true);
+            let nt_idx = grammar.add_non_terminal(nt.name.to_string(), non_terminal_ty(nt), true);
             // Add the production here as we already defined non-terminal on the RHS
             let binder_ident = syn::Ident::new("x", Span::call_site());
             grammar.add_production(
@@ -69,7 +81,7 @@ pub fn lower(
             );
         } else {
             let nt_name = nt.name.to_string();
-            let nt_idx = grammar.add_non_terminal(nt_name.clone(), nt.type_decl.clone(), false);
+            let nt_idx = grammar.add_non_terminal(nt_name.clone(), non_terminal_ty(nt), false);
             nt_indices.insert(nt_name, nt_idx);
         }
     }

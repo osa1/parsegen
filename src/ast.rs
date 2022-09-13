@@ -101,7 +101,7 @@ pub struct NonTerminal {
     pub visibility: Visibility,
     pub name: syn::Ident,
     // pub macro_args: Vec<Ident>,
-    pub type_decl: syn::Type,
+    pub type_decl: Option<syn::Type>,
     pub productions: Vec<Production>,
 }
 
@@ -312,8 +312,12 @@ impl Parse for NonTerminal {
     fn parse(input: &ParseBuffer) -> syn::Result<Self> {
         let visibility = input.parse::<Visibility>()?;
         let name = input.parse::<syn::Ident>()?;
-        input.parse::<syn::token::Colon>()?;
-        let type_decl = input.parse::<syn::Type>()?;
+        let type_decl = if input.peek(syn::token::Colon) {
+            let _ = input.parse::<syn::token::Colon>();
+            Some(input.parse::<syn::Type>()?)
+        } else {
+            None
+        };
         input.parse::<syn::token::Eq>()?;
         let mut productions: Vec<Production> = vec![];
         if input.peek(syn::token::Brace) {

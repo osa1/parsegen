@@ -29,19 +29,34 @@ enum Token {
     "e" => Token::E,
 }
 
-pub Entry: Expr = {
-    "a" X "d",
-    "a" Y "c",
-    "b" Y "d",
-    "b" X "c",
+pub Entry = {
+    ZeroOrMoreA0 ZeroOrMoreB0,
 };
 
-X: usize = {
-    "e" X,
-    "e",
+ZeroOrMoreA0 = {
+    ZeroOrMoreA,
 };
 
-Y: usize = {
-    "e" Y,
-    "e",
+ZeroOrMoreB0 = {
+    ZeroOrMoreB,
+};
+
+ZeroOrMoreA = {
+    ,
+    OneOrMoreA,
+};
+
+OneOrMoreA = {
+    "a",
+    OneOrMoreA "a",
+};
+
+ZeroOrMoreB = {
+    ,
+    OneOrMoreB,
+};
+
+OneOrMoreB = {
+    "b",
+    OneOrMoreB "b",
 };
