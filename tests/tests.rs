@@ -643,3 +643,82 @@ fn lookahead_example_2() {
         Ok(Expr::E4(2))
     );
 }
+
+#[test]
+fn token_ordering() {
+    #[derive(Debug, PartialEq, Eq)]
+    pub enum Token<'input> {
+        Id(&'input str),
+    }
+
+    #[derive(Debug, PartialEq, Eq)]
+    pub enum Expr {
+        IdA,
+        Id,
+    }
+
+    lexer! {
+        Lexer -> Token<'input>;
+
+        [' ' '\t' '\n']+,
+
+        ['a'-'z']+ => |lexer| {
+            let match_ = lexer.match_();
+            lexer.return_(Token::Id(match_))
+        },
+    }
+
+    {
+        parser! {
+            enum Token<'input> {
+                "id_a" => Token::Id("a"),
+                "id" => Token::Id(<&'input str>),
+            }
+
+            pub Exprs : Vec<Expr> = {
+                <e:Expr0> <mut es:Exprs> => {
+                    es.insert(0, e);
+                    es
+                },
+
+                => vec![],
+            };
+
+            Expr0 : Expr = {
+                "id" => Expr::Id,
+                "id_a" => Expr::IdA,
+            };
+        }
+
+        let lexer = Lexer::new("a b");
+        let mut iter = lexer.map(|r| r.map(|(_, t, _)| t));
+        assert_eq!(Exprs::parse(&mut iter), Ok(vec![Expr::IdA, Expr::Id]));
+    }
+
+    {
+        parser! {
+            enum Token<'input> {
+                "id" => Token::Id(<&'input str>),
+                "id_a" => Token::Id("a"), // never matched
+            }
+
+            pub Exprs : Vec<Expr> = {
+                <e:Expr0> <mut es:Exprs> => {
+                    es.insert(0, e);
+                    es
+                },
+
+                => vec![],
+            };
+
+            Expr0 : Expr = {
+                "id" => Expr::Id,
+                "id_a" => Expr::IdA,
+            };
+        }
+
+        let lexer = Lexer::new("a b");
+        let mut iter = lexer.map(|r| r.map(|(_, t, _)| t));
+        assert_eq!(Exprs::parse(&mut iter), Ok(vec![Expr::Id, Expr::Id]));
+    }
+}
