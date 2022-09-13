@@ -30,33 +30,18 @@ enum Token {
 }
 
 pub Entry = {
-    ZeroOrMoreA0 ZeroOrMoreB0,
+    "a" X "d",
+    "a" Y "c",
+    "b" Y "d",
+    "b" X "c",
 };
 
-ZeroOrMoreA0 = {
-    ZeroOrMoreA,
+X = {
+    "e" X,
+    "e",
 };
 
-ZeroOrMoreB0 = {
-    ZeroOrMoreB,
-};
-
-ZeroOrMoreA = {
-    ,
-    OneOrMoreA,
-};
-
-OneOrMoreA = {
-    "a",
-    OneOrMoreA "a",
-};
-
-ZeroOrMoreB = {
-    ,
-    OneOrMoreB,
-};
-
-OneOrMoreB = {
-    "b",
-    OneOrMoreB "b",
+Y = {
+    "e" Y,
+    "e",
 };
