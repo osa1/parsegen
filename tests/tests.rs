@@ -357,7 +357,11 @@ fn test_grammar_7() {
     );
 }
 
-// An example with (1) juxtaposition application syntax (2) unary `-` (3) binary `-`
+// An example with:
+// - juxtaposition application syntax
+// - unary `-`
+// - binary `-`
+// - multiple entry points
 #[test]
 fn expr_example() {
     #[derive(Debug, PartialEq, Eq)]
@@ -388,7 +392,7 @@ fn expr_example() {
                 Expr::Sub(Box::new(expr1), Box::new(expr2)),
         };
 
-        UnOpExpr: Expr = {
+        pub UnOpExpr: Expr = {
             <expr:AppExpr> =>
                 expr,
 
@@ -396,7 +400,7 @@ fn expr_example() {
                 Expr::Neg(Box::new(expr)),
         };
 
-        AppExpr: Expr = {
+        pub AppExpr: Expr = {
             <expr:SimpleExpr> =>
                 expr,
 
@@ -404,7 +408,7 @@ fn expr_example() {
                 Expr::App(Box::new(expr1), Box::new(expr2)),
         };
 
-        SimpleExpr: Expr = {
+        pub SimpleExpr: Expr = {
             "n" =>
                 Expr::Id,
         };
@@ -447,6 +451,24 @@ fn expr_example() {
                 .map(Ok::<Token, ()>)
         ),
         Ok(Sub(Box::new(Id), Box::new(Neg(Box::new(Id)))))
+    );
+
+    // Try other entry points
+    assert_eq!(
+        UnOpExpr::parse(
+            vec![Token::Minus, Token::Id]
+                .into_iter()
+                .map(Ok::<Token, ()>)
+        ),
+        Ok(Neg(Box::new(Id)))
+    );
+    assert_eq!(
+        AppExpr::parse(vec![Token::Id, Token::Id].into_iter().map(Ok::<Token, ()>)),
+        Ok(App(Box::new(Id), Box::new(Id)))
+    );
+    assert_eq!(
+        SimpleExpr::parse(vec![Token::Id].into_iter().map(Ok::<Token, ()>)),
+        Ok(Id)
     );
 }
 
