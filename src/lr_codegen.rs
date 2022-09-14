@@ -103,7 +103,7 @@ pub fn generate_lr1_parser(grammar: Grammar<syn::Expr>, tokens: &TokenEnum) -> T
 
                 impl #non_terminal_name_id {
                     pub fn parse<#(#token_lifetimes,)* E: Clone>(
-                        mut input: impl Iterator<Item=Result<#token_type<#(#token_lifetimes,)*>, E>>
+                        input: impl Iterator<Item=Result<#token_type<#(#token_lifetimes,)*>, E>>
                     ) -> Result<#non_terminal_return_type, ParseError<E>>
                     {
                         parse_generic(
