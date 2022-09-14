@@ -11,6 +11,38 @@ pub struct Item<LA> {
     pub lookahead: LA,
 }
 
+impl<LA> Item<LA> {
+    pub fn next_symbol<'grammar, A>(
+        &self,
+        grammar: &'grammar Grammar<A>,
+    ) -> Option<&'grammar Symbol> {
+        let production = grammar.get_production(self.non_terminal_idx, self.production_idx);
+        let symbols = production.symbols();
+        symbols.get(self.cursor).map(|s| &s.symbol)
+    }
+
+    pub fn is_reduce_item<A>(&self, grammar: &Grammar<A>) -> bool {
+        let production = grammar.get_production(self.non_terminal_idx, self.production_idx);
+        self.cursor == production.symbols().len()
+    }
+
+    pub fn is_shift_item<A>(&self, grammar: &Grammar<A>) -> bool {
+        let production = grammar.get_production(self.non_terminal_idx, self.production_idx);
+        match production.symbols().get(self.cursor) {
+            Some(symbol) => symbol.is_terminal(),
+            None => false,
+        }
+    }
+}
+
+impl<LA: Clone> Item<LA> {
+    pub fn advance(&self) -> Self {
+        let mut item = self.clone();
+        item.cursor += 1;
+        item
+    }
+}
+
 pub trait LookaheadDisplay {
     fn fmt<A>(&self, f: &mut fmt::Formatter<'_>, grammar: &Grammar<A>) -> fmt::Result;
 

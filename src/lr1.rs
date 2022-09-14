@@ -26,11 +26,6 @@ impl LR1Item {
         }
     }
 
-    fn next_symbol<'grammar, A>(&self, grammar: &'grammar Grammar<A>) -> Option<&'grammar Symbol> {
-        let production = grammar.get_production(self.non_terminal_idx, self.production_idx);
-        production.symbols().get(self.cursor).map(|s| &s.symbol)
-    }
-
     /// Returns non-terminal expected by the item, if the next expected symbol is a non-terminal.
     /// Otherwise returns `None`.
     fn next_non_terminal<A>(&self, grammar: &Grammar<A>) -> Option<NonTerminalIdx> {
@@ -56,12 +51,6 @@ impl LR1Item {
         grammar.get_production(self.non_terminal_idx, self.production_idx)
     }
 
-    fn advance(&self) -> LR1Item {
-        let mut item: LR1Item = (*self).clone();
-        item.cursor += 1;
-        item
-    }
-
     fn is_complete<A>(&self, grammar: &Grammar<A>) -> bool {
         let production = self.get_production(grammar);
         self.cursor == production.symbols().len()
@@ -77,82 +66,85 @@ fn compute_lr1_closure<A>(
 
     let mut work_list: Vec<LR1Item> = closure.iter().cloned().collect();
     while let Some(item) = work_list.pop() {
-        if let Some(next) = item.next_non_terminal(grammar) {
-            // Need to find the `first` set of the item after `next`. So if the item is
-            //
-            //     [ X -> ... . B x | t ]
-            //
-            // `next` is `B`. We need the first set of `x t`, where `x` is whatever's next after
-            // `B` (not a single terminal/non-terminal, but the whole rest of the production), and
-            // `t` is the item's lookahead token.
-            let first = {
-                let production = item.get_production(grammar);
-                let mut first: FirstSet = Default::default();
-                let mut end_allowed = true;
-                for symbol in &production.symbols()[item.cursor + 1..] {
-                    // println!(
-                    //     "Checking symbol {}",
-                    //     SymbolKindDisplay {
-                    //         symbol: &symbol.kind,
-                    //         grammar
-                    //     }
-                    // );
-                    match &symbol.symbol {
-                        Symbol::Terminal(t) => {
-                            end_allowed = false;
+        let next = match item.next_non_terminal(grammar) {
+            None => continue,
+            Some(next) => next,
+        };
+
+        // Need to find the `first` set of the item after `next`. So if the item is
+        //
+        //     [ X -> ... . B x | t ]
+        //
+        // `next` is `B`. We need the first set of `x t`, where `x` is whatever's next after
+        // `B` (not a single terminal/non-terminal, but the whole rest of the production), and
+        // `t` is the item's lookahead token.
+        let first = {
+            let production = item.get_production(grammar);
+            let mut first: FirstSet = Default::default();
+            let mut end_allowed = true;
+            for symbol in &production.symbols()[item.cursor + 1..] {
+                // println!(
+                //     "Checking symbol {}",
+                //     SymbolKindDisplay {
+                //         symbol: &symbol.kind,
+                //         grammar
+                //     }
+                // );
+                match &symbol.symbol {
+                    Symbol::Terminal(t) => {
+                        end_allowed = false;
+                        first.add(*t);
+                        break;
+                    }
+                    Symbol::NonTerminal(nt) => {
+                        let nt_first = first_table.get_first(*nt);
+                        for t in nt_first.terminals() {
                             first.add(*t);
+                        }
+                        if !nt_first.has_empty() {
+                            end_allowed = false;
                             break;
                         }
-                        Symbol::NonTerminal(nt) => {
-                            let nt_first = first_table.get_first(*nt);
-                            for t in nt_first.terminals() {
-                                first.add(*t);
-                            }
-                            if !nt_first.has_empty() {
-                                end_allowed = false;
-                                break;
-                            }
-                        }
                     }
                 }
-                if end_allowed {
-                    match &item.lookahead {
-                        Some(lookahead) => first.add(*lookahead),
-                        None => first.set_empty(),
-                    }
+            }
+            if end_allowed {
+                match &item.lookahead {
+                    Some(lookahead) => first.add(*lookahead),
+                    None => first.set_empty(),
                 }
-                first
-            };
+            }
+            first
+        };
 
-            // println!(
-            //     "LR1 closure item = {}, next = {}, first = {}",
-            //     LR1ItemDisplay { item: &item, grammar },
-            //     grammar.get_non_terminal(next).non_terminal,
-            //     crate::first::FirstSetDisplay { set: &first, grammar }
-            // );
+        // println!(
+        //     "LR1 closure item = {}, next = {}, first = {}",
+        //     LR1ItemDisplay { item: &item, grammar },
+        //     grammar.get_non_terminal(next).non_terminal,
+        //     crate::first::FirstSetDisplay { set: &first, grammar }
+        // );
 
-            for (production_idx, _) in grammar.non_terminal_production_indices(next) {
-                for t in first.terminals() {
-                    let item = LR1Item {
-                        non_terminal_idx: next,
-                        production_idx,
-                        cursor: 0,
-                        lookahead: Some(*t),
-                    };
-                    if closure.insert(item.clone()) {
-                        work_list.push(item);
-                    }
+        for (production_idx, _) in grammar.non_terminal_production_indices(next) {
+            for t in first.terminals() {
+                let item = LR1Item {
+                    non_terminal_idx: next,
+                    production_idx,
+                    cursor: 0,
+                    lookahead: Some(*t),
+                };
+                if closure.insert(item.clone()) {
+                    work_list.push(item);
                 }
-                if first.has_empty() {
-                    let item = LR1Item {
-                        non_terminal_idx: next,
-                        production_idx,
-                        cursor: 0,
-                        lookahead: None,
-                    };
-                    if closure.insert(item.clone()) {
-                        work_list.push(item);
-                    }
+            }
+            if first.has_empty() {
+                let item = LR1Item {
+                    non_terminal_idx: next,
+                    production_idx,
+                    cursor: 0,
+                    lookahead: None,
+                };
+                if closure.insert(item.clone()) {
+                    work_list.push(item);
                 }
             }
         }

@@ -7,10 +7,13 @@ mod collections;
 mod first;
 mod grammar;
 mod item;
+mod lane_table;
+mod lane_tracer;
 mod lower;
 mod lr1;
 mod lr_codegen;
 mod lr_common;
+mod state_graph;
 
 mod follow;
 mod lr0;
@@ -66,6 +69,11 @@ pub fn main() {
             automaton: &lr0_automaton
         }
     );
+
+    println!();
+    println!("Successor graph:");
+    println!("{}", lr0_automaton.state_graph);
+
     println!("------------------------------------------------------------------");
     println!();
 

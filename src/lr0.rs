@@ -3,6 +3,7 @@ use crate::follow::FollowTable;
 use crate::grammar::{BoundSymbol, Grammar, NonTerminalIdx, ProductionIdx, Symbol};
 use crate::item::{Item, ItemDisplay};
 use crate::lr_common::{LRTable, LRTableBuilder, StateIdx};
+use crate::state_graph::StateGraph;
 
 use std::collections::BTreeSet;
 use std::hash::Hash;
@@ -32,12 +33,6 @@ impl LR0Item {
         }
     }
 
-    fn next_symbol<'grammar, A>(&self, grammar: &'grammar Grammar<A>) -> Option<&'grammar Symbol> {
-        let production = grammar.get_production(self.non_terminal_idx, self.production_idx);
-        let symbols = production.symbols();
-        symbols.get(self.cursor).map(|s| &s.symbol)
-    }
-
     fn next_non_terminal<A>(&self, grammar: &Grammar<A>) -> Option<NonTerminalIdx> {
         match self.next_symbol(grammar) {
             Some(Symbol::NonTerminal(nt_idx)) => Some(*nt_idx),
@@ -49,25 +44,16 @@ impl LR0Item {
         self.next_symbol(grammar).is_none()
     }
 
-    fn advance(&self) -> LR0Item {
-        LR0Item {
-            non_terminal_idx: self.non_terminal_idx,
-            production_idx: self.production_idx,
-            cursor: self.cursor + 1,
-            lookahead: (),
-        }
-    }
-
-    fn is_reduce_item<A>(&self, grammar: &Grammar<A>) -> bool {
-        let production = grammar.get_production(self.non_terminal_idx, self.production_idx);
-        self.cursor == production.symbols().len()
-    }
-
-    fn is_shift_item<A>(&self, grammar: &Grammar<A>) -> bool {
-        let production = grammar.get_production(self.non_terminal_idx, self.production_idx);
-        match production.symbols().get(self.cursor) {
-            Some(symbol) => symbol.is_terminal(),
-            None => false,
+    pub fn revert(&self) -> Option<LR0Item> {
+        if self.cursor == 0 {
+            None
+        } else {
+            Some(LR0Item {
+                non_terminal_idx: self.non_terminal_idx,
+                production_idx: self.production_idx,
+                cursor: self.cursor - 1,
+                lookahead: (),
+            })
         }
     }
 }
@@ -144,6 +130,7 @@ pub struct LR0Automaton {
     states: Vec<LR0State>,
     // Maps existing item sets to their state indices, to maintain sharing.
     state_indices: Map<BTreeSet<LR0Item>, StateIdx>,
+    pub state_graph: StateGraph,
 }
 
 impl Default for LR0Automaton {
@@ -151,6 +138,7 @@ impl Default for LR0Automaton {
         LR0Automaton {
             states: vec![],
             state_indices: Default::default(),
+            state_graph: StateGraph::new(),
         }
     }
 }
@@ -165,8 +153,8 @@ impl LR0Automaton {
 }
 
 #[derive(Debug)]
-struct LR0State {
-    items: BTreeSet<LR0Item>,
+pub struct LR0State {
+    pub items: BTreeSet<LR0Item>,
     goto: Map<Symbol, StateIdx>,
 }
 
@@ -196,6 +184,7 @@ impl LR0Automaton {
 
     fn add_goto(&mut self, from: StateIdx, to: StateIdx, symbol: Symbol) {
         self.states[from.0].goto.insert(symbol, to);
+        self.state_graph.add_successor(from, to);
     }
 }
 

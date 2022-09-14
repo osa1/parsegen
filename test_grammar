@@ -1,4 +1,3 @@
-/*
 enum Token {
     "e" => Token::E,
     "c" => Token::C,
@@ -19,8 +18,8 @@ Y: usize = {
     "e" <y:Y> => y + 1,
     "e" => 1,
 };
-*/
 
+/*
 enum Token {
     "a" => Token::A,
     "b" => Token::B,
@@ -45,3 +44,4 @@ Y = {
     "e" Y,
     "e",
 };
+*/
