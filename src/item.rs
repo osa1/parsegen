@@ -21,6 +21,20 @@ impl<LA> Item<LA> {
         symbols.get(self.cursor).map(|s| &s.symbol)
     }
 
+    pub fn next_non_terminal<A>(&self, grammar: &Grammar<A>) -> Option<NonTerminalIdx> {
+        match self.next_symbol(grammar) {
+            Some(Symbol::NonTerminal(nt_idx)) => Some(*nt_idx),
+            _ => None,
+        }
+    }
+
+    pub fn next_terminal<A>(&self, grammar: &Grammar<A>) -> Option<TerminalIdx> {
+        match self.next_symbol(grammar) {
+            Some(Symbol::Terminal(t)) => Some(*t),
+            _ => None,
+        }
+    }
+
     pub fn is_reduce_item<A>(&self, grammar: &Grammar<A>) -> bool {
         let production = grammar.get_production(self.non_terminal_idx, self.production_idx);
         self.cursor == production.symbols().len()

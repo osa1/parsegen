@@ -32,30 +32,6 @@ impl LR0Item {
             lookahead: (),
         }
     }
-
-    pub fn next_non_terminal<A>(&self, grammar: &Grammar<A>) -> Option<NonTerminalIdx> {
-        match self.next_symbol(grammar) {
-            Some(Symbol::NonTerminal(nt_idx)) => Some(*nt_idx),
-            _ => None,
-        }
-    }
-
-    fn is_cursor_at_end<A>(&self, grammar: &Grammar<A>) -> bool {
-        self.next_symbol(grammar).is_none()
-    }
-
-    pub fn revert(&self) -> Option<LR0Item> {
-        if self.cursor == 0 {
-            None
-        } else {
-            Some(LR0Item {
-                non_terminal_idx: self.non_terminal_idx,
-                production_idx: self.production_idx,
-                cursor: self.cursor - 1,
-                lookahead: (),
-            })
-        }
-    }
 }
 
 fn compute_lr0_closure<A>(grammar: &Grammar<A>, items: &BTreeSet<LR0Item>) -> BTreeSet<LR0Item> {
@@ -267,7 +243,7 @@ fn build_slr_table<A: Clone + std::fmt::Debug + std::cmp::Eq>(
             }
 
             // Rule 2.b
-            if item.is_cursor_at_end(grammar) {
+            if item.is_reduce_item(grammar) {
                 let follow_set = follow_table.get_follow(item.non_terminal_idx);
 
                 let production = item.get_production(grammar);

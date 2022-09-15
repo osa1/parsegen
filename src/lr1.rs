@@ -25,29 +25,6 @@ impl LR1Item {
             lookahead,
         }
     }
-
-    /// Returns non-terminal expected by the item, if the next expected symbol is a non-terminal.
-    /// Otherwise returns `None`.
-    fn next_non_terminal<A>(&self, grammar: &Grammar<A>) -> Option<NonTerminalIdx> {
-        match self.next_symbol(grammar) {
-            Some(Symbol::NonTerminal(nt_idx)) => Some(*nt_idx),
-            _ => None,
-        }
-    }
-
-    /// Returns terminal expected by the item, if the next expected symbol is a terminal. Otherwise
-    /// returns `None`.
-    fn next_terminal<A>(&self, grammar: &Grammar<A>) -> Option<TerminalIdx> {
-        match self.next_symbol(grammar) {
-            Some(Symbol::Terminal(t)) => Some(*t),
-            _ => None,
-        }
-    }
-
-    fn is_complete<A>(&self, grammar: &Grammar<A>) -> bool {
-        let production = self.get_production(grammar);
-        self.cursor == production.symbols().len()
-    }
 }
 
 fn compute_lr1_closure<A>(
@@ -347,7 +324,7 @@ pub fn build_lr1_table<A: Clone + fmt::Debug + Eq>(
             let non_terminal = grammar.get_non_terminal(item.non_terminal_idx);
 
             // Rule 2.b
-            if item.is_complete(grammar) && !non_terminal.public {
+            if item.is_reduce_item(grammar) && !non_terminal.public {
                 let production = grammar.get_production(item.non_terminal_idx, item.production_idx);
                 table.add_reduce(
                     grammar,
