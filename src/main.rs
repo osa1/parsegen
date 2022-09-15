@@ -15,7 +15,7 @@ mod lr_codegen;
 mod lr_common;
 mod state_graph;
 
-mod follow;
+// mod follow;
 mod lr0;
 
 #[cfg(test)]
@@ -59,7 +59,7 @@ pub fn main() {
     println!("------------------------------------------------------------------");
     println!();
 
-    let mut lr0_automaton = lr0::compute_lr0_automaton(&grammar);
+    let (lr0_automaton, mut state_graph) = lr0::compute_lr0_automaton(&grammar);
 
     println!("-- LR0 automaton: ------------------------------------------------");
     print!(
@@ -72,7 +72,7 @@ pub fn main() {
 
     println!();
     println!("Successor graph:");
-    println!("{}", lr0_automaton.state_graph);
+    println!("{}", state_graph);
 
     println!("------------------------------------------------------------------");
     println!();
@@ -94,7 +94,7 @@ pub fn main() {
         lane_tracer::lane_trace(
             &lr0_automaton.states,
             &first_table,
-            &mut lr0_automaton.state_graph,
+            &mut state_graph,
             &mut lane_table,
             &mut Default::default(),
             &grammar,

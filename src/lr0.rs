@@ -1,5 +1,5 @@
 use crate::collections::{Map, Set};
-use crate::follow::FollowTable;
+// use crate::follow::FollowTable;
 use crate::grammar::{BoundSymbol, Grammar, NonTerminalIdx, ProductionIdx, Symbol};
 use crate::item::{Item, ItemDisplay};
 use crate::lr_common::{LRTable, LRTableBuilder, StateIdx};
@@ -104,9 +104,6 @@ fn compute_lr0_goto<A>(
 #[derive(Debug)]
 pub struct LR0Automaton {
     pub states: Vec<LR0State>,
-    // Maps existing item sets to their state indices, to maintain sharing.
-    state_indices: Map<BTreeSet<LR0Item>, StateIdx>,
-    pub state_graph: StateGraph,
 }
 
 /// Index of an item in a `LR0State.items`.
@@ -121,11 +118,7 @@ impl LR0ItemIdx {
 
 impl Default for LR0Automaton {
     fn default() -> Self {
-        LR0Automaton {
-            states: vec![],
-            state_indices: Default::default(),
-            state_graph: StateGraph::new(),
-        }
+        LR0Automaton { states: vec![] }
     }
 }
 
@@ -145,39 +138,30 @@ pub struct LR0State {
     pub goto: Map<Symbol, StateIdx>,
 }
 
-impl LR0Automaton {
-    fn add_state_or_get_idx(&mut self, state: BTreeSet<LR0Item>) -> (StateIdx, bool) {
-        match self.state_indices.get(&state) {
+// (sets, transitions indexed by set indices)
+pub fn compute_lr0_automaton<A>(grammar: &Grammar<A>) -> (LR0Automaton, StateGraph) {
+    let mut state_indices: Map<BTreeSet<LR0Item>, StateIdx> = Default::default();
+    let mut states: Vec<LR0State> = Default::default();
+    let mut state_graph = StateGraph::new();
+
+    fn add_state_or_get_idx(
+        states: &mut Vec<LR0State>,
+        state_indices: &mut Map<BTreeSet<LR0Item>, StateIdx>,
+        state: BTreeSet<LR0Item>,
+    ) -> (StateIdx, bool) {
+        match state_indices.get(&state) {
             Some(idx) => (*idx, false),
             None => {
-                let idx = self.states.len();
-                self.states.push(LR0State {
+                let idx = states.len();
+                states.push(LR0State {
                     items: state.clone(),
                     goto: Default::default(),
                 });
-                self.state_indices.insert(state, StateIdx(idx));
+                state_indices.insert(state, StateIdx(idx));
                 (StateIdx(idx), true)
             }
         }
     }
-
-    fn get_state_items(&self, idx: StateIdx) -> &BTreeSet<LR0Item> {
-        &self.get_state(idx).items
-    }
-
-    fn get_state(&self, idx: StateIdx) -> &LR0State {
-        &self.states[idx.0]
-    }
-
-    fn add_goto(&mut self, from: StateIdx, to: StateIdx, symbol: Symbol) {
-        self.states[from.0].goto.insert(symbol, to);
-        self.state_graph.add_successor(from, to);
-    }
-}
-
-// (sets, transitions indexed by set indices)
-pub fn compute_lr0_automaton<A>(grammar: &Grammar<A>) -> LR0Automaton {
-    let mut automaton: LR0Automaton = Default::default();
 
     let init = compute_lr0_closure(
         grammar,
@@ -195,12 +179,12 @@ pub fn compute_lr0_automaton<A>(grammar: &Grammar<A>) -> LR0Automaton {
     //         .collect::<Vec<_>>()
     // );
 
-    let (init_state_idx, _) = automaton.add_state_or_get_idx(init);
+    let (init_state_idx, _) = add_state_or_get_idx(&mut states, &mut state_indices, init);
 
     let mut work_list: Vec<StateIdx> = vec![init_state_idx];
 
     while let Some(state_idx) = work_list.pop() {
-        let state = automaton.get_state_items(state_idx).clone();
+        let state = states[state_idx.as_usize()].items.clone();
         let mut state_next_symbols: Set<Symbol> = Default::default();
         for item in &state {
             if let Some(item_next_symbol) = item.next_symbol(grammar) {
@@ -210,21 +194,19 @@ pub fn compute_lr0_automaton<A>(grammar: &Grammar<A>) -> LR0Automaton {
 
         for symbol in state_next_symbols {
             let goto = compute_lr0_goto(grammar, &state, &symbol);
-            let (goto_state, added) = automaton.add_state_or_get_idx(goto);
+            let (goto_state, added) = add_state_or_get_idx(&mut states, &mut state_indices, goto);
             if added {
                 work_list.push(goto_state);
             }
-            automaton.add_goto(state_idx, goto_state, symbol);
+            states[state_idx.as_usize()].goto.insert(symbol, goto_state);
+            state_graph.add_successor(state_idx, goto_state);
         }
     }
 
-    automaton
+    (LR0Automaton { states }, state_graph)
 }
 
-fn symbols_eq(ss1: &[BoundSymbol], ss2: &[Symbol]) -> bool {
-    ss1.len() == ss2.len() && ss1.iter().zip(ss2).all(|(s1, s2)| s1.symbol == *s2)
-}
-
+/*
 fn build_slr_table<A: Clone + std::fmt::Debug + std::cmp::Eq>(
     grammar: &Grammar<A>,
     automaton: &LR0Automaton,
@@ -290,6 +272,7 @@ fn build_slr_table<A: Clone + std::fmt::Debug + std::cmp::Eq>(
 
     table.build()
 }
+*/
 
 #[cfg(test)]
 use crate::lr_common::LRTableDisplay;
