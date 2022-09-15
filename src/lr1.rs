@@ -411,7 +411,7 @@ impl<'a, 'b, A> fmt::Display for LR1StateDisplay<'a, 'b, A> {
             writeln!(
                 f,
                 "  GOTO {} -> {}",
-                crate::grammar::SymbolKindDisplay::new(symbol, self.grammar),
+                crate::grammar::SymbolDisplay::new(symbol, self.grammar),
                 next.0
             )?;
         }

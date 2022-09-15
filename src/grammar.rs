@@ -311,12 +311,12 @@ impl<A> Grammar<A> {
     }
 }
 
-pub struct SymbolKindDisplay<'a, 'b, A> {
+pub struct SymbolDisplay<'a, 'b, A> {
     symbol: &'a Symbol,
     grammar: &'b Grammar<A>,
 }
 
-impl<'a, 'b, A> SymbolKindDisplay<'a, 'b, A> {
+impl<'a, 'b, A> SymbolDisplay<'a, 'b, A> {
     pub fn new(symbol: &'a Symbol, grammar: &'b Grammar<A>) -> Self {
         Self { symbol, grammar }
     }
@@ -389,7 +389,7 @@ impl<'a, 'b, A> fmt::Display for ProductionDisplay<'a, 'b, A> {
     }
 }
 
-impl<'a, 'b, A> fmt::Display for SymbolKindDisplay<'a, 'b, A> {
+impl<'a, 'b, A> fmt::Display for SymbolDisplay<'a, 'b, A> {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self.symbol {
             Symbol::NonTerminal(nt) => {

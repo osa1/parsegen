@@ -2,8 +2,8 @@
 
 use crate::collections::Set;
 use crate::first::{FirstSet, FirstTable};
-use crate::grammar::{Grammar, NonTerminalIdx, ProductionIdx, Symbol};
-use crate::item::Item;
+use crate::grammar::{Grammar, NonTerminalIdx, ProductionIdx, Symbol, SymbolDisplay};
+use crate::item::{Item, ItemDisplay};
 use crate::lane_table::LaneTable;
 use crate::lr0::{LR0Item, LR0State};
 use crate::lr_common::StateIdx;
@@ -32,6 +32,16 @@ pub fn lane_trace<A>(
     if !visited.insert((state_idx, item)) {
         return;
     }
+
+    println!(
+        "Lane trace conflict_idx = {}, state = {}, item = {}",
+        conflict_idx.0,
+        state_idx.0,
+        ItemDisplay {
+            item: &item,
+            grammar
+        }
+    );
 
     fn is_initial_item(item: &LR0Item) -> bool {
         item.non_terminal_idx == NonTerminalIdx(1) && item.production_idx == ProductionIdx(0)
@@ -68,9 +78,21 @@ pub fn lane_trace<A>(
 
     // Cursor is at the beginning of the item: item was an expansion of a non-terminal from another
     // item in the same set.
-    for pred_item in states[state_idx.as_usize()].items.iter().filter(|item| {
-        item.next_symbol(grammar) == Some(&Symbol::NonTerminal(item.non_terminal_idx))
-    }) {
+    for pred_item in states[state_idx.as_usize()]
+        .items
+        .iter()
+        .filter(|pred_item| {
+            pred_item.next_symbol(grammar) == Some(&Symbol::NonTerminal(item.non_terminal_idx))
+        })
+    {
+        println!(
+            "  Checking item {}",
+            ItemDisplay {
+                item: pred_item,
+                grammar
+            }
+        );
+
         // Find the first set after the non-terminal shifted. If the rest of the production can
         // generate empty string, then the item's lookahead is added to the conflict item's
         // lookahead, so we recursive to find the item's lookahead.
@@ -78,7 +100,8 @@ pub fn lane_trace<A>(
             let production = pred_item.get_production(grammar);
             let mut first: FirstSet = Default::default();
             let mut can_generate_empty = true;
-            for symbol in &production.symbols()[item.cursor + 1..] {
+            for symbol in &production.symbols()[pred_item.cursor + 1..] {
+                println!("symbol = {}", SymbolDisplay::new(&symbol.symbol, grammar),);
                 match &symbol.symbol {
                     Symbol::Terminal(t) => {
                         can_generate_empty = false;
@@ -98,6 +121,7 @@ pub fn lane_trace<A>(
                 }
             }
             for t in first.terminals() {
+                println!("  Lookahead found: {}", grammar.get_terminal(*t));
                 lane_table.add_lookahead(state_idx, conflict_idx, Some(*t));
             }
             if can_generate_empty {
