@@ -127,7 +127,7 @@ fn compute_lr0_goto<A>(
 
 #[derive(Debug)]
 pub struct LR0Automaton {
-    states: Vec<LR0State>,
+    pub states: Vec<LR0State>,
     // Maps existing item sets to their state indices, to maintain sharing.
     state_indices: Map<BTreeSet<LR0Item>, StateIdx>,
     pub state_graph: StateGraph,

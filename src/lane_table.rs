@@ -4,7 +4,7 @@ use crate::lane_tracer::ConflictIdx;
 use crate::lr0::LR0ItemIdx;
 use crate::lr_common::StateIdx;
 
-#[derive(Debug)]
+#[derive(Debug, Default)]
 pub struct LaneTable {
     lookaheads: Map<(StateIdx, ConflictIdx), Set<Option<TerminalIdx>>>,
 }

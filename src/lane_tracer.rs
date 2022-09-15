@@ -44,7 +44,7 @@ pub fn lane_trace<A>(
 
     if item.cursor > 0 {
         let unshifted_item = item.unshift();
-        let shifted_symbol = item.next_symbol(grammar).unwrap();
+        let shifted_symbol = unshifted_item.next_symbol(grammar).unwrap();
         let predecessors: Vec<StateIdx> = state_graph.predecessors(state_idx).copied().collect();
         for predecessor in predecessors {
             let predecessor_state = &states[predecessor.as_usize()];

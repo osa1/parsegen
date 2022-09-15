@@ -59,7 +59,7 @@ pub fn main() {
     println!("------------------------------------------------------------------");
     println!();
 
-    let lr0_automaton = lr0::compute_lr0_automaton(&grammar);
+    let mut lr0_automaton = lr0::compute_lr0_automaton(&grammar);
 
     println!("-- LR0 automaton: ------------------------------------------------");
     print!(
@@ -85,11 +85,30 @@ pub fn main() {
     // println!("------------------------------------------------------------------");
     // println!();
 
-    let conflicts = lr0::find_conflicts(&lr0_automaton, &grammar);
-    println!("{:#?}", conflicts);
+    let first_table = crate::first::generate_first_table(&grammar);
+
+    let mut lane_table = lane_table::LaneTable::default();
+    for (conflict_idx, (conflict_state, conflict_item_idx)) in lr0_conflicts.into_iter().enumerate()
+    {
+        let conflict_idx = lane_tracer::ConflictIdx(conflict_idx as u32);
+        lane_tracer::lane_trace(
+            &lr0_automaton.states,
+            &first_table,
+            &mut lr0_automaton.state_graph,
+            &mut lane_table,
+            &mut Default::default(),
+            &grammar,
+            conflict_idx,
+            conflict_state,
+            *lr0_automaton.states[conflict_state.as_usize()]
+                .items
+                .iter()
+                .nth(conflict_item_idx)
+                .unwrap(),
+        );
+    }
 
     // let n_terminals = grammar.n_terminals();
-    let first_table = crate::first::generate_first_table(&grammar);
     let (lr1_automaton, _nt_state_indices) =
         crate::lr1::generate_lr1_automaton(&grammar, &first_table);
 
