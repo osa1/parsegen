@@ -44,13 +44,6 @@ impl LR1Item {
         }
     }
 
-    fn get_production<'grammar, A>(
-        &self,
-        grammar: &'grammar Grammar<A>,
-    ) -> &'grammar Production<A> {
-        grammar.get_production(self.non_terminal_idx, self.production_idx)
-    }
-
     fn is_complete<A>(&self, grammar: &Grammar<A>) -> bool {
         let production = self.get_production(grammar);
         self.cursor == production.symbols().len()

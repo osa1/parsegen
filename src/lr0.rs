@@ -33,7 +33,7 @@ impl LR0Item {
         }
     }
 
-    fn next_non_terminal<A>(&self, grammar: &Grammar<A>) -> Option<NonTerminalIdx> {
+    pub fn next_non_terminal<A>(&self, grammar: &Grammar<A>) -> Option<NonTerminalIdx> {
         match self.next_symbol(grammar) {
             Some(Symbol::NonTerminal(nt_idx)) => Some(*nt_idx),
             _ => None,
@@ -133,6 +133,16 @@ pub struct LR0Automaton {
     pub state_graph: StateGraph,
 }
 
+/// Index of an item in a `LR0State.items`.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
+pub struct LR0ItemIdx(pub u32);
+
+impl LR0ItemIdx {
+    pub fn as_usize(&self) -> usize {
+        self.0 as usize
+    }
+}
+
 impl Default for LR0Automaton {
     fn default() -> Self {
         LR0Automaton {
@@ -154,8 +164,9 @@ impl LR0Automaton {
 
 #[derive(Debug)]
 pub struct LR0State {
+    // TODO: Maybe make this a `Vec` to make random access more efficient and item orders clear
     pub items: BTreeSet<LR0Item>,
-    goto: Map<Symbol, StateIdx>,
+    pub goto: Map<Symbol, StateIdx>,
 }
 
 impl LR0Automaton {
@@ -248,8 +259,6 @@ fn build_slr_table<A: Clone + std::fmt::Debug + std::cmp::Eq>(
 
     for (state_idx, LR0State { items, goto }) in automaton.state_indices() {
         for item in items {
-            // let production = grammar.get_production(non_terminal_idx, production_idx);
-
             // Rule 2.a
             if let Some(Symbol::Terminal(t)) = item.next_symbol(grammar) {
                 if let Some(next_state) = goto.get(&Symbol::Terminal(*t)) {
@@ -261,7 +270,7 @@ fn build_slr_table<A: Clone + std::fmt::Debug + std::cmp::Eq>(
             if item.is_cursor_at_end(grammar) {
                 let follow_set = follow_table.get_follow(item.non_terminal_idx);
 
-                let production = grammar.get_production(item.non_terminal_idx, item.production_idx);
+                let production = item.get_production(grammar);
 
                 for follow in follow_set.terminals() {
                     table.add_reduce(

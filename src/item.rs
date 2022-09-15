@@ -1,5 +1,5 @@
 use crate::collections::Set;
-use crate::grammar::{Grammar, NonTerminalIdx, ProductionIdx, Symbol, TerminalIdx};
+use crate::grammar::{Grammar, NonTerminalIdx, Production, ProductionIdx, Symbol, TerminalIdx};
 
 use std::fmt;
 
@@ -33,12 +33,25 @@ impl<LA> Item<LA> {
             None => false,
         }
     }
+
+    pub fn get_production<'grammar, A>(
+        &self,
+        grammar: &'grammar Grammar<A>,
+    ) -> &'grammar Production<A> {
+        grammar.get_production(self.non_terminal_idx, self.production_idx)
+    }
 }
 
 impl<LA: Clone> Item<LA> {
     pub fn advance(&self) -> Self {
         let mut item = self.clone();
         item.cursor += 1;
+        item
+    }
+
+    pub fn unshift(&self) -> Self {
+        let mut item = self.clone();
+        item.cursor -= 1;
         item
     }
 }
