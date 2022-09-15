@@ -3,7 +3,7 @@
 use crate::collections::Set;
 use crate::first::{FirstSet, FirstTable};
 use crate::grammar::{Grammar, NonTerminalIdx, ProductionIdx, Symbol, SymbolDisplay};
-use crate::item::{Item, ItemDisplay};
+use crate::item::ItemDisplay;
 use crate::lane_table::LaneTable;
 use crate::lr0::{LR0Item, LR0State};
 use crate::lr_common::StateIdx;
@@ -96,47 +96,45 @@ pub fn lane_trace<A>(
         // Find the first set after the non-terminal shifted. If the rest of the production can
         // generate empty string, then the item's lookahead is added to the conflict item's
         // lookahead, so we recursive to find the item's lookahead.
-        let first = {
-            let production = pred_item.get_production(grammar);
-            let mut first: FirstSet = Default::default();
-            let mut can_generate_empty = true;
-            for symbol in &production.symbols()[pred_item.cursor + 1..] {
-                println!("symbol = {}", SymbolDisplay::new(&symbol.symbol, grammar),);
-                match &symbol.symbol {
-                    Symbol::Terminal(t) => {
-                        can_generate_empty = false;
+        let production = pred_item.get_production(grammar);
+        let mut first: FirstSet = Default::default();
+        let mut can_generate_empty = true;
+        for symbol in &production.symbols()[pred_item.cursor + 1..] {
+            println!("symbol = {}", SymbolDisplay::new(&symbol.symbol, grammar),);
+            match &symbol.symbol {
+                Symbol::Terminal(t) => {
+                    can_generate_empty = false;
+                    first.add(*t);
+                    break;
+                }
+                Symbol::NonTerminal(nt) => {
+                    let nt_first = first_table.get_first(*nt);
+                    for t in nt_first.terminals() {
                         first.add(*t);
-                        break;
                     }
-                    Symbol::NonTerminal(nt) => {
-                        let nt_first = first_table.get_first(*nt);
-                        for t in nt_first.terminals() {
-                            first.add(*t);
-                        }
-                        if !nt_first.has_empty() {
-                            can_generate_empty = false;
-                            break;
-                        }
+                    if !nt_first.has_empty() {
+                        can_generate_empty = false;
+                        break;
                     }
                 }
             }
-            for t in first.terminals() {
-                println!("  Lookahead found: {}", grammar.get_terminal(*t));
-                lane_table.add_lookahead(state_idx, conflict_idx, Some(*t));
-            }
-            if can_generate_empty {
-                lane_trace(
-                    states,
-                    first_table,
-                    state_graph,
-                    lane_table,
-                    visited,
-                    grammar,
-                    conflict_idx,
-                    state_idx,
-                    *pred_item,
-                );
-            }
-        };
+        }
+        for t in first.terminals() {
+            println!("  Lookahead found: {}", grammar.get_terminal(*t));
+            lane_table.add_lookahead(state_idx, conflict_idx, Some(*t));
+        }
+        if can_generate_empty {
+            lane_trace(
+                states,
+                first_table,
+                state_graph,
+                lane_table,
+                visited,
+                grammar,
+                conflict_idx,
+                state_idx,
+                *pred_item,
+            );
+        }
     }
 }
