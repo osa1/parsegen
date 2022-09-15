@@ -108,6 +108,16 @@ pub fn main() {
         );
     }
 
+    println!("-- Lane table: ---------------------------------------------------");
+    println!(
+        "{}",
+        lane_table::LaneTableDisplay {
+            lane_table: &lane_table,
+            grammar: &grammar,
+        }
+    );
+    println!("------------------------------------------------------------------");
+
     // let n_terminals = grammar.n_terminals();
     let (lr1_automaton, _nt_state_indices) =
         crate::lr1::generate_lr1_automaton(&grammar, &first_table);
