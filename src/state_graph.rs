@@ -1,5 +1,4 @@
 use crate::collections::{Map, Set};
-use crate::grammar::Symbol;
 use crate::lr_common::StateIdx;
 
 use std::fmt;

@@ -1,8 +1,9 @@
 use crate::collections::{Map, Set};
 // use crate::follow::FollowTable;
-use crate::grammar::{BoundSymbol, Grammar, NonTerminalIdx, ProductionIdx, Symbol};
+use crate::grammar::{Grammar, NonTerminalIdx, ProductionIdx, Symbol};
 use crate::item::{Item, ItemDisplay};
 use crate::lr_common::{LRTable, LRTableBuilder, StateIdx};
+use crate::state::{LRState, LRStateDisplay};
 use crate::state_graph::StateGraph;
 
 use std::collections::BTreeSet;
@@ -131,12 +132,7 @@ impl LR0Automaton {
     }
 }
 
-#[derive(Debug)]
-pub struct LR0State {
-    // TODO: Maybe make this a `Vec` to make random access more efficient and item orders clear
-    pub items: BTreeSet<LR0Item>,
-    pub goto: Map<Symbol, StateIdx>,
-}
+pub type LR0State = LRState<()>;
 
 // (sets, transitions indexed by set indices)
 pub fn compute_lr0_automaton<A>(grammar: &Grammar<A>) -> (LR0Automaton, StateGraph) {
@@ -288,33 +284,14 @@ impl<'a, 'b, A> fmt::Display for LR0AutomatonDisplay<'a, 'b, A> {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         for (state_idx, state) in self.automaton.states.iter().enumerate() {
             writeln!(f, "{}: {{", state_idx)?;
-            for item in &state.items {
-                writeln!(
-                    f,
-                    "  {}",
-                    ItemDisplay {
-                        item: item,
-                        grammar: self.grammar
-                    }
-                )?;
-            }
-
-            for (symbol, next) in state.goto.iter() {
-                match symbol {
-                    Symbol::NonTerminal(nt) => {
-                        writeln!(
-                            f,
-                            "  {} -> {}",
-                            self.grammar.get_non_terminal(*nt).non_terminal,
-                            next.0
-                        )?;
-                    }
-                    Symbol::Terminal(t) => {
-                        writeln!(f, "  {} -> {}", self.grammar.get_terminal(*t), next.0)?;
-                    }
+            write!(
+                f,
+                "{}",
+                LRStateDisplay {
+                    state,
+                    grammar: self.grammar
                 }
-            }
-
+            )?;
             writeln!(f, "}}")?;
         }
         Ok(())

@@ -2,7 +2,6 @@ use crate::collections::{Map, Set};
 use crate::grammar::{Grammar, TerminalIdx};
 use crate::item::LookaheadDisplay_;
 use crate::lane_tracer::ConflictIdx;
-use crate::lr0::LR0ItemIdx;
 use crate::lr_common::StateIdx;
 
 use std::fmt;

@@ -13,6 +13,7 @@ mod lower;
 mod lr1;
 mod lr_codegen;
 mod lr_common;
+mod state;
 mod state_graph;
 
 // mod follow;

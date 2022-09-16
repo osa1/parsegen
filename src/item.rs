@@ -110,8 +110,8 @@ impl LookaheadDisplay for () {
 impl LookaheadDisplay for Option<TerminalIdx> {
     fn fmt<A>(&self, f: &mut fmt::Formatter<'_>, grammar: &Grammar<A>) -> fmt::Result {
         match self {
-            Some(t) => write!(f, ", {}]", grammar.get_terminal(*t)),
-            None => write!(f, ", $]"),
+            Some(t) => write!(f, ", {}", grammar.get_terminal(*t)),
+            None => write!(f, ", $"),
         }
     }
 

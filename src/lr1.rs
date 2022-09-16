@@ -1,11 +1,11 @@
 use crate::collections::{Map, Set};
 use crate::first::{FirstSet, FirstTable};
-use crate::grammar::{Grammar, NonTerminalIdx, Production, ProductionIdx, Symbol, TerminalIdx};
+use crate::grammar::{Grammar, NonTerminalIdx, ProductionIdx, Symbol, TerminalIdx};
 use crate::item::{Item, ItemDisplay};
 use crate::lr_common::{LRTable, LRTableBuilder, StateIdx};
+use crate::state::{LRState, LRStateDisplay};
 
 use std::collections::BTreeSet;
-use std::hash::Hash;
 
 // None as lookahead = EOF
 type LR1Item = Item<Option<TerminalIdx>>;
@@ -142,21 +142,7 @@ fn compute_lr1_goto<A>(
     compute_lr1_closure(grammar, first, goto)
 }
 
-#[derive(Debug)]
-struct LR1State {
-    items: BTreeSet<LR1Item>,
-    goto: Map<Symbol, StateIdx>,
-}
-
-impl LR1State {
-    fn items(&self) -> impl Iterator<Item = &LR1Item> {
-        self.items.iter()
-    }
-
-    fn gotos(&self) -> impl Iterator<Item = (&Symbol, &StateIdx)> {
-        self.goto.iter()
-    }
-}
+type LR1State = LRState<Option<TerminalIdx>>;
 
 #[derive(Debug)]
 pub struct LR1Automaton {
@@ -313,7 +299,7 @@ pub fn build_lr1_table<A: Clone + fmt::Debug + Eq>(
     let mut table: LRTableBuilder<A> = LRTableBuilder::new(automaton.states.len());
 
     for (state_idx, state) in automaton.state_indices() {
-        for item in state.items() {
+        for item in state.items.iter() {
             // Rule 2.a
             if let Some(next_terminal) = item.next_terminal(grammar) {
                 if let Some(next_state) = state.goto.get(&Symbol::Terminal(next_terminal)) {
@@ -345,7 +331,7 @@ pub fn build_lr1_table<A: Clone + fmt::Debug + Eq>(
             }
 
             // Add gotos
-            for (symbol, next) in state.gotos() {
+            for (symbol, next) in state.goto.iter() {
                 if let Symbol::NonTerminal(nt) = symbol {
                     table.add_goto(state_idx, *nt, *next);
                 }
@@ -366,37 +352,6 @@ pub struct LR1AutomatonDisplay<'a, 'b, A> {
     pub grammar: &'b Grammar<A>,
 }
 
-struct LR1StateDisplay<'a, 'b, A> {
-    state: &'a LR1State,
-    grammar: &'b Grammar<A>,
-}
-
-impl<'a, 'b, A> fmt::Display for LR1StateDisplay<'a, 'b, A> {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        for item in &self.state.items {
-            writeln!(
-                f,
-                "  {}",
-                ItemDisplay {
-                    item,
-                    grammar: self.grammar
-                }
-            )?;
-        }
-
-        for (symbol, next) in &self.state.goto {
-            writeln!(
-                f,
-                "  GOTO {} -> {}",
-                crate::grammar::SymbolDisplay::new(symbol, self.grammar),
-                next.0
-            )?;
-        }
-
-        Ok(())
-    }
-}
-
 impl<'a, 'b, A> fmt::Display for LR1AutomatonDisplay<'a, 'b, A> {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         for (state_idx, state) in self.automaton.state_indices() {
@@ -404,7 +359,7 @@ impl<'a, 'b, A> fmt::Display for LR1AutomatonDisplay<'a, 'b, A> {
             write!(
                 f,
                 "{}",
-                LR1StateDisplay {
+                LRStateDisplay {
                     state,
                     grammar: self.grammar
                 }
