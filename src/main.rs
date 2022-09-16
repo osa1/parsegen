@@ -116,6 +116,15 @@ pub fn main() {
             grammar: &grammar,
         }
     );
+    println!("-- Conflict lookaheads: ------------------------------------------");
+    let lookaheads = lane_table.merge_lookaheads();
+    print!(
+        "{}",
+        lane_table::ConflictLookaheadDisplay {
+            set: &lookaheads,
+            grammar: &grammar
+        }
+    );
     println!("------------------------------------------------------------------");
 
     // let n_terminals = grammar.n_terminals();

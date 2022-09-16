@@ -1,5 +1,6 @@
 use crate::collections::{Map, Set};
 use crate::grammar::{Grammar, TerminalIdx};
+use crate::item::LookaheadDisplay_;
 use crate::lane_tracer::ConflictIdx;
 use crate::lr0::LR0ItemIdx;
 use crate::lr_common::StateIdx;
@@ -22,6 +23,36 @@ impl LaneTable {
             .entry((state, idx))
             .or_default()
             .insert(lookahead);
+    }
+
+    pub fn merge_lookaheads(&self) -> Map<ConflictIdx, Set<Option<TerminalIdx>>> {
+        let mut map: Map<ConflictIdx, Set<Option<TerminalIdx>>> = Default::default();
+        for ((_, conflict_idx), lookaheads) in &self.lookaheads {
+            map.entry(*conflict_idx).or_default().extend(lookaheads);
+        }
+        map
+    }
+}
+
+pub struct ConflictLookaheadDisplay<'a, 'b, A> {
+    pub set: &'a Map<ConflictIdx, Set<Option<TerminalIdx>>>,
+    pub grammar: &'b Grammar<A>,
+}
+
+impl<'a, 'b, A> fmt::Display for ConflictLookaheadDisplay<'a, 'b, A> {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        for (conflict_idx, lookaheads) in self.set {
+            writeln!(
+                f,
+                "C{}: {}",
+                conflict_idx.0,
+                LookaheadDisplay_ {
+                    lookahead: lookaheads,
+                    grammar: self.grammar
+                }
+            )?;
+        }
+        Ok(())
     }
 }
 

@@ -70,10 +70,31 @@ impl<LA: Clone> Item<LA> {
     }
 }
 
+pub struct LookaheadDisplay_<'grammar, A, LA: LookaheadDisplay> {
+    pub lookahead: LA,
+    pub grammar: &'grammar Grammar<A>,
+}
+
+impl<'grammar, A, LA: LookaheadDisplay> fmt::Display for LookaheadDisplay_<'grammar, A, LA> {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        self.lookahead.fmt(f, self.grammar)
+    }
+}
+
 pub trait LookaheadDisplay {
     fn fmt<A>(&self, f: &mut fmt::Formatter<'_>, grammar: &Grammar<A>) -> fmt::Result;
 
     fn fmt_dot<A>(&self, f: &mut dyn fmt::Write, grammar: &Grammar<A>) -> fmt::Result;
+}
+
+impl<L: LookaheadDisplay> LookaheadDisplay for &L {
+    fn fmt<A>(&self, f: &mut fmt::Formatter<'_>, grammar: &Grammar<A>) -> fmt::Result {
+        (*self).fmt(f, grammar)
+    }
+
+    fn fmt_dot<A>(&self, f: &mut dyn fmt::Write, grammar: &Grammar<A>) -> fmt::Result {
+        (*self).fmt_dot(f, grammar)
+    }
 }
 
 impl LookaheadDisplay for () {
