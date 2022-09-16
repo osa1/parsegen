@@ -15,6 +15,7 @@ mod lr_codegen;
 mod lr_common;
 mod state;
 mod state_graph;
+mod utils;
 
 // mod follow;
 mod lr0;

@@ -219,7 +219,11 @@ impl<'a, 'b, A, LA: LookaheadDisplay> ItemDisplay<'a, 'b, A, LA> {
                     write!(f, "{}", &self.grammar.get_non_terminal(*nt).non_terminal)?;
                 }
                 Symbol::Terminal(t) => {
-                    write!(f, "{}", &self.grammar.get_terminal(*t))?;
+                    write!(
+                        f,
+                        "{}",
+                        crate::utils::html_escape(&self.grammar.get_terminal(*t))
+                    )?;
                 }
             }
             if symbol_idx != production.symbols().len() - 1 {
