@@ -7,6 +7,7 @@ mod collections;
 mod first;
 mod grammar;
 mod item;
+mod lalr1;
 mod lane_table;
 mod lane_tracer;
 mod lower;
@@ -22,6 +23,10 @@ mod lr0;
 
 #[cfg(test)]
 mod test_grammars;
+
+use crate::collections::{Map, Set};
+use crate::grammar::TerminalIdx;
+use crate::lane_tracer::ConflictIdx;
 
 use std::str::FromStr;
 
@@ -87,11 +92,13 @@ pub fn main() {
     // println!("------------------------------------------------------------------");
     // println!();
 
+    let mut lalr_states: Vec<lalr1::LALR1State> = lalr1::lr0_states_to_lalr1(&lr0_automaton.states);
+
     let first_table = crate::first::generate_first_table(&grammar);
 
     let mut lane_table = lane_table::LaneTable::default();
     for (state_idx, state) in lr0_automaton.states.iter().enumerate() {
-        let conflicts = match lr0_conflicts.get(&lr_common::StateIdx(state_idx)) {
+        let conflicts: &Set<usize> = match lr0_conflicts.get(&lr_common::StateIdx(state_idx)) {
             Some(conflicts) => {
                 assert!(!conflicts.is_empty());
                 conflicts
@@ -130,7 +137,7 @@ pub fn main() {
             "-- Conflict lookaheads for state {}: -----------------------------",
             state_idx
         );
-        let lookaheads = lane_table.merge_lookaheads();
+        let lookaheads: Map<ConflictIdx, Set<Option<TerminalIdx>>> = lane_table.merge_lookaheads();
         print!(
             "{}",
             lane_table::ConflictLookaheadDisplay {
@@ -139,14 +146,40 @@ pub fn main() {
             }
         );
         println!("------------------------------------------------------------------");
+
+        let lalr_state: &mut lalr1::LALR1State = &mut lalr_states[state_idx];
+
+        for (conflict_idx, conflict_item_idx) in conflicts.iter().enumerate() {
+            let conflict_lookaheads = lookaheads
+                .get(&lane_tracer::ConflictIdx(conflict_idx as u32))
+                .unwrap();
+
+            lalr_state.items[*conflict_item_idx].lookahead =
+                conflict_lookaheads.iter().cloned().collect();
+        }
     }
 
+    println!("-- LALR1 states: -------------------------------------------------",);
+    for (state_idx, state) in lalr_states.iter().enumerate() {
+        println!("{}: {{", state_idx);
+        println!(
+            "{}",
+            lalr1::LALR1StateDisplay {
+                state,
+                grammar: &grammar
+            }
+        );
+        println!("}}");
+    }
+
+    /*
     // let n_terminals = grammar.n_terminals();
     let (lr1_automaton, _nt_state_indices) =
         crate::lr1::generate_lr1_automaton(&grammar, &first_table);
 
     let dot = lr1::lr1_dot(&lr1_automaton, &grammar);
     std::fs::write("lr1.dot", dot).unwrap();
+    */
 
     /*
     println!("-- LR1 automaton: ------------------------------------------------");
