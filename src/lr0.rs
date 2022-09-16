@@ -324,7 +324,7 @@ impl<'a, 'b, A> fmt::Display for LR0AutomatonDisplay<'a, 'b, A> {
 pub fn lr0_dot<A>(
     automaton: &LR0Automaton,
     grammar: &Grammar<A>,
-    conflicts: &Set<(StateIdx, usize)>,
+    conflicts: &Map<StateIdx, Set<usize>>,
 ) -> String {
     use std::fmt::Write;
 
@@ -339,7 +339,10 @@ pub fn lr0_dot<A>(
         write!(&mut dot, "    S{} [label=<S{}|", state_idx, state_idx).unwrap();
 
         for (item_idx, item) in state.items.iter().enumerate() {
-            let conflict = conflicts.contains(&(StateIdx(state_idx), item_idx));
+            let conflict = conflicts
+                .get(&(StateIdx(state_idx)))
+                .map(|conflict_set| conflict_set.contains(&item_idx))
+                .unwrap_or(false);
 
             if conflict {
                 dot.push_str("<FONT COLOR=\"red\">");
@@ -390,8 +393,11 @@ pub fn lr0_dot<A>(
     dot
 }
 
-pub fn find_conflicts<A>(automaton: &LR0Automaton, grammar: &Grammar<A>) -> Set<(StateIdx, usize)> {
-    let mut conflicts: Set<(StateIdx, usize)> = Default::default();
+pub fn find_conflicts<A>(
+    automaton: &LR0Automaton,
+    grammar: &Grammar<A>,
+) -> Map<StateIdx, Set<usize>> {
+    let mut conflicts: Map<StateIdx, Set<usize>> = Default::default();
 
     for (state_idx, state) in automaton.states.iter().enumerate() {
         let mut reduce_items: Vec<(usize, LR0Item)> = Vec::with_capacity(state.items.len());
@@ -409,7 +415,10 @@ pub fn find_conflicts<A>(automaton: &LR0Automaton, grammar: &Grammar<A>) -> Set<
 
         if reduce_items.len() > 1 || !shift_items.is_empty() {
             for (reduce_item_idx, _) in reduce_items {
-                conflicts.insert((StateIdx(state_idx), reduce_item_idx));
+                conflicts
+                    .entry(StateIdx(state_idx))
+                    .or_default()
+                    .insert(reduce_item_idx);
             }
         }
     }

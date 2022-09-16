@@ -88,44 +88,56 @@ pub fn main() {
     let first_table = crate::first::generate_first_table(&grammar);
 
     let mut lane_table = lane_table::LaneTable::default();
-    for (conflict_idx, (conflict_state, conflict_item_idx)) in lr0_conflicts.into_iter().enumerate()
-    {
-        let conflict_idx = lane_tracer::ConflictIdx(conflict_idx as u32);
-        lane_tracer::lane_trace(
-            &lr0_automaton.states,
-            &first_table,
-            &mut state_graph,
-            &mut lane_table,
-            &mut Default::default(),
-            &grammar,
-            conflict_idx,
-            conflict_state,
-            *lr0_automaton.states[conflict_state.as_usize()]
-                .items
-                .iter()
-                .nth(conflict_item_idx)
-                .unwrap(),
-        );
-    }
+    for (state_idx, state) in lr0_automaton.states.iter().enumerate() {
+        let conflicts = match lr0_conflicts.get(&lr_common::StateIdx(state_idx)) {
+            Some(conflicts) => {
+                assert!(!conflicts.is_empty());
+                conflicts
+            }
+            None => continue,
+        };
 
-    println!("-- Lane table: ---------------------------------------------------");
-    println!(
-        "{}",
-        lane_table::LaneTableDisplay {
-            lane_table: &lane_table,
-            grammar: &grammar,
+        for (conflict_idx, conflict_item_idx) in conflicts.iter().enumerate() {
+            let conflict_idx = lane_tracer::ConflictIdx(conflict_idx as u32);
+
+            lane_tracer::lane_trace(
+                &lr0_automaton.states,
+                &first_table,
+                &mut state_graph,
+                &mut lane_table,
+                &mut Default::default(),
+                &grammar,
+                conflict_idx,
+                lr_common::StateIdx(state_idx),
+                *state.items.iter().nth(*conflict_item_idx).unwrap(),
+            );
         }
-    );
-    println!("-- Conflict lookaheads: ------------------------------------------");
-    let lookaheads = lane_table.merge_lookaheads();
-    print!(
-        "{}",
-        lane_table::ConflictLookaheadDisplay {
-            set: &lookaheads,
-            grammar: &grammar
-        }
-    );
-    println!("------------------------------------------------------------------");
+
+        println!(
+            "-- Lane table for state {}: --------------------------------------",
+            state_idx
+        );
+        println!(
+            "{}",
+            lane_table::LaneTableDisplay {
+                lane_table: &lane_table,
+                grammar: &grammar,
+            }
+        );
+        println!(
+            "-- Conflict lookaheads for state {}: -----------------------------",
+            state_idx
+        );
+        let lookaheads = lane_table.merge_lookaheads();
+        print!(
+            "{}",
+            lane_table::ConflictLookaheadDisplay {
+                set: &lookaheads,
+                grammar: &grammar
+            }
+        );
+        println!("------------------------------------------------------------------");
+    }
 
     // let n_terminals = grammar.n_terminals();
     let (lr1_automaton, _nt_state_indices) =
