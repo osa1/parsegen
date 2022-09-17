@@ -97,6 +97,7 @@ pub fn main() {
     let first_table = crate::first::generate_first_table(&grammar);
 
     let mut lane_table = lane_table::LaneTable::default();
+    let mut lalr_conflicts: Vec<Set<usize>> = vec![Default::default(); lr0_automaton.states.len()];
     for (state_idx, state) in lr0_automaton.states.iter().enumerate() {
         let conflicts: &Set<usize> = match lr0_conflicts.get(&lr_common::StateIdx(state_idx)) {
             Some(conflicts) => {
@@ -157,6 +158,9 @@ pub fn main() {
             lalr_state.items[*conflict_item_idx].lookahead =
                 conflict_lookaheads.iter().cloned().collect();
         }
+
+        // Finished processing the state, generate new conflicts
+        lalr_conflicts[state_idx] = lalr1::find_conflicts(lalr_state, &grammar);
     }
 
     println!("-- LALR1 states: -------------------------------------------------",);
@@ -166,7 +170,8 @@ pub fn main() {
             "{}",
             lalr1::LALR1StateDisplay {
                 state,
-                grammar: &grammar
+                grammar: &grammar,
+                conflicts: &lalr_conflicts[state_idx],
             }
         );
         println!("}}");
