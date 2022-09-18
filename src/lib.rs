@@ -29,6 +29,7 @@ pub fn parser(input: TokenStream) -> TokenStream {
     for item in parser.items {
         match item {
             ast::GrammarItem::TypeSynonym(_) => { /*TODO*/ }
+            ast::GrammarItem::Assoc(_) => { /*TODO*/ }
             ast::GrammarItem::TokenEnum(token_enum_) => {
                 if token_enum.is_some() {
                     panic!("`enum Token` is declared multiple times");

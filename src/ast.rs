@@ -19,6 +19,9 @@ pub enum GrammarItem {
 
     /// Non-terminals
     NonTerminal(NonTerminal),
+
+    /// Associativity declarations
+    Assoc(AssocBlock),
 }
 
 /// The `enum Token { ... }` declaration
@@ -150,6 +153,36 @@ pub enum RepeatOp {
 pub enum Action {
     User(syn::Expr),
     Fallible(syn::Expr),
+}
+
+#[derive(Debug)]
+pub struct AssocBlock {
+    pub assocs: Vec<AssocDecl>,
+}
+
+#[derive(Debug)]
+pub struct AssocDecl {
+    pub kind: AssocKind,
+    pub symbols: Vec<AssocSymbol>,
+}
+
+#[derive(Debug, PartialEq, Eq)]
+pub enum AssocSymbol {
+    /// Precedence of a terminal. Terminal must be defined in the grammar's `enum Token { ... }`
+    /// block.
+    Terminal(String),
+
+    /// Precedence of an arbitrary symbol. We call this "not terminal" instead of "non-terminal" as
+    /// it may not have to be a non-terminal, it can be an arbitrary symbol used in a rule to set
+    /// precedence of a rule with `#[prec(<symbol>)]`
+    NotTerminal(String),
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum AssocKind {
+    Left,
+    Right,
+    NonAssoc,
 }
 
 impl Parse for FieldPattern {
@@ -413,12 +446,67 @@ impl Parse for Action {
 impl Parse for GrammarItem {
     fn parse(input: &ParseBuffer) -> syn::Result<Self> {
         if input.peek(syn::token::Type) {
-            Ok(GrammarItem::TypeSynonym(input.parse::<TypeSynonym>()?))
-        } else if input.peek(syn::token::Enum) {
-            Ok(GrammarItem::TokenEnum(input.parse::<TokenEnum>()?))
-        } else {
-            Ok(GrammarItem::NonTerminal(input.parse::<NonTerminal>()?))
+            return Ok(GrammarItem::TypeSynonym(input.parse::<TypeSynonym>()?));
         }
+
+        if input.peek(syn::token::Enum) {
+            return Ok(GrammarItem::TokenEnum(input.parse::<TokenEnum>()?));
+        }
+
+        let input_ = input.fork();
+        if let Ok(ident) = input_.parse::<syn::Ident>() {
+            if ident.to_string().as_str() == "assoc" {
+                return Ok(GrammarItem::Assoc(input_.parse::<AssocBlock>()?));
+            }
+        }
+
+        Ok(GrammarItem::NonTerminal(input.parse::<NonTerminal>()?))
+    }
+}
+
+impl Parse for AssocBlock {
+    // NB. 'assoc' keyword already consumed
+    fn parse(input: syn::parse::ParseStream) -> syn::Result<Self> {
+        let mut assocs: Vec<AssocDecl> = Vec::new();
+
+        let contents;
+        syn::braced!(contents in input);
+
+        while !contents.is_empty() {
+            let ident = contents.parse::<syn::Ident>()?;
+            let ident_str = ident.to_string();
+            let kind = match ident_str.as_str() {
+                "left" => AssocKind::Left,
+                "right" => AssocKind::Right,
+                "nonassoc" => AssocKind::NonAssoc,
+                other => panic!(
+                    "Unknown associativity: {}, expected left, right, or nonassoc",
+                    other
+                ),
+            };
+            let _ = contents.parse::<syn::token::Colon>()?;
+            let mut symbols: Vec<AssocSymbol> = Vec::new();
+            while !contents.peek(syn::token::Semi) {
+                if let Ok(str) = contents.parse::<syn::LitStr>() {
+                    symbols.push(AssocSymbol::Terminal(str.value()));
+                    continue;
+                }
+
+                if let Ok(ident) = contents.parse::<syn::Ident>() {
+                    symbols.push(AssocSymbol::NotTerminal(ident.to_string()));
+                    continue;
+                }
+
+                panic!(
+                    "Symbol in an assoc block needs to be a string literal (for terminals) or an
+                    identifier"
+                );
+            }
+            let _ = contents.parse::<syn::token::Semi>()?;
+            assocs.push(AssocDecl { kind, symbols });
+        }
+
+        Ok(AssocBlock { assocs })
     }
 }
 
@@ -561,4 +649,33 @@ fn parse_nonterminal() {
     )
     .unwrap();
     assert_eq!(non_terminal.productions.len(), 2);
+}
+
+#[test]
+fn parse_assoc_block() {
+    let AssocBlock { assocs } = syn::parse_str(
+        r##"{
+            left: "a" b;
+            right: ;
+            nonassoc: "p";
+        }"##,
+    )
+    .unwrap();
+
+    assert_eq!(assocs.len(), 3);
+    assert_eq!(assocs[0].kind, AssocKind::Left);
+    assert_eq!(
+        assocs[0].symbols,
+        vec![
+            AssocSymbol::Terminal("a".to_string()),
+            AssocSymbol::NotTerminal("b".to_string())
+        ]
+    );
+    assert_eq!(assocs[1].kind, AssocKind::Right);
+    assert_eq!(assocs[1].symbols, Vec::<AssocSymbol>::new());
+    assert_eq!(assocs[2].kind, AssocKind::NonAssoc);
+    assert_eq!(
+        assocs[2].symbols,
+        vec![AssocSymbol::Terminal("p".to_string())]
+    );
 }
