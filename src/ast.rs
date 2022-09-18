@@ -1,4 +1,5 @@
 use proc_macro2::Span;
+use quote::ToTokens;
 use syn::parse::{Parse, ParseBuffer};
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -110,7 +111,14 @@ pub struct NonTerminal {
 
 #[derive(Debug)]
 pub struct Production {
+    /// `#[prec(...)]` attribute to override precedence of the production. The symbol used here
+    /// should have its associativity specified in the `assoc { ... `}` block of the grammar.
+    pub prec: Option<AssocSymbol>,
+
+    /// Symbols of the production
     pub symbols: Vec<Symbol>,
+
+    /// Semantic action
     pub action: Action,
 }
 
@@ -127,7 +135,6 @@ pub enum Symbol {
 
     /// `<x:X>` or <mut x:X>`
     Name(Name, Box<Symbol>),
-    // TODO: more symbols here
 }
 
 #[derive(Debug, Clone)]
@@ -372,12 +379,38 @@ impl Parse for NonTerminal {
 
 impl Parse for Production {
     fn parse(input: &ParseBuffer) -> syn::Result<Self> {
+        let prec: Option<AssocSymbol> = if input.peek(syn::token::Pound) {
+            let mut attrs = syn::Attribute::parse_outer(input)?;
+            if attrs.len() > 1 {
+                panic!("A production can have at most one attribute");
+            }
+            let attr = attrs.pop().unwrap();
+            if attr.path.into_token_stream().to_string() != "prec" {
+                panic!();
+            }
+            Some(::syn::parse::Parser::parse2(
+                |input: &ParseBuffer| {
+                    let contents;
+                    syn::parenthesized!(contents in input);
+                    AssocSymbol::parse(&contents)
+                },
+                attr.tokens,
+            )?)
+        } else {
+            None
+        };
+
         let mut symbols: Vec<Symbol> = vec![];
+
         while !input.peek(syn::token::FatArrow) {
             symbols.push(input.parse::<Symbol>()?);
         }
         let action = input.parse::<Action>()?;
-        Ok(Production { symbols, action })
+        Ok(Production {
+            prec,
+            symbols,
+            action,
+        })
     }
 }
 
@@ -466,7 +499,7 @@ impl Parse for GrammarItem {
 
 impl Parse for AssocBlock {
     // NB. 'assoc' keyword already consumed
-    fn parse(input: syn::parse::ParseStream) -> syn::Result<Self> {
+    fn parse(input: &ParseBuffer) -> syn::Result<Self> {
         let mut assocs: Vec<AssocDecl> = Vec::new();
 
         let contents;
@@ -487,26 +520,27 @@ impl Parse for AssocBlock {
             let _ = contents.parse::<syn::token::Colon>()?;
             let mut symbols: Vec<AssocSymbol> = Vec::new();
             while !contents.peek(syn::token::Semi) {
-                if let Ok(str) = contents.parse::<syn::LitStr>() {
-                    symbols.push(AssocSymbol::Terminal(str.value()));
-                    continue;
-                }
-
-                if let Ok(ident) = contents.parse::<syn::Ident>() {
-                    symbols.push(AssocSymbol::NotTerminal(ident.to_string()));
-                    continue;
-                }
-
-                panic!(
-                    "Symbol in an assoc block needs to be a string literal (for terminals) or an
-                    identifier"
-                );
+                symbols.push(contents.parse::<AssocSymbol>()?);
             }
             let _ = contents.parse::<syn::token::Semi>()?;
             assocs.push(AssocDecl { kind, symbols });
         }
 
         Ok(AssocBlock { assocs })
+    }
+}
+
+impl Parse for AssocSymbol {
+    fn parse(input: &ParseBuffer) -> syn::Result<Self> {
+        if let Ok(str) = input.parse::<syn::LitStr>() {
+            return Ok(AssocSymbol::Terminal(str.value()));
+        }
+
+        if let Ok(ident) = input.parse::<syn::Ident>() {
+            return Ok(AssocSymbol::NotTerminal(ident.to_string()));
+        }
+
+        Err(syn::Error::new(input.span(), "Invalid symbol"))
     }
 }
 
@@ -678,4 +712,15 @@ fn parse_assoc_block() {
         assocs[2].symbols,
         vec![AssocSymbol::Terminal("p".to_string())]
     );
+}
+
+#[test]
+fn parse_production_prec_attribute() {
+    syn::parse_str::<Production>(
+        r##"
+            #[prec("a")]
+            "a" "b" => ()
+        "##,
+    )
+    .unwrap();
 }
