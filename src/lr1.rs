@@ -201,7 +201,7 @@ impl LR1State {
     }
 }
 
-#[derive(Debug)]
+#[derive(Debug, Default)]
 pub struct LR1Automaton {
     // Indexed by `StateIdx`
     states: Vec<LR1State>,
@@ -233,12 +233,6 @@ impl LR1Automaton {
             automaton: self,
             idx: StateIdx(0),
         }
-    }
-}
-
-impl Default for LR1Automaton {
-    fn default() -> Self {
-        LR1Automaton { states: vec![] }
     }
 }
 

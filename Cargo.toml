@@ -18,4 +18,5 @@ quote = "1.0"
 syn = { version = "1.0", features = ["full", "derive", "parsing", "extra-traits"] }
 
 [dev-dependencies]
-lexgen = "0.2.2"
+lexgen = "0.12.0"
+lexgen_util = "0.12.0"

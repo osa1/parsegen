@@ -362,7 +362,7 @@ fn pattern_types(pat: &Pattern) -> Vec<&syn::Type> {
     ret
 }
 
-fn pattern_types_<'a, 'b>(pat: &'a Pattern, acc: &'b mut Vec<&'a syn::Type>) {
+fn pattern_types_<'a>(pat: &'a Pattern, acc: &mut Vec<&'a syn::Type>) {
     match pat {
         Pattern::Choose(ty) => {
             acc.push(ty);

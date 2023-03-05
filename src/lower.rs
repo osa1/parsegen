@@ -81,14 +81,7 @@ pub fn lower(
         for prod in productions {
             let mut symbols: Vec<BoundSymbol> = vec![];
             for sym in prod.symbols {
-                add_symbol(
-                    &mut grammar,
-                    &nt_indices,
-                    &t_indices,
-                    &mut symbols,
-                    None,
-                    sym,
-                );
+                add_symbol(&nt_indices, &t_indices, &mut symbols, None, sym);
             }
             let nt_idx = nt_indices.get(&name.to_string()).unwrap();
 
@@ -104,8 +97,7 @@ pub fn lower(
     grammar
 }
 
-fn add_symbol<A>(
-    grammar: &mut Grammar<A>,
+fn add_symbol(
     nt_indices: &Map<String, NonTerminalIdx>,
     t_indices: &Map<String, TerminalIdx>,
     symbols: &mut Vec<BoundSymbol>,
@@ -138,7 +130,7 @@ fn add_symbol<A>(
             todo!("Repeat symbol not supported yet");
         }
         ast::Symbol::Name(binder, sym) => {
-            add_symbol(grammar, nt_indices, t_indices, symbols, Some(binder), *sym)
+            add_symbol(nt_indices, t_indices, symbols, Some(binder), *sym)
         }
     }
 }

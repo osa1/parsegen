@@ -8,7 +8,7 @@ use fxhash::FxHashSet;
 #[derive(Debug)]
 pub struct FirstTable(Vec<FirstSet>);
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Default)]
 pub struct FirstSet {
     empty: bool,
     terminals: FxHashSet<TerminalIdx>,
@@ -29,15 +29,6 @@ impl FirstSet {
 
     pub fn has_empty(&self) -> bool {
         self.empty
-    }
-}
-
-impl Default for FirstSet {
-    fn default() -> Self {
-        FirstSet {
-            empty: false,
-            terminals: Default::default(),
-        }
     }
 }
 
@@ -62,7 +53,7 @@ impl FirstTable {
         let empty = &mut self.0[non_terminal_idx.as_usize()].empty;
         let old_value = *empty;
         *empty = true;
-        old_value != true
+        !old_value
     }
 
     pub fn get_first(&self, non_terminal_idx: NonTerminalIdx) -> &FirstSet {
