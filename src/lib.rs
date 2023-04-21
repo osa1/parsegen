@@ -25,16 +25,25 @@ pub fn parser(input: TokenStream) -> TokenStream {
 
     let mut non_terminals: Vec<ast::NonTerminal> = vec![];
     let mut token_enum: Option<ast::TokenEnum> = None;
+    let mut state_type: Option<syn::Type> = None;
 
     for item in parser.items {
         match item {
-            ast::GrammarItem::TypeSynonym(_) => { /*TODO*/ }
+            ast::GrammarItem::TypeDef(typedef) => match typedef.kind {
+                ast::TypeDefKind::State => {
+                    if state_type.replace(typedef.ty).is_some() {
+                        panic!("`type State` is declared multiple times");
+                    }
+                }
+            },
+
             ast::GrammarItem::TokenEnum(token_enum_) => {
                 if token_enum.is_some() {
                     panic!("`enum Token` is declared multiple times");
                 }
                 token_enum = Some(token_enum_);
             }
+
             ast::GrammarItem::NonTerminal(nt) => {
                 non_terminals.push(nt);
             }

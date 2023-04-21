@@ -1,16 +1,24 @@
-//! A lowered representation of grammars
-
 use crate::ast;
 
-/// Grammar type parameterized over terminals and user actions.
+/// The grammar type. Parameterized over semantic action type.
 #[derive(Debug, Clone)]
 pub struct Grammar<A> {
-    // Non-terminals, indexed by `NonTerminalIdx`
+    /// Non-terminals, indexed by `NonTerminalIdx`.
     pub non_terminals: Vec<NonTerminal<A>>,
 
-    // Maps terminals to their user-written names (in `enum Token { ... }`). The strings are only
-    // used for debugging purposes, but we use the length of this vector to generate
-    // `TerminalIdx`s.
+    /// Maps terminals to their user-written names (in `enum Token { ... }`). For example, in an
+    /// `enum Token` declaration;
+    ///
+    /// ```rust,ignore
+    /// enum Token {
+    ///   "(" => Token::LParen,
+    ///   ")" => Token::RParen,
+    /// }
+    /// ```
+    ///
+    /// This vector will be `["(", ")"]`.
+    ///
+    /// The strings are used in error messages: `Expected "(", found ")"`.
     pub terminals: Vec<String>,
 }
 

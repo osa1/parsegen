@@ -11,8 +11,8 @@ pub struct Parser {
 
 #[derive(Debug)]
 pub enum GrammarItem {
-    /// `type X = Y;`, used to declare location and lexer error types
-    TypeSynonym(TypeSynonym),
+    /// `type X = Y;`, used to declare location, user state, and lexer error types.
+    TypeDef(TypeDef),
 
     /// `enum Token { ... }`, used to declare tokens
     TokenEnum(TokenEnum),
@@ -44,9 +44,15 @@ pub struct Conversion {
 }
 
 #[derive(Debug)]
-pub struct TypeSynonym {
-    pub name: syn::Ident,
+pub struct TypeDef {
+    pub kind: TypeDefKind,
     pub ty: syn::Type,
+}
+
+#[derive(Debug)]
+pub enum TypeDefKind {
+    /// Type definition specifies the user state type.
+    State,
 }
 
 /// A pattern used in token definitions
@@ -113,18 +119,17 @@ pub struct Production {
 
 #[derive(Debug)]
 pub enum Symbol {
-    /// A terminal, defined in the token enum
+    /// A terminal, defined in the `GrammarItem::TokenEnum` of the grammar.
     Terminal(syn::LitStr),
 
-    /// A nonterminal, should be defined in the same grammar
+    /// A non-terminal (`NonTerminal`).
     NonTerminal(syn::Ident),
 
     /// `X+`, `X*`, `X?`
     Repeat(Box<Repeat>),
 
     /// `<x:X>` or <mut x:X>`
-    Name(Name, Box<Symbol>),
-    // TODO: more symbols here
+    NamedSymbol(Name, Box<Symbol>),
 }
 
 #[derive(Debug, Clone)]
@@ -148,7 +153,10 @@ pub enum RepeatOp {
 
 #[derive(Debug)]
 pub enum Action {
-    User(syn::Expr),
+    /// `<symbols> => <action>`
+    Infallible(syn::Expr),
+
+    /// `<symbols> =>? <action>`
     Fallible(syn::Expr),
 }
 
@@ -286,14 +294,25 @@ impl Parse for TokenEnum {
     }
 }
 
-impl Parse for TypeSynonym {
+impl Parse for TypeDef {
     fn parse(input: &ParseBuffer) -> syn::Result<Self> {
         input.parse::<syn::token::Type>()?;
-        let name = input.parse::<syn::Ident>()?;
+        let kind = input.parse::<TypeDefKind>()?;
         input.parse::<syn::token::Eq>()?;
         let ty = input.parse::<syn::Type>()?;
         input.parse::<syn::token::Semi>()?;
-        Ok(TypeSynonym { name, ty })
+        Ok(TypeDef { kind, ty })
+    }
+}
+
+impl Parse for TypeDefKind {
+    fn parse(input: &ParseBuffer) -> syn::Result<Self> {
+        let name = input.parse::<syn::Ident>()?;
+        let name_str = name.to_string();
+        match name_str.as_str() {
+            "State" => Ok(TypeDefKind::State),
+            other => panic!("Unknown type definition: {:?}", other),
+        }
     }
 }
 
@@ -394,7 +413,10 @@ fn symbol0(input: &ParseBuffer) -> syn::Result<Symbol> {
     input.parse::<syn::token::Colon>()?;
     let symbol = input.parse::<Symbol>()?;
     input.parse::<syn::token::Gt>()?;
-    Ok(Symbol::Name(Name { mutable, name }, Box::new(symbol)))
+    Ok(Symbol::NamedSymbol(
+        Name { mutable, name },
+        Box::new(symbol),
+    ))
     // }
 }
 
@@ -405,7 +427,7 @@ impl Parse for Action {
             input.parse::<syn::token::Question>()?;
             Ok(Action::Fallible(input.parse::<syn::Expr>()?))
         } else {
-            Ok(Action::User(input.parse::<syn::Expr>()?))
+            Ok(Action::Infallible(input.parse::<syn::Expr>()?))
         }
     }
 }
@@ -413,7 +435,7 @@ impl Parse for Action {
 impl Parse for GrammarItem {
     fn parse(input: &ParseBuffer) -> syn::Result<Self> {
         if input.peek(syn::token::Type) {
-            Ok(GrammarItem::TypeSynonym(input.parse::<TypeSynonym>()?))
+            Ok(GrammarItem::TypeDef(input.parse::<TypeDef>()?))
         } else if input.peek(syn::token::Enum) {
             Ok(GrammarItem::TokenEnum(input.parse::<TokenEnum>()?))
         } else {
@@ -511,8 +533,8 @@ fn parse_enum_token() {
 }
 
 #[test]
-fn parse_type_synonym() {
-    syn::parse_str::<TypeSynonym>("type X = Y;").unwrap();
+fn parse_typedef() {
+    syn::parse_str::<TypeDef>("type State = Y<i32>;").unwrap();
 }
 
 #[test]
@@ -523,11 +545,11 @@ fn parse_symbol() {
     ));
     assert!(matches!(
         syn::parse_str::<Symbol>(r#" <x:"a"> "#).unwrap(),
-        Symbol::Name(_, _)
+        Symbol::NamedSymbol(_, _)
     ));
     assert!(matches!(
         syn::parse_str::<Symbol>(r#" <mut x:"a"> "#).unwrap(),
-        Symbol::Name(_, _)
+        Symbol::NamedSymbol(_, _)
     ));
     assert!(matches!(
         syn::parse_str::<Symbol>(r#" "x"+*? "#).unwrap(),
@@ -539,7 +561,7 @@ fn parse_symbol() {
     ));
     assert!(matches!(
         syn::parse_str::<Symbol>(r#" <exprs:Expr+> "#).unwrap(),
-        Symbol::Name(_, _),
+        Symbol::NamedSymbol(_, _),
     ));
 }
 

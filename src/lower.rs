@@ -86,7 +86,7 @@ pub fn lower(
             let nt_idx = nt_indices.get(&name.to_string()).unwrap();
 
             let action = match prod.action {
-                ast::Action::User(expr) => expr,
+                ast::Action::Infallible(expr) => expr,
                 ast::Action::Fallible(_) => todo!("Fallible actions not supported yet"),
             };
 
@@ -129,7 +129,7 @@ fn add_symbol(
         ast::Symbol::Repeat(_) => {
             todo!("Repeat symbol not supported yet");
         }
-        ast::Symbol::Name(binder, sym) => {
+        ast::Symbol::NamedSymbol(binder, sym) => {
             add_symbol(nt_indices, t_indices, symbols, Some(binder), *sym)
         }
     }
